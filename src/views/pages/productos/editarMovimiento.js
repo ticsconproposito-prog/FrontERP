@@ -55,11 +55,13 @@ const EditarMovimiento = () => {
   const [sugerenciasProductos, setSugerenciasProductos] = useState([])
   const [mostrarSugerencias, setMostrarSugerencias] = useState(false)
   const [busquedaProducto, setBusquedaProducto] = useState('')
-  const [productoTemp, setProductoTemp] = useState({ idProducto: null, cantidad: 1, precioCompra: 0 })
+  const [productoTemp, setProductoTemp] = useState({ idProducto: null, cantidad: 0, precioCompra: 0 })
   const [modalExito, setModalExito] = useState(false)
   const [modalError, setModalError] = useState(false)
   const [mensajeError, setMensajeError] = useState('')
   const returnFocusRef = useRef(null)
+  // Filas con cantidad y precio habilitados para editar (por índice)
+  const [filasEditables, setFilasEditables] = useState(new Set())
 
   const obtenerProducto = (idProducto) => {
     if (!idProducto) return { codigoProducto: 'N/A', codigoProductoProveedor: 'N/A', descripcionProducto: 'N/A' }
@@ -80,7 +82,19 @@ const EditarMovimiento = () => {
     })
   }
 
+  const habilitarEdicionFila = (index) => {
+    setFilasEditables(prev => new Set([...prev, index]))
+  }
+
   const eliminarDetalle = (index) => {
+    setFilasEditables(prev => {
+      const next = new Set()
+      prev.forEach(i => {
+        if (i < index) next.add(i)
+        if (i > index) next.add(i - 1)
+      })
+      return next
+    })
     const det = detalles[index]
     if (det.idMovimientoProducto) {
       setDetallesEliminados(prev => [...prev, det.idMovimientoProducto])
@@ -110,7 +124,7 @@ const EditarMovimiento = () => {
   const seleccionarProductoAgregar = (producto) => {
     setProductoTemp({
       idProducto: producto.idProducto,
-      cantidad: 1,
+      cantidad: 0,
       precioCompra: 0
     })
     setBusquedaProducto((producto.descripcionProducto || producto.codigoProducto || '').toString().substring(0, 40))
@@ -129,7 +143,7 @@ const EditarMovimiento = () => {
       setModalError(true)
       return
     }
-    const cantidad = Number(productoTemp.cantidad) || 1
+    const cantidad = Number(productoTemp.cantidad) || 0
     const precio = Number(productoTemp.precioCompra) || 0
     if (cantidad <= 0 || precio < 0) {
       setMensajeError('Cantidad y precio deben ser válidos')
@@ -144,7 +158,7 @@ const EditarMovimiento = () => {
       precioCompra: precio,
       idUbicacion: 1
     }])
-    setProductoTemp({ idProducto: null, cantidad: 1, precioCompra: 0 })
+    setProductoTemp({ idProducto: null, cantidad: 0, precioCompra: 0 })
     setBusquedaProducto('')
   }
 
@@ -459,14 +473,14 @@ const EditarMovimiento = () => {
                     </CCol>
                     <CCol md={2}>
                       <CFormLabel className="small">Cantidad</CFormLabel>
-                      <CFormInput type="number" min="1" value={productoTemp.cantidad} onChange={e => setProductoTemp(prev => ({ ...prev, cantidad: Number(e.target.value) || 0 }))} />
+                      <CFormInput type="number" min="0" value={productoTemp.cantidad} onChange={e => setProductoTemp(prev => ({ ...prev, cantidad: Number(e.target.value) || 0 }))} />
                     </CCol>
                     <CCol md={2}>
                       <CFormLabel className="small">Precio compra</CFormLabel>
                       <CFormInput type="number" step="0.01" min="0" value={productoTemp.precioCompra || ''} onChange={e => setProductoTemp(prev => ({ ...prev, precioCompra: Number(e.target.value) || 0 }))} />
                     </CCol>
                     <CCol md={2}>
-                      <CButton type="button" color="success" onClick={agregarProductoALista}>Agregar producto</CButton>
+                      <CButton type="button" color="success" className="me-2 text-white" onClick={agregarProductoALista}>Agregar producto</CButton>
                     </CCol>
                   </CRow>
                 </div>
@@ -488,6 +502,7 @@ const EditarMovimiento = () => {
                     {detalles.map((det, index) => {
                       const prod = obtenerProducto(det.idProducto)
                       const subtotal = (det.cantidad || 0) * (det.precioCompra || 0)
+                      const editable = filasEditables.has(index)
                       return (
                         <CTableRow key={det.idMovimientoProducto != null ? det.idMovimientoProducto : 'n-' + index}>
                           <CTableDataCell>{index + 1}</CTableDataCell>
@@ -495,14 +510,25 @@ const EditarMovimiento = () => {
                           <CTableDataCell>{prod.codigoProductoProveedor}</CTableDataCell>
                           <CTableDataCell>{prod.descripcionProducto}</CTableDataCell>
                           <CTableDataCell className="text-center">
-                            <CFormInput type="number" min="0" value={det.cantidad || ''} onChange={e => handleDetalleChange(index, 'cantidad', e.target.value)} className="text-center" style={{ maxWidth: '80px' }} />
+                            {editable ? (
+                              <CFormInput type="number" min="0" value={det.cantidad || ''} onChange={e => handleDetalleChange(index, 'cantidad', e.target.value)} className="text-center" style={{ maxWidth: '80px' }} />
+                            ) : (
+                              det.cantidad
+                            )}
                           </CTableDataCell>
                           <CTableDataCell className="text-end">
-                            <CFormInput type="number" step="0.01" min="0" value={det.precioCompra ?? ''} onChange={e => handleDetalleChange(index, 'precioCompra', e.target.value)} className="text-end" style={{ maxWidth: '100px' }} />
+                            {editable ? (
+                              <CFormInput type="number" step="0.01" min="0" value={det.precioCompra ?? ''} onChange={e => handleDetalleChange(index, 'precioCompra', e.target.value)} className="text-end" style={{ maxWidth: '100px' }} />
+                            ) : (
+                              `Q${(det.precioCompra === '' || det.precioCompra == null ? 0 : det.precioCompra).toFixed(2)}`
+                            )}
                           </CTableDataCell>
                           <CTableDataCell className="text-end">Q{(subtotal || 0).toFixed(2)}</CTableDataCell>
                           <CTableDataCell className="text-center">
-                            <CButton type="button" color="danger" size="sm" onClick={() => eliminarDetalle(index)} title="Eliminar">
+                            <CButton type="button" color="warning" size="sm" className="me-2 text-dark" onClick={() => habilitarEdicionFila(index)} title="Editar cantidad y precio">
+                              Editar
+                            </CButton>
+                            <CButton type="button" color="danger" className="me-2 text-white" size="sm" onClick={() => eliminarDetalle(index)} title="Eliminar">
                               Eliminar
                             </CButton>
                           </CTableDataCell>

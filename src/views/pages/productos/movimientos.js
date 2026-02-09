@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import {
   CButton,
   CCard,
@@ -18,6 +18,12 @@ import {
   CTableDataCell,
   CPagination,
   CPaginationItem,
+  CModal,
+  CModalHeader,
+  CModalTitle,
+  CModalBody,
+  CModalFooter,
+  CSpinner,
 } from '@coreui/react'
 import { useNavigate } from 'react-router-dom'
 
@@ -45,6 +51,16 @@ const Layout = () => {
   // Estados para la paginación
   const [page, setPage] = useState(0)
   const [totalPages, setTotalPages] = useState(0)
+
+  const returnFocusRef = useRef(null)
+
+  // Estados para eliminar orden
+  const [modalConfirmarEliminar, setModalConfirmarEliminar] = useState(false)
+  const [ordenAEliminar, setOrdenAEliminar] = useState(null)
+  const [eliminando, setEliminando] = useState(false)
+  const [modalResultado, setModalResultado] = useState(false)
+  const [resultadoExito, setResultadoExito] = useState(false)
+  const [mensajeResultado, setMensajeResultado] = useState('')
 
   // Función para obtener el nombre del tipo de movimiento por su ID
   const obtenerNombreTipoMovimiento = (idMovimiento) => {
@@ -281,6 +297,76 @@ const Layout = () => {
     }
   }
 
+  // Abrir modal de confirmación para eliminar
+  const handleClickEliminar = (movimiento) => {
+    setOrdenAEliminar(movimiento)
+    setModalConfirmarEliminar(true)
+  }
+
+  const cancelarEliminar = () => {
+    returnFocusRef.current?.focus()
+    setModalConfirmarEliminar(false)
+    setOrdenAEliminar(null)
+  }
+
+  const confirmarEliminar = async () => {
+    if (!ordenAEliminar?.idOrdenProducto) return
+    setEliminando(true)
+    const idOrden = ordenAEliminar.idOrdenProducto
+    try {
+      // Primero eliminar los productos asociados al movimiento
+      const resMov = await fetch(`/api/eliminarMovProXIdOrden/${idOrden}`, { method: 'DELETE' })
+      if (!resMov.ok) {
+        const errText = await resMov.text()
+        let errMsg = `Error al eliminar productos del movimiento (${resMov.status})`
+        try {
+          const errJson = JSON.parse(errText)
+          errMsg = errJson.message || errJson.error || errMsg
+        } catch {
+          if (errText) errMsg = errText
+        }
+        setModalConfirmarEliminar(false)
+        setOrdenAEliminar(null)
+        setMensajeResultado(errMsg)
+        setResultadoExito(false)
+        setModalResultado(true)
+        return
+      }
+      // Luego eliminar la orden
+      const res = await fetch(`/api/eliminarOrdenProducto/${idOrden}`, { method: 'DELETE' })
+      returnFocusRef.current?.focus()
+      setModalConfirmarEliminar(false)
+      setOrdenAEliminar(null)
+      if (!res.ok) {
+        const errText = await res.text()
+        let errMsg = `Error al eliminar la orden (${res.status})`
+        try {
+          const errJson = JSON.parse(errText)
+          errMsg = errJson.message || errJson.error || errMsg
+        } catch {
+          if (errText) errMsg = errText
+        }
+        setMensajeResultado(errMsg)
+        setResultadoExito(false)
+        setModalResultado(true)
+        return
+      }
+      setMensajeResultado('La orden y sus productos se eliminaron correctamente.')
+      setResultadoExito(true)
+      setModalResultado(true)
+      await cargarOrdenesProductos(page)
+    } catch (e) {
+      returnFocusRef.current?.focus()
+      setModalConfirmarEliminar(false)
+      setOrdenAEliminar(null)
+      setMensajeResultado(e.message || 'Error de conexión al eliminar.')
+      setResultadoExito(false)
+      setModalResultado(true)
+    } finally {
+      setEliminando(false)
+    }
+  }
+
   // Manejar cambios en los filtros
   const handleFiltroChange = (e) => {
     const { name, id, value } = e.target
@@ -394,6 +480,7 @@ const Layout = () => {
 
                 <CCol md={6} className="d-flex align-items-end justify-content-end gap-2">
                   <CButton
+                    ref={returnFocusRef}
                     color="secondary"
                     className="text-light"
                     onClick={limpiarFiltros}>
@@ -500,11 +587,13 @@ const Layout = () => {
                           ✏️
                         </CButton>
                         <CButton
-                        color="danger"
-                        size="sm"
-                        className="me-2">
-                        🗑️
-                      </CButton>
+                          color="danger"
+                          size="sm"
+                          className="me-2"
+                          onClick={() => handleClickEliminar(movimiento)}
+                          title="Eliminar">
+                          🗑️
+                        </CButton>
                       </CTableDataCell>
                     </CTableRow>
                   ))
@@ -543,6 +632,46 @@ const Layout = () => {
           </CCardBody>
         </CCard>
       </CCol>
+
+      {/* Modal confirmar eliminar */}
+      <CModal visible={modalConfirmarEliminar} onClose={cancelarEliminar} backdrop={eliminando ? 'static' : true}>
+        <CModalHeader>
+          <CModalTitle>Eliminar orden</CModalTitle>
+        </CModalHeader>
+        <CModalBody>
+          ¿Está seguro que desea eliminar la orden <strong>No.{ordenAEliminar?.idOrdenProducto}</strong>
+          <br />
+          Con número de documento: <strong>{ordenAEliminar?.numeroDocumento ?` ${ordenAEliminar.numeroDocumento}` : 'No existe'}</strong>?
+          <br />
+          Esta acción no se puede deshacer.
+        </CModalBody>
+        <CModalFooter>
+          <CButton color="secondary" onClick={cancelarEliminar} disabled={eliminando}>
+            Cancelar
+          </CButton>
+          <CButton color="danger" onClick={confirmarEliminar} disabled={eliminando}>
+            {eliminando ? (
+              <>
+                <CSpinner size="sm" className="me-2" />
+                Eliminando...
+              </>
+            ) : (
+              'Eliminar'
+            )}
+          </CButton>
+        </CModalFooter>
+      </CModal>
+
+      {/* Modal resultado */}
+      <CModal visible={modalResultado} onClose={() => { returnFocusRef.current?.focus(); setModalResultado(false) }}>
+        <CModalHeader>{resultadoExito ? 'Listo' : 'Error'}</CModalHeader>
+        <CModalBody>{mensajeResultado}</CModalBody>
+        <CModalFooter>
+          <CButton color="primary" onClick={() => { returnFocusRef.current?.focus(); setModalResultado(false) }}>
+            Aceptar
+          </CButton>
+        </CModalFooter>
+      </CModal>
     </CRow>
   )
 }

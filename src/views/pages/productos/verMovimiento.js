@@ -304,7 +304,7 @@ const tipoEstadoFactura = Array.isArray(dataEstadoFactura)
                     </tr>
                     <tr>
                       <td className="fw-bold">Valor Cancelado:</td>
-                      <td>Q{(orden?.valorCancelado ?? 0).toFixed(2)}</td>
+                      <td className="text-success fw-bold">Q{(orden?.valorCancelado ?? 0).toFixed(2)}</td>
                     </tr>
                   </tbody>
                 </table>
