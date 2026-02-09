@@ -487,18 +487,15 @@ const Layout = () => {
                           color="info"
                           size="sm"
                           className="me-2 text-white"
-                          onClick={() => {
-                            console.log('🔘 Click en Ver, ID:', movimiento.idOrdenProducto)
-                            console.log('🔘 Movimiento completo:', movimiento)
-                            navigate(`/pages/productos/ver-movimiento/${movimiento.idOrdenProducto}`)
-                          }}>
-                          👁️
+                          onClick={() => navigate(`/pages/productos/ver-movimiento/${movimiento.idOrdenProducto}`)}>
+                          Ver
                         </CButton>
                         <CButton
                           color="warning"
                           size="sm"
-                          className="me-2">
-                          ✏️
+                          className="me-2 text-white"
+                          onClick={() => navigate(`/pages/productos/editar-movimiento/${movimiento.idOrdenProducto}`)}>
+                          Editar
                         </CButton>
                         <CButton
                         color="danger"

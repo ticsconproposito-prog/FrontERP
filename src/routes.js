@@ -31,6 +31,7 @@ const Productos = React.lazy(() => import('./views/pages/productos/gestionProduc
 const Movimientos = React.lazy(() => import('./views/pages/productos/movimientos'))
 const AgregarMovimiento = React.lazy(() => import('./views/pages/productos/agregarMovimiento'))
 const VerMovimiento = React.lazy(() => import('./views/pages/productos/verMovimiento'))
+const EditarMovimiento = React.lazy(() => import('./views/pages/productos/editarMovimiento'))
 const ReporteInventario = React.lazy(() => import('./views/pages/productos/reporteInventario'))
 const Facturacion = React.lazy(() => import('./views/pages/Ventas/facturacion'))
 
@@ -90,6 +91,7 @@ const routes = [
   { path: '/pages/productos/movimientos', name: 'Movimientos', element: Movimientos },
   { path: '/pages/productos/agregar-movimiento', name: 'Agregar Movimiento', element: AgregarMovimiento },
   { path: '/pages/productos/ver-movimiento/:id', name: 'Ver Movimiento', element: VerMovimiento },
+  { path: '/pages/productos/editar-movimiento/:id', name: 'Editar Movimiento', element: EditarMovimiento },
   { path: '/pages/productos/reporte-inventario', name: 'Reporte Inventario', element: ReporteInventario },
   { path: '/pages/ventas/facturacion', name: 'Facturacion', element: Facturacion },
   { path: '/charts', name: 'Charts', element: Charts },

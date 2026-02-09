@@ -60,10 +60,10 @@ const VerMovimiento = () => {
 
   const obtenerProducto = (idProducto) => {
     if (!idProducto) {
-      return { codigoProducto: 'N/A', descripcionProducto: 'N/A' }
+      return { codigoProducto: 'N/A', codigoProductoProveedor: 'N/A', descripcionProducto: 'N/A' }
     }
     const producto = productos.find(p => p.idProducto === idProducto)
-    return producto || { codigoProducto: 'N/A', descripcionProducto: `Producto ID: ${idProducto} (No encontrado)` }
+    return producto || { codigoProducto: 'N/A', codigoProductoProveedor: 'N/A', descripcionProducto: `Producto ID: ${idProducto} (No encontrado)` }
   }
 
   const formatearFecha = (fecha) => {
@@ -151,6 +151,7 @@ const tipoEstadoFactura = Array.isArray(dataEstadoFactura)
   const cargarOrden = async () => {
     try {
       setLoading(true)
+      setError(null)
       const response = await fetch(`http://127.0.0.1:8080/ordenProductos?id=${id}`)
       
       if (!response.ok) {
@@ -159,9 +160,7 @@ const tipoEstadoFactura = Array.isArray(dataEstadoFactura)
       
       const data = await response.json()
       
-      // Extraer la orden del objeto Page
       let ordenData = null
-      
       if (data.content && Array.isArray(data.content) && data.content.length > 0) {
         ordenData = data.content[0]
       } else {
@@ -172,12 +171,15 @@ const tipoEstadoFactura = Array.isArray(dataEstadoFactura)
     } catch (error) {
       console.error('❌ Error al cargar orden:', error)
       setError(error.message)
+    } finally {
+      setLoading(false)
     }
   }
 
   // Cargar los detalles de movimientos
   const cargarDetalles = async () => {
     try {
+      setError(null)
       const response = await fetch(`http://127.0.0.1:8080/movimientosProductos?idOrdenProducto=${id}`)
       
       if (!response.ok) throw new Error('Error al cargar detalles')
@@ -202,8 +204,11 @@ const tipoEstadoFactura = Array.isArray(dataEstadoFactura)
 
   useEffect(() => {
     if (id) {
-      cargarOrden()
-      cargarDetalles()
+      const cargar = async () => {
+        await cargarOrden()
+        await cargarDetalles()
+      }
+      cargar()
     }
   }, [id])
 
@@ -275,6 +280,10 @@ const tipoEstadoFactura = Array.isArray(dataEstadoFactura)
                       <td className="fw-bold">Tipo de Movimiento:</td>
                       <td>{obtenerNombreTipoMovimiento(orden?.tipoDeMovimiento)}</td>
                     </tr>
+                    <tr>
+                      <td className="fw-bold">Comentarios:</td>
+                      <td>{orden?.comentario || 'Sin comentarios'}</td>
+                    </tr>
                   </tbody>
                 </table>
               </CCol>
@@ -294,8 +303,8 @@ const tipoEstadoFactura = Array.isArray(dataEstadoFactura)
                       <td className="text-success fw-bold">Q{orden?.precioTotalOrden?.toFixed(2) || '0.00'}</td>
                     </tr>
                     <tr>
-                      <td className="fw-bold">Comentarios:</td>
-                      <td>{orden?.comentario || 'Sin comentarios'}</td>
+                      <td className="fw-bold">Valor Cancelado:</td>
+                      <td>Q{(orden?.valorCancelado ?? 0).toFixed(2)}</td>
                     </tr>
                   </tbody>
                 </table>
@@ -308,20 +317,19 @@ const tipoEstadoFactura = Array.isArray(dataEstadoFactura)
               <CTableHead>
                 <CTableRow>
                   <CTableHeaderCell className="text-center">#</CTableHeaderCell>
-                  <CTableHeaderCell>ID Producto</CTableHeaderCell>
                   <CTableHeaderCell>Código Producto</CTableHeaderCell>
+                  <CTableHeaderCell>Código Proveedor Producto</CTableHeaderCell>
                   <CTableHeaderCell>Descripción</CTableHeaderCell>
                   <CTableHeaderCell className="text-center">Cantidad</CTableHeaderCell>
                   <CTableHeaderCell className="text-end">Precio Compra</CTableHeaderCell>
                   <CTableHeaderCell className="text-end">Subtotal</CTableHeaderCell>
                   <CTableHeaderCell>Ubicación</CTableHeaderCell>
-                  <CTableHeaderCell>Estado</CTableHeaderCell>
                 </CTableRow>
               </CTableHead>
               <CTableBody>
                 {detalles.length === 0 ? (
                   <CTableRow>
-                    <CTableDataCell colSpan="9" className="text-center py-4 text-muted">
+                    <CTableDataCell colSpan="8" className="text-center py-4 text-muted">
                       No hay detalles de productos para esta orden.
                     </CTableDataCell>
                   </CTableRow>
@@ -331,8 +339,8 @@ const tipoEstadoFactura = Array.isArray(dataEstadoFactura)
                     return (
                       <CTableRow key={detalle.idMovimientoProducto || index}>
                         <CTableDataCell className="text-center">{index + 1}</CTableDataCell>
-                        <CTableDataCell>{detalle.idProducto}</CTableDataCell>
                         <CTableDataCell>{producto.codigoProducto}</CTableDataCell>
+                        <CTableDataCell>{producto.codigoProductoProveedor ?? 'N/A'}</CTableDataCell>
                         <CTableDataCell>{producto.descripcionProducto}</CTableDataCell>
                         <CTableDataCell className="text-center">{detalle.cantidad}</CTableDataCell>
                         <CTableDataCell className="text-end">Q{detalle.precioCompra?.toFixed(2)}</CTableDataCell>
@@ -340,7 +348,6 @@ const tipoEstadoFactura = Array.isArray(dataEstadoFactura)
                           Q{(detalle.cantidad * detalle.precioCompra)?.toFixed(2)}
                         </CTableDataCell>
                         <CTableDataCell>{detalle.idUbicacion || 'N/A'}</CTableDataCell>
-                        <CTableDataCell>{detalle.estado === 1 ? 'Activo' : 'Inactivo'}</CTableDataCell>
                       </CTableRow>
                     )
                   })

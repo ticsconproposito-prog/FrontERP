@@ -1,0 +1,405 @@
+import React, { useState, useEffect } from 'react'
+import {
+  CButton,
+  CCard,
+  CCardBody,
+  CCardHeader,
+  CCol,
+  CForm,
+  CFormInput,
+  CFormLabel,
+  CFormSelect,
+  CFormTextarea,
+  CRow,
+  CTable,
+  CTableHead,
+  CTableRow,
+  CTableHeaderCell,
+  CTableBody,
+  CTableDataCell,
+  CSpinner,
+  CModal,
+  CModalHeader,
+  CModalTitle,
+  CModalBody,
+  CModalFooter,
+} from '@coreui/react'
+import { useNavigate, useParams } from 'react-router-dom'
+
+const EditarMovimiento = () => {
+  const navigate = useNavigate()
+  const { id } = useParams()
+
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState(null)
+  const [tipoMovimiento, setTipoMovimiento] = useState([])
+  const [tipoOrden, setTipoOrden] = useState([])
+  const [estadoFactura, setEstadoFactura] = useState([])
+  const [proveedores, setProveedores] = useState([])
+  const [productos, setProductos] = useState([])
+
+  const [formData, setFormData] = useState({
+    numeroDocumento: '',
+    fechaIngreso: '',
+    proveedor: '',
+    tipoMovimiento: '',
+    tipoOrden: '',
+    estadoFactura: '',
+    valorCancelado: '',
+    comentarios: ''
+  })
+
+  const [detalles, setDetalles] = useState([])
+  const [modalExito, setModalExito] = useState(false)
+  const [modalError, setModalError] = useState(false)
+  const [mensajeError, setMensajeError] = useState('')
+
+  const obtenerProducto = (idProducto) => {
+    if (!idProducto) return { codigoProducto: 'N/A', codigoProductoProveedor: 'N/A', descripcionProducto: 'N/A' }
+    const p = productos.find(x => x.idProducto === idProducto)
+    return p || { codigoProducto: 'N/A', codigoProductoProveedor: 'N/A', descripcionProducto: 'N/A' }
+  }
+
+  const handleChange = (e) => {
+    const { name, value } = e.target
+    setFormData(prev => ({ ...prev, [name]: value }))
+  }
+
+  const handleDetalleChange = (index, field, value) => {
+    setDetalles(prev => {
+      const next = [...prev]
+      next[index] = { ...next[index], [field]: field === 'cantidad' || field === 'precioCompra' ? Number(value) || 0 : value }
+      return next
+    })
+  }
+
+  const cargarDiccionario = async () => {
+    try {
+      const [r1, r2, r3] = await Promise.all([
+        fetch('http://127.0.0.1:8080/diccionarios?diccionario=TIPODEMOVIMIENTO'),
+        fetch('http://127.0.0.1:8080/diccionarios?diccionario=TIPODEORDEN'),
+        fetch('http://127.0.0.1:8080/diccionarios?diccionario=ESTADOFATURAORDEN')
+      ])
+      const data1 = await r1.json()
+      const data2 = await r2.json()
+      const data3 = await r3.json()
+      const arr = (d) => Array.isArray(d) ? d : (d?.content || [])
+      setTipoMovimiento(arr(data1))
+      setTipoOrden(arr(data2))
+      setEstadoFactura(arr(data3))
+    } catch (e) {
+      console.error(e)
+    }
+  }
+
+  const cargarProveedores = async () => {
+    try {
+      const r = await fetch('http://127.0.0.1:8080/proveedores?size=1000')
+      const data = await r.json()
+      setProveedores(Array.isArray(data) ? data : (data?.content || []))
+    } catch (e) {
+      console.error(e)
+    }
+  }
+
+  const cargarProductos = async () => {
+    try {
+      const r = await fetch('http://127.0.0.1:8080/productos?size=1000')
+      const data = await r.json()
+      setProductos(Array.isArray(data) ? data : (data?.content || []))
+    } catch (e) {
+      console.error(e)
+    }
+  }
+
+  const cargarOrden = async () => {
+    if (!id) return
+    try {
+      setLoading(true)
+      setError(null)
+      const r = await fetch(`http://127.0.0.1:8080/ordenProductos?id=${id}`)
+      if (!r.ok) throw new Error('Error al cargar la orden')
+      const data = await r.json()
+      const orden = data?.content?.[0]
+      if (!orden) throw new Error('Orden no encontrada')
+      setFormData({
+        numeroDocumento: orden.numeroDeDocumento || '',
+        fechaIngreso: (orden.fechaOrden || '').toString().substring(0, 10),
+        proveedor: String(orden.idProveedor ?? ''),
+        tipoMovimiento: String(orden.tipoDeMovimiento ?? ''),
+        tipoOrden: String(orden.tipoDeOrden ?? ''),
+        estadoFactura: String(orden.estadoFactura ?? ''),
+        valorCancelado: orden.valorCancelado != null ? String(orden.valorCancelado) : '',
+        comentarios: orden.comentario || ''
+      })
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const cargarDetalles = async () => {
+    if (!id) return
+    try {
+      const r = await fetch(`http://127.0.0.1:8080/movimientosProductos?idOrdenProducto=${id}`)
+      if (!r.ok) throw new Error('Error al cargar detalles')
+      const data = await r.json()
+      const arr = Array.isArray(data) ? data : (data?.content || [])
+      setDetalles(arr)
+    } catch (e) {
+      console.error(e)
+      setDetalles([])
+    }
+  }
+
+  useEffect(() => {
+    cargarDiccionario()
+    cargarProveedores()
+    cargarProductos()
+  }, [])
+
+  useEffect(() => {
+    if (id) {
+      cargarOrden()
+      cargarDetalles()
+    }
+  }, [id])
+
+  const totalOrden = detalles.reduce((sum, d) => sum + (d.cantidad || 0) * (d.precioCompra || 0), 0)
+
+  const handleGuardar = async (e) => {
+    e.preventDefault()
+    setSaving(true)
+    setModalError(false)
+    try {
+      const ordenPayload = {
+        idOrdenProducto: parseInt(id, 10),
+        idSucursal: 1,
+        fechaOrden: formData.fechaIngreso,
+        idProveedor: parseInt(formData.proveedor, 10),
+        numeroDeDocumento: formData.numeroDocumento.trim(),
+        tipoDeMovimiento: parseInt(formData.tipoMovimiento, 10),
+        tipoDeOrden: parseInt(formData.tipoOrden, 10),
+        estadoFactura: parseInt(formData.estadoFactura, 10),
+        precioTotalOrden: totalOrden,
+        valorCancelado: formData.valorCancelado ? parseFloat(formData.valorCancelado) : 0,
+        comentario: formData.comentarios || '',
+        idUsuarioModificacion: 1
+      }
+      const resOrden = await fetch('http://127.0.0.1:8080/actualizarOrdenProducto', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(ordenPayload)
+      })
+      if (!resOrden.ok) {
+        const errText = await resOrden.text()
+        throw new Error(errText || 'Error al actualizar la orden')
+      }
+      for (const det of detalles) {
+        const body = {
+          idMovimientoProducto: det.idMovimientoProducto,
+          idOrdenProducto: parseInt(id, 10),
+          idProducto: det.idProducto,
+          cantidad: parseInt(det.cantidad, 10),
+          precioCompra: parseFloat(det.precioCompra),
+          idUbicacion: det.idUbicacion || 1,
+          idUsuarioModificacion: 1
+        }
+        const resDet = await fetch('http://127.0.0.1:8080/actualizarMovimientoProducto', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        })
+        if (!resDet.ok) throw new Error('Error al actualizar detalle')
+      }
+      setModalExito(true)
+    } catch (err) {
+      setMensajeError(err.message || 'Error al guardar')
+      setModalError(true)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <CRow>
+        <CCol xs={12}>
+          <CCard>
+            <CCardBody className="text-center py-5">
+              <CSpinner color="primary" />
+              <p className="mt-3">Cargando...</p>
+            </CCardBody>
+          </CCard>
+        </CCol>
+      </CRow>
+    )
+  }
+
+  if (error) {
+    return (
+      <CRow>
+        <CCol xs={12}>
+          <CCard>
+            <CCardBody className="text-center py-5">
+              <p className="text-danger">{error}</p>
+              <CButton color="secondary" onClick={() => navigate('/pages/productos/movimientos')}>
+                Volver
+              </CButton>
+            </CCardBody>
+          </CCard>
+        </CCol>
+      </CRow>
+    )
+  }
+
+  return (
+    <>
+      <CRow>
+        <CCol xs={12}>
+          <CCard className="mb-4">
+            <CCardHeader className="d-flex justify-content-between align-items-center">
+              <strong className="fs-4">Editar Movimiento - Orden #{id}</strong>
+              <CButton color="secondary" onClick={() => navigate('/pages/productos/movimientos')}>
+                Volver
+              </CButton>
+            </CCardHeader>
+            <CCardBody>
+              <CForm onSubmit={handleGuardar}>
+                <h6 className="text-primary mb-3">Información de la orden</h6>
+                <CRow className="mb-3">
+                  <CCol md={4}>
+                    <CFormLabel>Número de documento</CFormLabel>
+                    <CFormInput name="numeroDocumento" value={formData.numeroDocumento} onChange={handleChange} />
+                  </CCol>
+                  <CCol md={4}>
+                    <CFormLabel>Fecha de orden</CFormLabel>
+                    <CFormInput type="date" name="fechaIngreso" value={formData.fechaIngreso} onChange={handleChange} />
+                  </CCol>
+                  <CCol md={4}>
+                    <CFormLabel>Proveedor</CFormLabel>
+                    <CFormSelect name="proveedor" value={formData.proveedor} onChange={handleChange}>
+                      <option value="">Seleccione</option>
+                      {proveedores.map(p => (
+                        <option key={p.idProveedor} value={p.idProveedor}>{p.nombre || p.nombreProveedor}</option>
+                      ))}
+                    </CFormSelect>
+                  </CCol>
+                </CRow>
+                <CRow className="mb-3">
+                  <CCol md={4}>
+                    <CFormLabel>Tipo de movimiento</CFormLabel>
+                    <CFormSelect name="tipoMovimiento" value={formData.tipoMovimiento} onChange={handleChange}>
+                      <option value="">Seleccione</option>
+                      {tipoMovimiento.map(t => (
+                        <option key={t.indice} value={t.indice}>{t.valor}</option>
+                      ))}
+                    </CFormSelect>
+                  </CCol>
+                  <CCol md={4}>
+                    <CFormLabel>Tipo de orden</CFormLabel>
+                    <CFormSelect name="tipoOrden" value={formData.tipoOrden} onChange={handleChange}>
+                      <option value="">Seleccione</option>
+                      {tipoOrden.map(t => (
+                        <option key={t.indice} value={t.indice}>{t.valor}</option>
+                      ))}
+                    </CFormSelect>
+                  </CCol>
+                  <CCol md={4}>
+                    <CFormLabel>Estado de factura</CFormLabel>
+                    <CFormSelect name="estadoFactura" value={formData.estadoFactura} onChange={handleChange}>
+                      <option value="">Seleccione</option>
+                      {estadoFactura.map(t => (
+                        <option key={t.indice} value={t.indice}>{t.valor}</option>
+                      ))}
+                    </CFormSelect>
+                  </CCol>
+                </CRow>
+                <CRow className="mb-3">
+                  <CCol md={4}>
+                    <CFormLabel>Valor cancelado</CFormLabel>
+                    <CFormInput type="number" step="0.01" name="valorCancelado" value={formData.valorCancelado} onChange={handleChange} />
+                  </CCol>
+                  <CCol md={8}>
+                    <CFormLabel>Comentarios</CFormLabel>
+                    <CFormTextarea name="comentarios" value={formData.comentarios} onChange={handleChange} rows={2} />
+                  </CCol>
+                </CRow>
+
+                <h6 className="text-primary mb-3 mt-4">Detalle de productos</h6>
+                <CTable striped hover bordered responsive>
+                  <CTableHead>
+                    <CTableRow>
+                      <CTableHeaderCell>#</CTableHeaderCell>
+                      <CTableHeaderCell>Código</CTableHeaderCell>
+                      <CTableHeaderCell>Cód. Proveedor</CTableHeaderCell>
+                      <CTableHeaderCell>Descripción</CTableHeaderCell>
+                      <CTableHeaderCell className="text-center">Cantidad</CTableHeaderCell>
+                      <CTableHeaderCell className="text-end">Precio compra</CTableHeaderCell>
+                      <CTableHeaderCell className="text-end">Subtotal</CTableHeaderCell>
+                    </CTableRow>
+                  </CTableHead>
+                  <CTableBody>
+                    {detalles.map((det, index) => {
+                      const prod = obtenerProducto(det.idProducto)
+                      const subtotal = (det.cantidad || 0) * (det.precioCompra || 0)
+                      return (
+                        <CTableRow key={det.idMovimientoProducto || index}>
+                          <CTableDataCell>{index + 1}</CTableDataCell>
+                          <CTableDataCell>{prod.codigoProducto}</CTableDataCell>
+                          <CTableDataCell>{prod.codigoProductoProveedor}</CTableDataCell>
+                          <CTableDataCell>{prod.descripcionProducto}</CTableDataCell>
+                          <CTableDataCell className="text-center">
+                            <CFormInput type="number" min="0" value={det.cantidad || ''} onChange={e => handleDetalleChange(index, 'cantidad', e.target.value)} className="text-center" style={{ maxWidth: '80px' }} />
+                          </CTableDataCell>
+                          <CTableDataCell className="text-end">
+                            <CFormInput type="number" step="0.01" min="0" value={det.precioCompra ?? ''} onChange={e => handleDetalleChange(index, 'precioCompra', e.target.value)} className="text-end" style={{ maxWidth: '100px' }} />
+                          </CTableDataCell>
+                          <CTableDataCell className="text-end">Q{(subtotal || 0).toFixed(2)}</CTableDataCell>
+                        </CTableRow>
+                      )
+                    })}
+                  </CTableBody>
+                </CTable>
+                {detalles.length > 0 && (
+                  <div className="d-flex justify-content-end mt-2">
+                    <strong>Total orden: Q{totalOrden.toFixed(2)}</strong>
+                  </div>
+                )}
+
+                <div className="d-flex gap-2 mt-4">
+                  <CButton type="submit" color="primary" disabled={saving}>
+                    {saving ? 'Guardando...' : 'Guardar cambios'}
+                  </CButton>
+                  <CButton type="button" color="secondary" onClick={() => navigate('/pages/productos/movimientos')}>
+                    Cancelar
+                  </CButton>
+                </div>
+              </CForm>
+            </CCardBody>
+          </CCard>
+        </CCol>
+      </CRow>
+
+      <CModal visible={modalExito} onClose={() => { setModalExito(false); navigate('/pages/productos/movimientos') }}>
+        <CModalHeader>Cambios guardados</CModalHeader>
+        <CModalBody>La orden se actualizó correctamente.</CModalBody>
+        <CModalFooter>
+          <CButton color="primary" onClick={() => { setModalExito(false); navigate('/pages/productos/movimientos') }}>Aceptar</CButton>
+        </CModalFooter>
+      </CModal>
+
+      <CModal visible={modalError} onClose={() => setModalError(false)}>
+        <CModalHeader>Error</CModalHeader>
+        <CModalBody>{mensajeError}</CModalBody>
+        <CModalFooter>
+          <CButton color="secondary" onClick={() => setModalError(false)}>Cerrar</CButton>
+        </CModalFooter>
+      </CModal>
+    </>
+  )
+}
+
+export default EditarMovimiento
