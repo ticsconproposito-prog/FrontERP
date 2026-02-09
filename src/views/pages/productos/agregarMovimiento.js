@@ -320,7 +320,7 @@ const AgregarMovimiento = () => {
       console.log('numeroDocumento específico:', datosOrden.numeroDocumento)
       console.log('Tipo de numeroDocumento:', typeof datosOrden.numeroDocumento)
       
-      const response = await fetch('http://127.0.0.1:8080/grabarOrdenProducto', {
+      const response = await fetch('/api/grabarOrdenProducto', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -380,7 +380,7 @@ const AgregarMovimiento = () => {
       // La API guarda un movimiento por request
       const resultados = []
       for (const movimiento of movimientos) {
-        const response = await fetch('http://127.0.0.1:8080/grabarMovimientosProductos', {
+        const response = await fetch('/api/grabarMovimientosProductos', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(movimiento)
@@ -416,9 +416,9 @@ const AgregarMovimiento = () => {
   // Función para cargar los diccionarios
   const cargarDiccionario = async () => {
     try {
-      const responseTipoMovimiento = await fetch('http://127.0.0.1:8080/diccionarios?diccionario=TIPODEMOVIMIENTO')
-      const responseTipoOrden = await fetch('http://127.0.0.1:8080/diccionarios?diccionario=TIPODEORDEN')
-      const responseEstadoFactura = await fetch('http://127.0.0.1:8080/diccionarios?diccionario=ESTADOFATURAORDEN')
+      const responseTipoMovimiento = await fetch('/api/diccionarios?diccionario=TIPODEMOVIMIENTO')
+      const responseTipoOrden = await fetch('/api/diccionarios?diccionario=TIPODEORDEN')
+      const responseEstadoFactura = await fetch('/api/diccionarios?diccionario=ESTADOFATURAORDEN')
 
       if (!responseTipoMovimiento.ok || !responseTipoOrden.ok || !responseEstadoFactura.ok) {
         throw new Error('Error al cargar diccionarios')
@@ -469,7 +469,7 @@ const AgregarMovimiento = () => {
   // Función para cargar proveedores (todos para búsqueda por nombre)
   const cargarProveedores = async () => {
     try {
-      const response = await fetch('http://127.0.0.1:8080/proveedores?size=1000')
+      const response = await fetch('/api/proveedores?size=1000')
 
       if (!response.ok) {
         throw new Error('Error al cargar proveedores')
@@ -493,7 +493,7 @@ const AgregarMovimiento = () => {
   // Función para cargar productos disponibles (todos para búsqueda local)
   const cargarProductosDisponibles = async () => {
     try {
-      const response = await fetch('http://127.0.0.1:8080/productos?size=1000')
+      const response = await fetch('/api/productos?size=1000')
 
       if (!response.ok) {
         throw new Error('Error al cargar productos')

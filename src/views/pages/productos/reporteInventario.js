@@ -65,7 +65,7 @@ const ReporteInventario = () => {
         params.append('descripcion', filtrosActuales.descripcion.trim())
       }
 
-      const url = `http://127.0.0.1:8080/inventario?${params.toString()}`
+      const url = `/api/inventario?${params.toString()}`
       const response = await fetch(url)
 
       if (!response.ok) {

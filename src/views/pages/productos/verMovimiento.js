@@ -75,11 +75,11 @@ const VerMovimiento = () => {
   // Cargar diccionarios
   const cargarDiccionario = async () => {
     try {
-      const response = await fetch('http://127.0.0.1:8080/diccionarios')
+      const response = await fetch('/api/diccionarios')
 
-      const responseTipoMovimiento = await fetch('http://127.0.0.1:8080/diccionarios?diccionario=TIPODEMOVIMIENTO')
-      const responseTipoOrden = await fetch('http://127.0.0.1:8080/diccionarios?diccionario=TIPODEORDEN')
-      const responseEstadoFactura = await fetch('http://127.0.0.1:8080/diccionarios?diccionario=ESTADOFATURAORDEN')
+      const responseTipoMovimiento = await fetch('/api/diccionarios?diccionario=TIPODEMOVIMIENTO')
+      const responseTipoOrden = await fetch('/api/diccionarios?diccionario=TIPODEORDEN')
+      const responseEstadoFactura = await fetch('/api/diccionarios?diccionario=ESTADOFATURAORDEN')
       if (!response.ok) throw new Error('Error al cargar diccionarios')
       
      
@@ -119,7 +119,7 @@ const tipoEstadoFactura = Array.isArray(dataEstadoFactura)
   // Cargar proveedores
   const cargarProveedores = async () => {
     try {
-      const response = await fetch('http://127.0.0.1:8080/proveedores')
+      const response = await fetch('/api/proveedores')
       if (!response.ok) throw new Error('Error al cargar proveedores')
       
       const data = await response.json()
@@ -134,7 +134,7 @@ const tipoEstadoFactura = Array.isArray(dataEstadoFactura)
   // Cargar productos
   const cargarProductos = async () => {
     try {
-      const url = 'http://127.0.0.1:8080/productos?size=1000'
+      const url = '/api/productos?size=1000'
       const response = await fetch(url)
       if (!response.ok) throw new Error('Error al cargar productos')
       
@@ -152,7 +152,7 @@ const tipoEstadoFactura = Array.isArray(dataEstadoFactura)
     try {
       setLoading(true)
       setError(null)
-      const response = await fetch(`http://127.0.0.1:8080/ordenProductos?id=${id}`)
+      const response = await fetch(`/api/ordenProductos?id=${id}`)
       
       if (!response.ok) {
         throw new Error('Error al cargar la orden')
@@ -180,7 +180,7 @@ const tipoEstadoFactura = Array.isArray(dataEstadoFactura)
   const cargarDetalles = async () => {
     try {
       setError(null)
-      const response = await fetch(`http://127.0.0.1:8080/movimientosProductos?idOrdenProducto=${id}`)
+      const response = await fetch(`/api/movimientosProductos?idOrdenProducto=${id}`)
       
       if (!response.ok) throw new Error('Error al cargar detalles')
       

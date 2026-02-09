@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import {
   CButton,
   CCard,
@@ -51,9 +51,15 @@ const EditarMovimiento = () => {
   })
 
   const [detalles, setDetalles] = useState([])
+  const [detallesEliminados, setDetallesEliminados] = useState([])
+  const [sugerenciasProductos, setSugerenciasProductos] = useState([])
+  const [mostrarSugerencias, setMostrarSugerencias] = useState(false)
+  const [busquedaProducto, setBusquedaProducto] = useState('')
+  const [productoTemp, setProductoTemp] = useState({ idProducto: null, cantidad: 1, precioCompra: 0 })
   const [modalExito, setModalExito] = useState(false)
   const [modalError, setModalError] = useState(false)
   const [mensajeError, setMensajeError] = useState('')
+  const returnFocusRef = useRef(null)
 
   const obtenerProducto = (idProducto) => {
     if (!idProducto) return { codigoProducto: 'N/A', codigoProductoProveedor: 'N/A', descripcionProducto: 'N/A' }
@@ -74,12 +80,80 @@ const EditarMovimiento = () => {
     })
   }
 
+  const eliminarDetalle = (index) => {
+    const det = detalles[index]
+    if (det.idMovimientoProducto) {
+      setDetallesEliminados(prev => [...prev, det.idMovimientoProducto])
+    }
+    setDetalles(prev => prev.filter((_, i) => i !== index))
+  }
+
+  const handleBusquedaProducto = (e) => {
+    const value = e.target.value
+    setBusquedaProducto(value)
+    const v = value.trim().toLowerCase()
+    if (v.length >= 2) {
+      const filtrados = productos.filter(p => {
+        const cod = (p.codigoProducto || '').toString().toLowerCase()
+        const prov = (p.codigoProductoProveedor || '').toString().toLowerCase()
+        const desc = (p.descripcionProducto || '').toString().toLowerCase()
+        return cod.includes(v) || prov.includes(v) || desc.includes(v)
+      })
+      setSugerenciasProductos(filtrados.slice(0, 15))
+      setMostrarSugerencias(filtrados.length > 0)
+    } else {
+      setSugerenciasProductos([])
+      setMostrarSugerencias(false)
+    }
+  }
+
+  const seleccionarProductoAgregar = (producto) => {
+    setProductoTemp({
+      idProducto: producto.idProducto,
+      cantidad: 1,
+      precioCompra: 0
+    })
+    setBusquedaProducto((producto.descripcionProducto || producto.codigoProducto || '').toString().substring(0, 40))
+    setSugerenciasProductos([])
+    setMostrarSugerencias(false)
+  }
+
+  const agregarProductoALista = () => {
+    if (!productoTemp.idProducto) {
+      setMensajeError('Seleccione un producto de la búsqueda')
+      setModalError(true)
+      return
+    }
+    if (detalles.some(d => d.idProducto === productoTemp.idProducto)) {
+      setMensajeError('El producto ya está en la lista')
+      setModalError(true)
+      return
+    }
+    const cantidad = Number(productoTemp.cantidad) || 1
+    const precio = Number(productoTemp.precioCompra) || 0
+    if (cantidad <= 0 || precio < 0) {
+      setMensajeError('Cantidad y precio deben ser válidos')
+      setModalError(true)
+      return
+    }
+    setDetalles(prev => [...prev, {
+      idMovimientoProducto: null,
+      idOrdenProducto: parseInt(id, 10),
+      idProducto: productoTemp.idProducto,
+      cantidad,
+      precioCompra: precio,
+      idUbicacion: 1
+    }])
+    setProductoTemp({ idProducto: null, cantidad: 1, precioCompra: 0 })
+    setBusquedaProducto('')
+  }
+
   const cargarDiccionario = async () => {
     try {
       const [r1, r2, r3] = await Promise.all([
-        fetch('http://127.0.0.1:8080/diccionarios?diccionario=TIPODEMOVIMIENTO'),
-        fetch('http://127.0.0.1:8080/diccionarios?diccionario=TIPODEORDEN'),
-        fetch('http://127.0.0.1:8080/diccionarios?diccionario=ESTADOFATURAORDEN')
+        fetch('/api/diccionarios?diccionario=TIPODEMOVIMIENTO'),
+        fetch('/api/diccionarios?diccionario=TIPODEORDEN'),
+        fetch('/api/diccionarios?diccionario=ESTADOFATURAORDEN')
       ])
       const data1 = await r1.json()
       const data2 = await r2.json()
@@ -95,7 +169,7 @@ const EditarMovimiento = () => {
 
   const cargarProveedores = async () => {
     try {
-      const r = await fetch('http://127.0.0.1:8080/proveedores?size=1000')
+      const r = await fetch('/api/proveedores?size=1000')
       const data = await r.json()
       setProveedores(Array.isArray(data) ? data : (data?.content || []))
     } catch (e) {
@@ -105,7 +179,7 @@ const EditarMovimiento = () => {
 
   const cargarProductos = async () => {
     try {
-      const r = await fetch('http://127.0.0.1:8080/productos?size=1000')
+      const r = await fetch('/api/productos?size=1000')
       const data = await r.json()
       setProductos(Array.isArray(data) ? data : (data?.content || []))
     } catch (e) {
@@ -118,7 +192,7 @@ const EditarMovimiento = () => {
     try {
       setLoading(true)
       setError(null)
-      const r = await fetch(`http://127.0.0.1:8080/ordenProductos?id=${id}`)
+      const r = await fetch(`/api/ordenProductos?id=${id}`)
       if (!r.ok) throw new Error('Error al cargar la orden')
       const data = await r.json()
       const orden = data?.content?.[0]
@@ -143,7 +217,7 @@ const EditarMovimiento = () => {
   const cargarDetalles = async () => {
     if (!id) return
     try {
-      const r = await fetch(`http://127.0.0.1:8080/movimientosProductos?idOrdenProducto=${id}`)
+      const r = await fetch(`/api/movimientosProductos?idOrdenProducto=${id}`)
       if (!r.ok) throw new Error('Error al cargar detalles')
       const data = await r.json()
       const arr = Array.isArray(data) ? data : (data?.content || [])
@@ -188,7 +262,7 @@ const EditarMovimiento = () => {
         comentario: formData.comentarios || '',
         idUsuarioModificacion: 1
       }
-      const resOrden = await fetch('http://127.0.0.1:8080/actualizarOrdenProducto', {
+      const resOrden = await fetch(`/api/editarOrdenProducto/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(ordenPayload)
@@ -197,22 +271,57 @@ const EditarMovimiento = () => {
         const errText = await resOrden.text()
         throw new Error(errText || 'Error al actualizar la orden')
       }
-      for (const det of detalles) {
-        const body = {
-          idMovimientoProducto: det.idMovimientoProducto,
-          idOrdenProducto: parseInt(id, 10),
-          idProducto: det.idProducto,
-          cantidad: parseInt(det.cantidad, 10),
-          precioCompra: parseFloat(det.precioCompra),
-          idUbicacion: det.idUbicacion || 1,
-          idUsuarioModificacion: 1
+      for (const idElim of detallesEliminados) {
+        const resDel = await fetch(`/api/eliminarMovimientosProductos/${idElim}`, { method: 'DELETE' })
+        if (!resDel.ok) {
+          const errText = await resDel.text()
+          let errMsg = `Error al eliminar detalle (${resDel.status})`
+          if (errText) {
+            try {
+              const errJson = JSON.parse(errText)
+              if (errJson.message) errMsg = errJson.message
+              else if (errJson.error) errMsg = `${errJson.error} - ${errJson.path || ''}`
+              else errMsg = errText
+            } catch {
+              errMsg = errText
+            }
+          }
+          throw new Error(errMsg)
         }
-        const resDet = await fetch('http://127.0.0.1:8080/actualizarMovimientoProducto', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body)
-        })
-        if (!resDet.ok) throw new Error('Error al actualizar detalle')
+      }
+      for (const det of detalles) {
+        if (det.idMovimientoProducto) {
+          const body = {
+            idMovimientoProducto: det.idMovimientoProducto,
+            idOrdenProducto: parseInt(id, 10),
+            idProducto: det.idProducto,
+            cantidad: parseInt(det.cantidad, 10),
+            precioCompra: parseFloat(det.precioCompra),
+            idUbicacion: det.idUbicacion || 1,
+            idUsuarioModificacion: 1
+          }
+          const resDet = await fetch(`/api/editarMovimientosProductos/${det.idMovimientoProducto}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+          })
+          if (!resDet.ok) throw new Error('Error al actualizar detalle')
+        } else {
+          const body = {
+            idOrdenProducto: parseInt(id, 10),
+            idProducto: parseInt(det.idProducto, 10),
+            cantidad: parseInt(det.cantidad, 10),
+            precioCompra: parseFloat(det.precioCompra),
+            idUbicacion: det.idUbicacion || 1,
+            idUsuarioModificacion: 1
+          }
+          const resNew = await fetch('/api/grabarMovimientosProductos', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+          })
+          if (!resNew.ok) throw new Error('Error al agregar detalle')
+        }
       }
       setModalExito(true)
     } catch (err) {
@@ -262,7 +371,7 @@ const EditarMovimiento = () => {
           <CCard className="mb-4">
             <CCardHeader className="d-flex justify-content-between align-items-center">
               <strong className="fs-4">Editar Movimiento - Orden #{id}</strong>
-              <CButton color="secondary" onClick={() => navigate('/pages/productos/movimientos')}>
+              <CButton ref={returnFocusRef} color="secondary" onClick={() => navigate('/pages/productos/movimientos')}>
                 Volver
               </CButton>
             </CCardHeader>
@@ -329,6 +438,39 @@ const EditarMovimiento = () => {
                 </CRow>
 
                 <h6 className="text-primary mb-3 mt-4">Detalle de productos</h6>
+
+                <div className="mb-3 p-3 border rounded bg-light">
+                  <CFormLabel className="fw-bold">Agregar producto</CFormLabel>
+                  <CRow className="g-2 align-items-end">
+                    <CCol md={4}>
+                      <CFormLabel className="small">Buscar (código o descripción)</CFormLabel>
+                      <div style={{ position: 'relative' }}>
+                        <CFormInput placeholder="Escriba al menos 2 caracteres..." value={busquedaProducto} onChange={handleBusquedaProducto} autoComplete="off" />
+                        {mostrarSugerencias && sugerenciasProductos.length > 0 && (
+                          <div className="list-group position-absolute w-100 mt-1 shadow" style={{ zIndex: 1050, maxHeight: '220px', overflowY: 'auto' }}>
+                            {sugerenciasProductos.map(p => (
+                              <button key={p.idProducto} type="button" className="list-group-item list-group-item-action text-start" onClick={() => seleccionarProductoAgregar(p)}>
+                                <strong>{p.codigoProducto}</strong> {p.codigoProductoProveedor && `| ${p.codigoProductoProveedor}`} — {String(p.descripcionProducto || '').substring(0, 50)}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </CCol>
+                    <CCol md={2}>
+                      <CFormLabel className="small">Cantidad</CFormLabel>
+                      <CFormInput type="number" min="1" value={productoTemp.cantidad} onChange={e => setProductoTemp(prev => ({ ...prev, cantidad: Number(e.target.value) || 0 }))} />
+                    </CCol>
+                    <CCol md={2}>
+                      <CFormLabel className="small">Precio compra</CFormLabel>
+                      <CFormInput type="number" step="0.01" min="0" value={productoTemp.precioCompra || ''} onChange={e => setProductoTemp(prev => ({ ...prev, precioCompra: Number(e.target.value) || 0 }))} />
+                    </CCol>
+                    <CCol md={2}>
+                      <CButton type="button" color="success" onClick={agregarProductoALista}>Agregar producto</CButton>
+                    </CCol>
+                  </CRow>
+                </div>
+
                 <CTable striped hover bordered responsive>
                   <CTableHead>
                     <CTableRow>
@@ -339,6 +481,7 @@ const EditarMovimiento = () => {
                       <CTableHeaderCell className="text-center">Cantidad</CTableHeaderCell>
                       <CTableHeaderCell className="text-end">Precio compra</CTableHeaderCell>
                       <CTableHeaderCell className="text-end">Subtotal</CTableHeaderCell>
+                      <CTableHeaderCell className="text-center">Acciones</CTableHeaderCell>
                     </CTableRow>
                   </CTableHead>
                   <CTableBody>
@@ -346,7 +489,7 @@ const EditarMovimiento = () => {
                       const prod = obtenerProducto(det.idProducto)
                       const subtotal = (det.cantidad || 0) * (det.precioCompra || 0)
                       return (
-                        <CTableRow key={det.idMovimientoProducto || index}>
+                        <CTableRow key={det.idMovimientoProducto != null ? det.idMovimientoProducto : 'n-' + index}>
                           <CTableDataCell>{index + 1}</CTableDataCell>
                           <CTableDataCell>{prod.codigoProducto}</CTableDataCell>
                           <CTableDataCell>{prod.codigoProductoProveedor}</CTableDataCell>
@@ -358,6 +501,11 @@ const EditarMovimiento = () => {
                             <CFormInput type="number" step="0.01" min="0" value={det.precioCompra ?? ''} onChange={e => handleDetalleChange(index, 'precioCompra', e.target.value)} className="text-end" style={{ maxWidth: '100px' }} />
                           </CTableDataCell>
                           <CTableDataCell className="text-end">Q{(subtotal || 0).toFixed(2)}</CTableDataCell>
+                          <CTableDataCell className="text-center">
+                            <CButton type="button" color="danger" size="sm" onClick={() => eliminarDetalle(index)} title="Eliminar">
+                              Eliminar
+                            </CButton>
+                          </CTableDataCell>
                         </CTableRow>
                       )
                     })}
@@ -383,19 +531,49 @@ const EditarMovimiento = () => {
         </CCol>
       </CRow>
 
-      <CModal visible={modalExito} onClose={() => { setModalExito(false); navigate('/pages/productos/movimientos') }}>
+      <CModal
+        visible={modalExito}
+        onClose={() => {
+          returnFocusRef.current?.focus()
+          setModalExito(false)
+          navigate('/pages/productos/movimientos')
+        }}
+      >
         <CModalHeader>Cambios guardados</CModalHeader>
         <CModalBody>La orden se actualizó correctamente.</CModalBody>
         <CModalFooter>
-          <CButton color="primary" onClick={() => { setModalExito(false); navigate('/pages/productos/movimientos') }}>Aceptar</CButton>
+          <CButton
+            color="primary"
+            onClick={() => {
+              returnFocusRef.current?.focus()
+              setModalExito(false)
+              navigate('/pages/productos/movimientos')
+            }}
+          >
+            Aceptar
+          </CButton>
         </CModalFooter>
       </CModal>
 
-      <CModal visible={modalError} onClose={() => setModalError(false)}>
+      <CModal
+        visible={modalError}
+        onClose={() => {
+          returnFocusRef.current?.focus()
+          setModalError(false)
+        }}
+      >
         <CModalHeader>Error</CModalHeader>
         <CModalBody>{mensajeError}</CModalBody>
         <CModalFooter>
-          <CButton color="secondary" onClick={() => setModalError(false)}>Cerrar</CButton>
+          <CButton
+            color="secondary"
+            onClick={() => {
+              returnFocusRef.current?.focus()
+              setModalError(false)
+            }}
+          >
+            Cerrar
+          </CButton>
         </CModalFooter>
       </CModal>
     </>

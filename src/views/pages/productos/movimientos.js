@@ -101,9 +101,9 @@ const Layout = () => {
   const cargarDiccionario = async () => {
     try {
 
-      const responseTipoMovimiento = await fetch('http://127.0.0.1:8080/diccionarios?diccionario=TIPODEMOVIMIENTO')
-      const responseTipoOrden = await fetch('http://127.0.0.1:8080/diccionarios?diccionario=TIPODEORDEN')
-      const responseEstadoFactura = await fetch('http://127.0.0.1:8080/diccionarios?diccionario=ESTADOFATURAORDEN')
+      const responseTipoMovimiento = await fetch('/api/diccionarios?diccionario=TIPODEMOVIMIENTO')
+      const responseTipoOrden = await fetch('/api/diccionarios?diccionario=TIPODEORDEN')
+      const responseEstadoFactura = await fetch('/api/diccionarios?diccionario=ESTADOFATURAORDEN')
 
 
       if (!responseTipoMovimiento.ok || !responseTipoOrden.ok || !responseEstadoFactura.ok) {
@@ -156,7 +156,7 @@ const Layout = () => {
   // Función para cargar proveedores
   const cargarProveedores = async () => {
     try {
-      const response = await fetch('http://127.0.0.1:8080/proveedores')
+      const response = await fetch('/api/proveedores')
 
       if (!response.ok) {
         throw new Error('Error al cargar proveedores')
@@ -205,7 +205,7 @@ const Layout = () => {
         params.set('fechaFin', filtrosActuales.fechaFin.trim())
       }
 
-      const url = `http://127.0.0.1:8080/ordenProductos?${params.toString()}`
+      const url = `/api/ordenProductos?${params.toString()}`
 
       const response = await fetch(url)
 
@@ -487,15 +487,17 @@ const Layout = () => {
                           color="info"
                           size="sm"
                           className="me-2 text-white"
-                          onClick={() => navigate(`/pages/productos/ver-movimiento/${movimiento.idOrdenProducto}`)}>
-                          Ver
+                          onClick={() => navigate(`/pages/productos/ver-movimiento/${movimiento.idOrdenProducto}`)}
+                          title="Ver">
+                          👁️
                         </CButton>
                         <CButton
                           color="warning"
                           size="sm"
                           className="me-2 text-white"
-                          onClick={() => navigate(`/pages/productos/editar-movimiento/${movimiento.idOrdenProducto}`)}>
-                          Editar
+                          onClick={() => navigate(`/pages/productos/editar-movimiento/${movimiento.idOrdenProducto}`)}
+                          title="Editar">
+                          ✏️
                         </CButton>
                         <CButton
                         color="danger"

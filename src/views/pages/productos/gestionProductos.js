@@ -65,8 +65,8 @@ const Layout = () => {
 
   const cargarDiccionario = async () => {
     try {
-      const responseUnidadMedida = await fetch('http://127.0.0.1:8080/diccionarios?diccionario=UNIDADDEMEDIDA')
-      const responseEstado = await fetch('http://127.0.0.1:8080/diccionarios?diccionario=ESTADO')
+      const responseUnidadMedida = await fetch('/api/diccionarios?diccionario=UNIDADDEMEDIDA')
+      const responseEstado = await fetch('/api/diccionarios?diccionario=ESTADO')
 
       if (!responseUnidadMedida.ok || !responseEstado.ok) {
         throw new Error('Error al cargar diccionarios')
@@ -173,7 +173,7 @@ const Layout = () => {
     try {
       // Realizar la petición DELETE
       const response = await fetch(
-        `http://127.0.0.1:8080/eliminarProducto/${idEliminar}`,
+        `/api/eliminarProducto/${idEliminar}`,
         {
           method: 'DELETE',
           headers: {
@@ -254,8 +254,8 @@ const Layout = () => {
     if (!validarFormulario()) return
 
     const url = modoEdicion
-      ? `http://127.0.0.1:8080/editarProducto/${form.idProducto}`
-      : 'http://127.0.0.1:8080/grabarProducto'
+      ? `/api/editarProducto/${form.idProducto}`
+      : '/api/grabarProducto'
 
     const method = modoEdicion ? 'PUT' : 'POST'
 
@@ -325,7 +325,7 @@ const Layout = () => {
     })
 
     const response = await fetch(
-      `http://127.0.0.1:8080/productos?${params.toString()}`
+      `/api/productos?${params.toString()}`
     )
 
     const data = await response.json()
@@ -346,7 +346,7 @@ const Layout = () => {
       })
 
       const response = await fetch(
-        `http://127.0.0.1:8080/productos?${params.toString()}`
+        `/api/productos?${params.toString()}`
       )
 
       if (!response.ok) throw new Error('Error al obtener los productos')
