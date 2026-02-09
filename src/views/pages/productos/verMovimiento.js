@@ -322,7 +322,7 @@ const tipoEstadoFactura = Array.isArray(dataEstadoFactura)
                 {detalles.length === 0 ? (
                   <CTableRow>
                     <CTableDataCell colSpan="9" className="text-center py-4 text-muted">
-                      No hay detalles de productos para esta orden
+                      No hay detalles de productos para esta orden.
                     </CTableDataCell>
                   </CTableRow>
                 ) : (
