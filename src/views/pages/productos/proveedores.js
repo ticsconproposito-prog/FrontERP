@@ -351,9 +351,12 @@ const Layout = () => {
                       {errorGrabar}
                     </div>
                   )}
+                  
                   <CRow className="gy-2">
-                    <CCol xs={8}>
-                      <CFormLabel>Nombre</CFormLabel>
+                    <div className="bg-light rounded-3 p-3">
+                       <CRow className="g-3">
+                    <CCol xs={6}>
+                      <CFormLabel className="text-dark fw-bold">Nombre</CFormLabel>
                       <CFormInput
                         name="nombre"
                         value={formProveedor.nombre}
@@ -365,8 +368,8 @@ const Layout = () => {
                         <div className="invalid-feedback d-block">{errorsProveedor.nombre}</div>
                       )}
                     </CCol>
-                    <CCol xs={8}>
-                      <CFormLabel>Correo electrónico</CFormLabel>
+                    <CCol xs={6}>
+                      <CFormLabel className="text-dark fw-bold">Correo electrónico</CFormLabel>
                       <CFormInput
                         name="correoElectronico"
                         type="email"
@@ -375,8 +378,10 @@ const Layout = () => {
                        placeholder='correo@ejemplo.com'
                       />
                     </CCol>
-                    <CCol xs={8}>
-                      <CFormLabel>Dirección física</CFormLabel>
+                    </CRow>
+                       <CRow className="g-3">
+                    <CCol xs={6}>
+                      <CFormLabel className="text-dark fw-bold">Dirección física</CFormLabel>
                       <CFormTextarea
                         name="direccionFisica"
                         value={formProveedor.direccionFisica}
@@ -389,8 +394,12 @@ const Layout = () => {
                         <div className="invalid-feedback d-block">{errorsProveedor.direccionFisica}</div>
                       )}
                     </CCol>
-                    <CCol xs={8}>
-                      <CFormLabel>Contacto 1</CFormLabel>
+                    </CRow>
+                    </div>
+                     <div className="bg-light rounded-3 p-3">
+                      <CRow className="g-3">
+                    <CCol xs={6}>
+                      <CFormLabel className="text-dark fw-bold">Contacto 1</CFormLabel>
                       <CFormInput
                         name="nombreDeContacto1"
                         value={formProveedor.nombreDeContacto1}
@@ -402,8 +411,8 @@ const Layout = () => {
                         <div className="invalid-feedback d-block">{errorsProveedor.nombreDeContacto1}</div>
                       )}
                     </CCol>
-                         <CCol md={8}>
-                      <CFormLabel>Teléfono 1</CFormLabel>
+                         <CCol md={6}>
+                      <CFormLabel className="text-dark fw-bold">Teléfono 1</CFormLabel>
                       <CFormInput
                         name="telefono1"
                         value={formProveedor.telefono1}
@@ -415,8 +424,10 @@ const Layout = () => {
                         <div className="invalid-feedback d-block">{errorsProveedor.telefono1}</div>
                       )}
                     </CCol>
-                    <CCol xs={8}>
-                      <CFormLabel>Contacto 2</CFormLabel>
+                    </CRow>
+                    <CRow className="g-3">
+                    <CCol xs={6}>
+                      <CFormLabel className="text-dark fw-bold">Contacto 2</CFormLabel>
                       <CFormInput
                         name="nombreDeContacto2"
                         value={formProveedor.nombreDeContacto2}
@@ -424,8 +435,8 @@ const Layout = () => {
                         placeholder="Nombre del contacto secundario"
                       />
                     </CCol>
-                    <CCol md={8}>
-                      <CFormLabel>Teléfono 2</CFormLabel>
+                    <CCol md={6}>
+                      <CFormLabel className="text-dark fw-bold">Teléfono 2</CFormLabel>
                       <CFormInput
                         name="telefono2"
                         value={formProveedor.telefono2}
@@ -433,8 +444,12 @@ const Layout = () => {
                         placeholder="Número de teléfono secundario"
                       />
                     </CCol>
+                    </CRow>
+                    </div>
+                    <div className="bg-light rounded-3 p-3">
+                      <CRow className="g-3">
                     <CCol md={6}>
-                      <CFormLabel>Crédito autorizado</CFormLabel>
+                      <CFormLabel className="text-dark fw-bold">Crédito autorizado</CFormLabel>
                       <CFormInput
                         name="creditoAutorizado"
                         type="number"
@@ -445,7 +460,7 @@ const Layout = () => {
                       />
                     </CCol>
                     <CCol md={6}>
-                      <CFormLabel>Deuda actual</CFormLabel>
+                      <CFormLabel className="text-dark fw-bold">Deuda actual</CFormLabel>
                       <CFormInput
                         name="deudaActual"
                         type="number"
@@ -455,6 +470,8 @@ const Layout = () => {
                         placeholder="0"
                       />
                     </CCol>
+                    </CRow>
+                    </div>
                   </CRow>
                 </CModalBody>
                 <CModalFooter>

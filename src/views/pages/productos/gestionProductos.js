@@ -505,9 +505,10 @@ const Layout = () => {
               </CModalHeader>
               <CModalBody>
                 <CForm>
+                  <div className="bg-light rounded-3 p-3">
                   <CRow className="mb-3">
                     <CCol xs={12} md={8}>
-                      <CFormLabel htmlFor="AgregarCodigo">Código Producto</CFormLabel>
+                      <CFormLabel className="text-dark fw-bold" htmlFor="AgregarCodigo">Código Producto</CFormLabel>
                       <CFormInput
                         name="codigoProducto"
                         value={form.codigoProducto}
@@ -531,7 +532,7 @@ const Layout = () => {
                   </CRow>
                   <CRow className="mb-3">
                     <CCol xs={12} md={8}>
-                      <CFormLabel htmlFor="AgregarCodigoProveedor">Código Producto Proveedor</CFormLabel>
+                      <CFormLabel className="text-dark fw-bold" htmlFor="AgregarCodigoProveedor">Código Producto Proveedor</CFormLabel>
                       <CFormInput
                         name="codigoProductoProveedor"
                         value={form.codigoProductoProveedor}
@@ -541,7 +542,7 @@ const Layout = () => {
                   </CRow>
                   <CRow className="mb-3">
                     <CCol xs={8}>
-                      <CFormLabel htmlFor="AgregarDescripcion">Descripción</CFormLabel>
+                      <CFormLabel className="text-dark fw-bold" htmlFor="AgregarDescripcion">Descripción</CFormLabel>
                       <CFormTextarea
                         name="descripcionProducto"
                         value={form.descripcionProducto}
@@ -557,7 +558,7 @@ const Layout = () => {
                   </CRow>
                   <CRow className="mb-3">
                     <CCol xs={12} md={8}>
-                      <CFormLabel htmlFor="unidadDeMedida">Unidad de Medida</CFormLabel>
+                      <CFormLabel className="text-dark fw-bold" htmlFor="unidadDeMedida">Unidad de Medida</CFormLabel>
                       <CFormSelect
                         name="unidadDeMedida"
                         value={form.unidadDeMedida}
@@ -580,6 +581,7 @@ const Layout = () => {
                       )}
                     </CCol>
                   </CRow>
+                  </div>
                 </CForm>
               </CModalBody>
               <CModalFooter>
