@@ -42,7 +42,7 @@ const _nav = [
       {
         component: CNavItem,
         name: 'Clientes',
-        to: '/base/cards',
+        to: '/pages/ventas/clientes',
       }
     ],
   },

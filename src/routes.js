@@ -35,6 +35,7 @@ const EditarMovimiento = React.lazy(() => import('./views/pages/productos/editar
 const ReporteInventario = React.lazy(() => import('./views/pages/productos/reporteInventario'))
 const Proveedores = React.lazy(() => import('./views/pages/productos/proveedores'))
 const Facturacion = React.lazy(() => import('./views/pages/Ventas/facturacion'))
+const Clientes = React.lazy(() => import('./views/pages/Ventas/clientes'))
 
 
 //Forms
@@ -96,6 +97,7 @@ const routes = [
   { path: '/pages/productos/reporte-inventario', name: 'Reporte Inventario', element: ReporteInventario },
   { path: '/pages/productos/proveedores', name: 'Proveedores', element: Proveedores },
   { path: '/pages/ventas/facturacion', name: 'Facturacion', element: Facturacion },
+    { path: '/pages/ventas/clientes', name: 'Clientes', element: Clientes },
   { path: '/charts', name: 'Charts', element: Charts },
   { path: '/forms', name: 'Forms', element: FormControl, exact: true },
   { path: '/forms/form-control', name: 'Form Control', element: FormControl },
