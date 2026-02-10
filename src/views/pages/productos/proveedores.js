@@ -63,6 +63,13 @@ const Layout = () => {
 
   const pageSize = 20
 
+  const quitarFocoDelModal = () => {
+    const active = document.activeElement
+    if (active && typeof active.blur === 'function') {
+      active.blur()
+    }
+  }
+
   const handleFiltroChange = (e) => {
     const { name, value } = e.target
     setFiltros((prev) => ({ ...prev, [name]: value }))
@@ -193,6 +200,7 @@ const Layout = () => {
         const text = await response.text()
         throw new Error(text || (modoEdicionProveedor ? 'Error al actualizar el proveedor' : 'Error al guardar el proveedor'))
       }
+      quitarFocoDelModal()
       cerrarModalAgregar()
       setMensajeExito(modoEdicionProveedor ? 'El proveedor fue actualizado exitosamente.' : 'El registro fue guardado exitosamente.')
       setModalExitoVisible(true)
@@ -225,6 +233,7 @@ const Layout = () => {
         const text = await response.text()
         throw new Error(text || 'Error al eliminar el proveedor')
       }
+      quitarFocoDelModal()
       setModalConfirmarEliminar(false)
       setProveedorAEliminar(null)
       setMensajeExito('El proveedor fue eliminado correctamente.')
@@ -393,16 +402,7 @@ const Layout = () => {
                         <div className="invalid-feedback d-block">{errorsProveedor.nombreDeContacto1}</div>
                       )}
                     </CCol>
-                    <CCol xs={8}>
-                      <CFormLabel>Contacto 2</CFormLabel>
-                      <CFormInput
-                        name="nombreDeContacto2"
-                        value={formProveedor.nombreDeContacto2}
-                        onChange={handleFormProveedorChange}
-                         placeholder='Nombre del contacto secundario'
-                      />
-                    </CCol>
-                    <CCol md={8}>
+                         <CCol md={8}>
                       <CFormLabel>Teléfono 1</CFormLabel>
                       <CFormInput
                         name="telefono1"
@@ -415,13 +415,22 @@ const Layout = () => {
                         <div className="invalid-feedback d-block">{errorsProveedor.telefono1}</div>
                       )}
                     </CCol>
+                    <CCol xs={8}>
+                      <CFormLabel>Contacto 2</CFormLabel>
+                      <CFormInput
+                        name="nombreDeContacto2"
+                        value={formProveedor.nombreDeContacto2}
+                        onChange={handleFormProveedorChange}
+                        placeholder="Nombre del contacto secundario"
+                      />
+                    </CCol>
                     <CCol md={8}>
                       <CFormLabel>Teléfono 2</CFormLabel>
                       <CFormInput
                         name="telefono2"
                         value={formProveedor.telefono2}
                         onChange={handleFormProveedorChange}
-                        placeholder='Número de teléfono secundario'
+                        placeholder="Número de teléfono secundario"
                       />
                     </CCol>
                     <CCol md={6}>
