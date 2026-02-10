@@ -69,8 +69,8 @@ const _nav = [
       },
       {
         component: CNavItem,
-        name: 'Proveedoores',
-        to: '/buttons/dropdowns',
+        name: 'Proveedores',
+        to: '/pages/productos/proveedores',
       },
     ],
   },

@@ -33,6 +33,7 @@ const AgregarMovimiento = React.lazy(() => import('./views/pages/productos/agreg
 const VerMovimiento = React.lazy(() => import('./views/pages/productos/verMovimiento'))
 const EditarMovimiento = React.lazy(() => import('./views/pages/productos/editarMovimiento'))
 const ReporteInventario = React.lazy(() => import('./views/pages/productos/reporteInventario'))
+const Proveedores = React.lazy(() => import('./views/pages/productos/proveedores'))
 const Facturacion = React.lazy(() => import('./views/pages/Ventas/facturacion'))
 
 
@@ -93,6 +94,7 @@ const routes = [
   { path: '/pages/productos/ver-movimiento/:id', name: 'Ver Movimiento', element: VerMovimiento },
   { path: '/pages/productos/editar-movimiento/:id', name: 'Editar Movimiento', element: EditarMovimiento },
   { path: '/pages/productos/reporte-inventario', name: 'Reporte Inventario', element: ReporteInventario },
+  { path: '/pages/productos/proveedores', name: 'Proveedores', element: Proveedores },
   { path: '/pages/ventas/facturacion', name: 'Facturacion', element: Facturacion },
   { path: '/charts', name: 'Charts', element: Charts },
   { path: '/forms', name: 'Forms', element: FormControl, exact: true },
