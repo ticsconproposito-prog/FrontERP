@@ -371,8 +371,8 @@ const Layout = () => {
             </div>
 
             <CModal visible={modalAgregarVisible} onClose={cerrarModalAgregar} backdrop="static" size="lg">
-              <CModalHeader>
-                <CModalTitle>{modoEdicionCliente ? 'Editar Cliente' : 'Agregar Cliente'}</CModalTitle>
+              <CModalHeader className="bg-light">
+                <CModalTitle className="text-dark">{modoEdicionCliente ? 'Editar Cliente' : 'Agregar Cliente'}</CModalTitle>
               </CModalHeader>
               <CForm onSubmit={grabarCliente}>
                 <CModalBody>
@@ -383,7 +383,7 @@ const Layout = () => {
                   )}
 
                   <CRow className="gy-2">
-                    <div className="bg-light rounded-3 p-3">
+                 
                       <CRow className="g-3">
                         <CCol xs={6}>
                           <CFormLabel className="text-dark fw-bold">Nombre Cliente</CFormLabel>
@@ -453,8 +453,8 @@ const Layout = () => {
                           )}
                         </CCol>
                       </CRow>
-                    </div>
-                    <div className="bg-light rounded-3 p-3">
+                 
+                   
                       <CRow className="g-3">
                         <CCol xs={6}>
                           <CFormLabel className="text-dark fw-bold">Teléfono 1</CFormLabel>
@@ -479,8 +479,8 @@ const Layout = () => {
                           />
                         </CCol>
                       </CRow>
-                    </div>
-                    <div className="bg-light rounded-3 p-3">
+                    
+                    
                       <CRow className="g-3">
                         <CCol xs={6}>
                           <CFormLabel className="text-dark fw-bold">Crédito autorizado</CFormLabel>
@@ -505,14 +505,14 @@ const Layout = () => {
                           />
                         </CCol>
                       </CRow>
-                    </div>
+                 
                   </CRow>
                 </CModalBody>
                 <CModalFooter>
                   <CButton color="secondary" type="button" onClick={cerrarModalAgregar} disabled={guardando}>
                     Cerrar
                   </CButton>
-                  <CButton color="success" type="submit" disabled={guardando}>
+                  <CButton className="text-light" color="success" type="submit" disabled={guardando}>
                     {guardando ? (modoEdicionCliente ? 'Actualizando…' : 'Guardando…') : (modoEdicionCliente ? 'Actualizar' : 'Guardar')}
                   </CButton>
                 </CModalFooter>
@@ -541,7 +541,7 @@ const Layout = () => {
 
             <CModal visible={!!clienteVer} onClose={() => setClienteVer(null)} size="lg" backdrop="static">
               <CModalHeader className="border-0 pb-0">
-                <CModalTitle className="fw-normal">Detalle del cliente</CModalTitle>
+                <CModalTitle className="text-dark">Detalle del cliente</CModalTitle>
               </CModalHeader>
               <CModalBody className="pt-2">
                 {clienteVer && (

@@ -451,7 +451,7 @@ const Layout = () => {
     <CRow>
       <CCol xs={12}>
         <CCard className="w-100 shadow-sm border-0" >
-          <CCardHeader>
+          <CCardHeader >
             <strong className="fs-4">Gestión de Productos</strong>
           </CCardHeader>
           <CCardBody className="p-4">
@@ -500,12 +500,12 @@ const Layout = () => {
             </CForm >
 
             <CModal visible={visible} onClose={() => setVisible(false)} size="lg" backdrop="static">
-              <CModalHeader>
-                <CModalTitle>{modoEdicion ? 'Editar Producto' : 'Agregar Producto'}</CModalTitle>
+              <CModalHeader className="bg-light">
+                <CModalTitle className='text-dark' >{modoEdicion ? 'Editar Producto' : 'Agregar Producto'}</CModalTitle>
               </CModalHeader>
               <CModalBody>
                 <CForm>
-                  <div className="bg-light rounded-3 p-3">
+                 
                   <CRow className="mb-3">
                     <CCol xs={12} md={8}>
                       <CFormLabel className="text-dark fw-bold" htmlFor="AgregarCodigo">Código Producto</CFormLabel>
@@ -581,7 +581,7 @@ const Layout = () => {
                       )}
                     </CCol>
                   </CRow>
-                  </div>
+                 
                 </CForm>
               </CModalBody>
               <CModalFooter>
