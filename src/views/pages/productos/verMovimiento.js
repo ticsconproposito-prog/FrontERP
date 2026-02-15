@@ -32,6 +32,7 @@ const VerMovimiento = () => {
   const [estadoFactura, setEstadoFactura] = useState([])
   const [proveedores, setProveedores] = useState([])
   const [productos, setProductos] = useState([])
+  const [ubicaciones, setUbicaciones] = useState([])
 
   // Funciones helper para obtener nombres
   const obtenerNombreTipoMovimiento = (idMovimiento) => {
@@ -64,6 +65,12 @@ const VerMovimiento = () => {
     }
     const producto = productos.find(p => p.idProducto === idProducto)
     return producto || { codigoProducto: 'N/A', codigoProductoProveedor: 'N/A', descripcionProducto: `Producto ID: ${idProducto} (No encontrado)` }
+  }
+
+  const obtenerNombreUbicacion = (idUbicacion) => {
+    if (!idUbicacion) return 'N/A'
+    const ubic = ubicaciones.find(u => (u.idUbicacion ?? u.id) == idUbicacion)
+    return ubic ? (ubic.nombre || ubic.nombreUbicacion || ubic.descripcion) : `ID: ${idUbicacion}`
   }
 
   const formatearFecha = (fecha) => {
@@ -128,6 +135,20 @@ const tipoEstadoFactura = Array.isArray(dataEstadoFactura)
     } catch (error) {
       console.error('❌ Error al cargar proveedores:', error)
       setProveedores([])
+    }
+  }
+
+  // Cargar ubicaciones
+  const cargarUbicaciones = async () => {
+    try {
+      const response = await fetch('/api/ubicaciones?size=1000')
+      if (!response.ok) throw new Error('Error al cargar ubicaciones')
+      const data = await response.json()
+      const arr = Array.isArray(data) ? data : (data?.content || [])
+      setUbicaciones(arr)
+    } catch (error) {
+      console.error('Error al cargar ubicaciones:', error)
+      setUbicaciones([])
     }
   }
 
@@ -199,6 +220,7 @@ const tipoEstadoFactura = Array.isArray(dataEstadoFactura)
   useEffect(() => {
     cargarDiccionario()
     cargarProveedores()
+    cargarUbicaciones()
     cargarProductos()
   }, [])
 
@@ -320,10 +342,10 @@ const tipoEstadoFactura = Array.isArray(dataEstadoFactura)
                   <CTableHeaderCell>Código Producto</CTableHeaderCell>
                   <CTableHeaderCell>Código Proveedor Producto</CTableHeaderCell>
                   <CTableHeaderCell>Descripción</CTableHeaderCell>
+                  <CTableHeaderCell>Ubicación</CTableHeaderCell>
                   <CTableHeaderCell className="text-center">Cantidad</CTableHeaderCell>
                   <CTableHeaderCell className="text-end">Precio Compra</CTableHeaderCell>
                   <CTableHeaderCell className="text-end">Subtotal</CTableHeaderCell>
-                  <CTableHeaderCell>Ubicación</CTableHeaderCell>
                 </CTableRow>
               </CTableHead>
               <CTableBody>
@@ -342,12 +364,12 @@ const tipoEstadoFactura = Array.isArray(dataEstadoFactura)
                         <CTableDataCell>{producto.codigoProducto}</CTableDataCell>
                         <CTableDataCell>{producto.codigoProductoProveedor ?? 'N/A'}</CTableDataCell>
                         <CTableDataCell>{producto.descripcionProducto}</CTableDataCell>
+                        <CTableDataCell>{obtenerNombreUbicacion(detalle.idUbicacion)}</CTableDataCell>
                         <CTableDataCell className="text-center">{detalle.cantidad}</CTableDataCell>
                         <CTableDataCell className="text-end">Q{detalle.precioCompra?.toFixed(2)}</CTableDataCell>
                         <CTableDataCell className="text-end">
                           Q{(detalle.cantidad * detalle.precioCompra)?.toFixed(2)}
                         </CTableDataCell>
-                        <CTableDataCell>{detalle.idUbicacion || 'N/A'}</CTableDataCell>
                       </CTableRow>
                     )
                   })

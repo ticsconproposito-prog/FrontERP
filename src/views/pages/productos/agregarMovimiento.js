@@ -53,6 +53,14 @@ const AgregarMovimiento = () => {
   const [sugerenciasProductos, setSugerenciasProductos] = useState([])
   const [mostrarSugerencias, setMostrarSugerencias] = useState(false)
 
+  // Estados para ubicación en detalle de productos
+  const [ubicaciones, setUbicaciones] = useState([])
+  const [ubicacionDetalleTexto, setUbicacionDetalleTexto] = useState('')
+  const [sugerenciasUbicaciones, setSugerenciasUbicaciones] = useState([])
+  const [mostrarSugerenciasUbicacion, setMostrarSugerenciasUbicacion] = useState(false)
+  const [idUbicacionDetalle, setIdUbicacionDetalle] = useState('')
+  const [filaEditandoUbicacion, setFilaEditandoUbicacion] = useState(null) // índice de la fila cuyo ubicación se está editando
+
   // Estados para búsqueda de proveedor por nombre
   const [proveedorTexto, setProveedorTexto] = useState('')
   const [sugerenciasProveedores, setSugerenciasProveedores] = useState([])
@@ -164,6 +172,72 @@ const AgregarMovimiento = () => {
     setMostrarSugerenciasProveedor(false)
   }
 
+  // Búsqueda de ubicación en detalle de productos
+  const handleUbicacionDetalleChange = (e) => {
+    const value = (e.target.value || '').toString()
+    setUbicacionDetalleTexto(value)
+    if (filaEditandoUbicacion === null) setIdUbicacionDetalle('')
+
+    const valorLimpio = value.trim()
+    if (valorLimpio.length >= 2) {
+      const valorLower = valorLimpio.toLowerCase()
+      const encontrados = ubicaciones.filter((u) => {
+        const nombre = (u.nombre || u.nombreUbicacion || u.descripcion || '').toString().toLowerCase()
+        return nombre.includes(valorLower)
+      })
+      setSugerenciasUbicaciones(encontrados.slice(0, 10))
+      setMostrarSugerenciasUbicacion(encontrados.length > 0)
+    } else {
+      setSugerenciasUbicaciones([])
+      setMostrarSugerenciasUbicacion(false)
+    }
+  }
+
+  const seleccionarUbicacionDetalleSugerencia = (ubicacion) => {
+    const id = ubicacion.idUbicacion ?? ubicacion.id
+    const texto = ubicacion.nombre || ubicacion.nombreUbicacion || ubicacion.descripcion || ''
+
+    if (filaEditandoUbicacion !== null) {
+      setProductos((prev) => {
+        const next = [...prev]
+        const idx = filaEditandoUbicacion
+        if (next[idx]) {
+          next[idx] = { ...next[idx], idUbicacion: id != null ? String(id) : '', ubicacionTexto: texto }
+        }
+        return next
+      })
+      setFilaEditandoUbicacion(null)
+    } else {
+      setIdUbicacionDetalle(id != null ? String(id) : '')
+      setUbicacionDetalleTexto(texto)
+      const v = (productoTemp.descripcion || productoTemp.codigoProducto || productoTemp.codigoProductoProveedor || '').trim()
+      if (v.length >= 2 && id != null) {
+        const valorLower = v.toLowerCase()
+        let encontrados = productosDisponibles.filter((p) => {
+          const codigo = (p.codigoProducto || '').toString().toLowerCase()
+          const codigoProv = (p.codigoProductoProveedor || '').toString().toLowerCase()
+          const desc = (p.descripcionProducto || '').toString().toLowerCase()
+          return codigo.includes(valorLower) || codigoProv.includes(valorLower) || desc.includes(valorLower)
+        })
+        encontrados = encontrados.filter((prod) => (prod.idUbicacion ?? prod.ubicacion?.idUbicacion ?? prod.ubicacion?.id) == id)
+        setSugerenciasProductos(encontrados.slice(0, 15))
+        setMostrarSugerencias(encontrados.length > 0)
+      }
+    }
+
+    setSugerenciasUbicaciones([])
+    setMostrarSugerenciasUbicacion(false)
+  }
+
+  const iniciarEditarUbicacion = (index) => {
+    const p = productos[index]
+    setFilaEditandoUbicacion(index)
+    setUbicacionDetalleTexto(p?.ubicacionTexto || '')
+    setIdUbicacionDetalle(p?.idUbicacion || '')
+    setSugerenciasUbicaciones([])
+    setMostrarSugerenciasUbicacion(false)
+  }
+
   // Función para guardar el producto
   const guardarProducto = () => {
     if (!productoTemp.codigoProducto || productoTemp.cantidad <= 0 || productoTemp.precio <= 0) {
@@ -175,7 +249,9 @@ const AgregarMovimiento = () => {
       id: productos.length > 0 ? Math.max(...productos.map(p => p.id)) + 1 : 1,
       ...productoTemp,
       cantidad: parseFloat(productoTemp.cantidad),
-      precio: parseFloat(productoTemp.precio)
+      precio: parseFloat(productoTemp.precio),
+      idUbicacion: idUbicacionDetalle || '',
+      ubicacionTexto: ubicacionDetalleTexto || ''
     }
 
     setProductos([...productos, nuevoProducto])
@@ -368,14 +444,17 @@ const AgregarMovimiento = () => {
         throw new Error('idOrdenProducto inválido: ' + idOrdenProducto)
       }
 
-      const movimientos = productosLista.map(producto => ({
-        idOrdenProducto: idOrden,
-        idProducto: parseInt(producto.idProducto, 10),
-        cantidad: parseInt(producto.cantidad, 10),
-        precioCompra: parseFloat(producto.precio),
-        idUbicacion: 1,
-        idUsuarioModificacion: 1
-      }))
+      const movimientos = productosLista.map((producto) => {
+        const idUbic = producto.idUbicacion ? parseInt(producto.idUbicacion, 10) : 1
+        return {
+          idOrdenProducto: idOrden,
+          idProducto: parseInt(producto.idProducto, 10),
+          cantidad: parseInt(producto.cantidad, 10),
+          precioCompra: parseFloat(producto.precio),
+          idUbicacion: Number.isNaN(idUbic) ? 1 : idUbic,
+          idUsuarioModificacion: 1
+        }
+      })
 
       // La API guarda un movimiento por request
       const resultados = []
@@ -490,6 +569,20 @@ const AgregarMovimiento = () => {
     }
   }
 
+  // Función para cargar ubicaciones
+  const cargarUbicaciones = async () => {
+    try {
+      const response = await fetch('/api/ubicaciones?size=1000')
+      if (!response.ok) throw new Error('Error al cargar ubicaciones')
+      const data = await response.json()
+      const arr = Array.isArray(data) ? data : (data?.content || [])
+      setUbicaciones(arr)
+    } catch (error) {
+      console.error('Error al cargar ubicaciones:', error)
+      setUbicaciones([])
+    }
+  }
+
   // Función para cargar productos disponibles (todos para búsqueda local)
   const cargarProductosDisponibles = async () => {
     try {
@@ -515,10 +608,11 @@ const AgregarMovimiento = () => {
     }
   }
 
-  // Cargar diccionarios, proveedores y productos al montar el componente
+  // Cargar diccionarios, proveedores, ubicaciones y productos al montar el componente
   useEffect(() => {
     cargarDiccionario()
     cargarProveedores()
+    cargarUbicaciones()
     cargarProductosDisponibles()
   }, [])
 
@@ -693,7 +787,7 @@ const AgregarMovimiento = () => {
                       name="comentarios"
                       value={formData.comentarios}
                       onChange={handleChange}
-                      rows={1}
+                      rows={2}
                       placeholder="Ingrese comentarios adicionales sobre este movimiento..."
                     />
                   </CCol>
@@ -721,6 +815,7 @@ const AgregarMovimiento = () => {
                       <CTableHeaderCell className="py-2">Código Producto</CTableHeaderCell>
                       <CTableHeaderCell className="py-2">Código Producto Proveedor</CTableHeaderCell>
                       <CTableHeaderCell className="py-2">Descripción</CTableHeaderCell>
+                      <CTableHeaderCell className="py-2">Ubicación</CTableHeaderCell>
                       <CTableHeaderCell className="py-2">Cantidad</CTableHeaderCell>
                       <CTableHeaderCell className="py-2">Precio</CTableHeaderCell>
                       <CTableHeaderCell className="py-2">Subtotal</CTableHeaderCell>
@@ -760,6 +855,16 @@ const AgregarMovimiento = () => {
                               value={productoTemp.descripcion}
                               onChange={handleProductoChange}
                               placeholder="Descripción"
+                              size="sm"
+                            />
+                          </CTableDataCell>
+                          <CTableDataCell>
+                            <CFormInput
+                              type="text"
+                              placeholder="Escriba al menos 2 caracteres..."
+                              value={ubicacionDetalleTexto}
+                              onChange={handleUbicacionDetalleChange}
+                              autoComplete="off"
                               size="sm"
                             />
                           </CTableDataCell>
@@ -812,7 +917,7 @@ const AgregarMovimiento = () => {
                       {/* Productos existentes */}
                       {productos.length === 0 && filaEditando !== 'nuevo' ? (
                         <CTableRow>
-                          <CTableDataCell colSpan="9" className="text-center py-4 text-muted">
+                          <CTableDataCell colSpan="10" className="text-center py-4 text-muted">
                             No hay productos agregados. Haga clic en "+ Agregar Producto" para añadir productos.
                           </CTableDataCell>
                         </CTableRow>
@@ -823,6 +928,45 @@ const AgregarMovimiento = () => {
                             <CTableDataCell>{producto.codigoProducto}</CTableDataCell>
                             <CTableDataCell>{producto.codigoProductoProveedor}</CTableDataCell>
                             <CTableDataCell>{producto.descripcion}</CTableDataCell>
+                            <CTableDataCell>
+                              {filaEditandoUbicacion === index ? (
+                                <span className="d-flex align-items-center gap-1">
+                                  <CFormInput
+                                    type="text"
+                                    placeholder="Escriba al menos 2 caracteres..."
+                                    value={ubicacionDetalleTexto}
+                                    onChange={handleUbicacionDetalleChange}
+                                    autoComplete="off"
+                                    size="sm"
+                                    className="flex-grow-1"
+                                  />
+                                  <CButton
+                                    type="button"
+                                    color="secondary"
+                                    size="sm"
+                                    className="p-1"
+                                    onClick={() => setFilaEditandoUbicacion(null)}
+                                    title="Cancelar"
+                                  >
+                                    ✗
+                                  </CButton>
+                                </span>
+                              ) : (
+                                <span className="d-flex align-items-center gap-1">
+                                  {producto.ubicacionTexto || '—'}
+                                  <CButton
+                                    type="button"
+                                    color="link"
+                                    size="sm"
+                                    className="p-0"
+                                    onClick={() => iniciarEditarUbicacion(index)}
+                                    title="Cambiar ubicación"
+                                  >
+                                    ✏️
+                                  </CButton>
+                                </span>
+                              )}
+                            </CTableDataCell>
                             <CTableDataCell className="text-center">{producto.cantidad}</CTableDataCell>
                             <CTableDataCell className="text-end">
                               Q{producto.precio.toFixed(2)}
@@ -844,6 +988,38 @@ const AgregarMovimiento = () => {
                       )}
                     </CTableBody>
                 </CTable>
+
+                {/* Lista de sugerencias de ubicaciones (igual que descripcionProducto/codigo) */}
+                {mostrarSugerenciasUbicacion && sugerenciasUbicaciones.length > 0 && (
+                  <div className="mb-3" style={{ 
+                    maxHeight: '250px', 
+                    overflowY: 'auto', 
+                    border: '1px solid #dee2e6',
+                    borderRadius: '4px',
+                    backgroundColor: '#fff',
+                    position: 'relative',
+                    zIndex: 1000
+                  }}>
+                    <div className="p-2 bg-light border-bottom">
+                      <small className="text-muted">
+                        <strong>Ubicaciones encontradas ({sugerenciasUbicaciones.length}):</strong> Haga clic para seleccionar
+                      </small>
+                    </div>
+                    <div className="list-group list-group-flush">
+                      {sugerenciasUbicaciones.map((u) => (
+                        <button
+                          key={u.idUbicacion ?? u.id}
+                          type="button"
+                          className="list-group-item list-group-item-action text-start"
+                          onClick={() => seleccionarUbicacionDetalleSugerencia(u)}
+                          style={{ cursor: 'pointer' }}
+                        >
+                          {u.nombre || u.nombreUbicacion || u.descripcion || '—'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* Lista de sugerencias de productos */}
                 {mostrarSugerencias && sugerenciasProductos.length > 0 && (

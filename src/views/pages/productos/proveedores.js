@@ -81,7 +81,7 @@ const Layout = () => {
       params.set('page', String(pagina))
       params.set('size', String(pageSize))
       if (filtrosActuales.nombre?.trim()) params.set('nombre', filtrosActuales.nombre.trim())
-      if (filtrosActuales.nombreDeContacto1?.trim()) params.set('nombreContacto1', filtrosActuales.nombreDeContacto1.trim())
+      if (filtrosActuales.nombreDeContacto1?.trim()) params.set('nombreDeContacto', filtrosActuales.nombreDeContacto1.trim())
 
       const response = await fetch(`/api/proveedores?${params.toString()}`)
       const data = await response.json()
@@ -253,7 +253,7 @@ const Layout = () => {
       params.set('page', '0')
       params.set('size', '10000')
       if (filtros.nombre?.trim()) params.set('nombre', filtros.nombre.trim())
-      if (filtros.nombreDeContacto1?.trim()) params.set('nombreContacto1', filtros.nombreDeContacto1.trim())
+      if (filtros.nombreDeContacto1?.trim()) params.set('nombreDeContacto', filtros.nombreDeContacto1.trim())
 
       const response = await fetch(`/api/proveedores?${params.toString()}`)
       if (!response.ok) throw new Error('Error al obtener los proveedores')
@@ -332,10 +332,13 @@ const Layout = () => {
                 </CCol>
                 <CCol md={4}>
                   <CFormLabel>Nombre Contacto No. 1: </CFormLabel>
-                  <CFormInput name="nombreDeContacto1"
-                    placeholder="Nombre contacto 1"
+                  <CFormInput
+                    name="nombreDeContacto1"
+                    placeholder="Tecle el nombre del contacto 1 para buscar"
                     value={filtros.nombreDeContacto1}
-                    onChange={handleFiltroChange} />
+                    onChange={handleFiltroChange}
+                    autoComplete="off"
+                  />
                 </CCol>
               </CRow>
             </CForm >

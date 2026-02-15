@@ -64,7 +64,7 @@ const Layout = () => {
     try {
       const params = new URLSearchParams()
       if (filtrosActuales.nombreCliente?.trim()) params.set('nombreCliente', filtrosActuales.nombreCliente.trim())
-      if (filtrosActuales.nit?.trim()) params.set('nit', filtrosActuales.nit.trim())
+      if (filtrosActuales.nit?.trim()) params.set('nitCliente', filtrosActuales.nit.trim())
 
       const url = params.toString() ? `/api/clientes?${params.toString()}` : '/api/clientes'
       const response = await fetch(url)
@@ -152,7 +152,7 @@ const Layout = () => {
       const params = new URLSearchParams()
       params.set('size', '10000')
       if (filtros.nombreCliente?.trim()) params.set('nombreCliente', filtros.nombreCliente.trim())
-      if (filtros.nit?.trim()) params.set('nit', filtros.nit.trim())
+      if (filtros.nit?.trim()) params.set('nitCliente', filtros.nit.trim())
 
       const url = params.toString() ? `/api/clientes?${params.toString()}` : '/api/clientes'
       const response = await fetch(url)
@@ -317,12 +317,13 @@ const Layout = () => {
                   />
                 </CCol>
                 <CCol md={4}>
-                  <CFormLabel>NIT:</CFormLabel>
+                  <CFormLabel>NIT del cliente:</CFormLabel>
                   <CFormInput
                     name="nit"
-                    placeholder="Buscar por NIT"
+                    placeholder="Teclee el número de NIT para buscar"
                     value={filtros.nit}
                     onChange={handleFiltroChange}
+                    autoComplete="off"
                   />
                 </CCol>
               </CRow>
