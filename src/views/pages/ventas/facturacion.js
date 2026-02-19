@@ -36,6 +36,7 @@ const Layout = () => {
   const [clientes, setClientes] = useState([]);
   const [sugerenciasClientes, setSugerenciasClientes] = useState([]);
   const [mostrarSugerenciasClientes, setMostrarSugerenciasClientes] = useState(false);
+  const [clienteSeleccionado, setClienteSeleccionado] = useState(false);
   
   // Estados para productos
   const [productos, setProductos] = useState([]);
@@ -44,6 +45,7 @@ const Layout = () => {
   const [mostrarSugerenciasProductos, setMostrarSugerenciasProductos] = useState(false);
   const [detalleFactura, setDetalleFactura] = useState([]);
   const [cargandoProductos, setCargandoProductos] = useState(false);
+  const [alertProductoDuplicado, setAlertProductoDuplicado] = useState(false);
   
   // Estados para totales de factura
   const [impuestoIVA, setImpuestoIVA] = useState(12); // 12% IVA por defecto
@@ -70,6 +72,7 @@ const Layout = () => {
     nombre: '',
     telefono: '',
     direccion: '',
+    direccionEntrega: '',
     tipoDocumento: 'factura',
     moneda: 'GTQ',
     fecha: obtenerFechaHoy(),
@@ -102,6 +105,7 @@ const Layout = () => {
         nombre: 'Consumidor Final',
         telefono: '',
         direccion: 'Ciudad',
+        direccionEntrega: '',
         tipoDocumento: formFactura.tipoDocumento,
         moneda: formFactura.moneda,
         fecha: formFactura.fecha,
@@ -118,13 +122,14 @@ const Layout = () => {
       nombre: '',
       telefono: '',
       direccion: '',
+      direccionEntrega: '',
       tipoDocumento: 'factura',
       moneda: 'GTQ',
       fecha: obtenerFechaHoy(),
       establecimiento: 'Ferreteria y bloquera Agmner',
     });
     setEsConsumidorFinal(false);
-    setDetalleFactura([]);
+    setClienteSeleccionado(false);
     setImpuestoIVA(12);
   };
 
@@ -181,7 +186,7 @@ const Layout = () => {
     const existe = detalleFactura.find((item) => item.idProductoInventario === idRef || item.idProducto === idRef);
 
     if (existe) {
-      alert('Este producto ya está en el detalle de la factura');
+      setAlertProductoDuplicado(true);
       return;
     }
 
@@ -218,24 +223,31 @@ const Layout = () => {
 
   const actualizarCantidadDetalle = (index, cantidad) => {
     const nuevoDetalle = [...detalleFactura];
-    nuevoDetalle[index].cantidad = Number(cantidad) || 0;
-    nuevoDetalle[index].precio = nuevoDetalle[index].cantidad * nuevoDetalle[index].precioUnitario;
-    nuevoDetalle[index].total = nuevoDetalle[index].precio - nuevoDetalle[index].descuento;
+    nuevoDetalle[index].cantidad = cantidad === '' ? '' : (Number(cantidad) || 0);
+    const cant = Number(nuevoDetalle[index].cantidad) || 0;
+    const desc = Number(nuevoDetalle[index].descuento) || 0;
+    nuevoDetalle[index].precio = cant * nuevoDetalle[index].precioUnitario;
+    nuevoDetalle[index].total = nuevoDetalle[index].precio - desc;
     setDetalleFactura(nuevoDetalle);
   };
 
   const actualizarPrecioDetalle = (index, precio) => {
     const nuevoDetalle = [...detalleFactura];
     nuevoDetalle[index].precioUnitario = Number(precio) || 0;
-    nuevoDetalle[index].precio = nuevoDetalle[index].cantidad * nuevoDetalle[index].precioUnitario;
-    nuevoDetalle[index].total = nuevoDetalle[index].precio - nuevoDetalle[index].descuento;
+    const cant = Number(nuevoDetalle[index].cantidad) || 0;
+    const desc = Number(nuevoDetalle[index].descuento) || 0;
+    nuevoDetalle[index].precio = cant * nuevoDetalle[index].precioUnitario;
+    nuevoDetalle[index].total = nuevoDetalle[index].precio - desc;
     setDetalleFactura(nuevoDetalle);
   };
 
   const actualizarDescuentoDetalle = (index, descuento) => {
     const nuevoDetalle = [...detalleFactura];
-    nuevoDetalle[index].descuento = Number(descuento) || 0;
-    nuevoDetalle[index].total = nuevoDetalle[index].precio - nuevoDetalle[index].descuento;
+    nuevoDetalle[index].descuento = descuento === '' ? '' : (Number(descuento) || 0);
+    const cant = Number(nuevoDetalle[index].cantidad) || 0;
+    const desc = Number(nuevoDetalle[index].descuento) || 0;
+    nuevoDetalle[index].precio = cant * nuevoDetalle[index].precioUnitario;
+    nuevoDetalle[index].total = nuevoDetalle[index].precio - desc;
     setDetalleFactura(nuevoDetalle);
   };
 
@@ -248,12 +260,13 @@ const Layout = () => {
   };
 
   const calcularBaseImponible = () => {
-    return calcularSubtotal();
+    const totalProductos = calcularSubtotal();
+    return totalProductos / 1.12;
   };
 
   const calcularIVA = () => {
-    const base = calcularBaseImponible();
-    return (base * (Number(impuestoIVA) || 0)) / 100;
+    const totalProductos = calcularSubtotal();
+    return totalProductos * 0.12 / 1.12;
   };
 
   const calcularTotal = () => {
@@ -305,6 +318,7 @@ const Layout = () => {
       nombre: cliente.nombreCliente || cliente.nombreFacturacion || '',
       telefono: cliente.telefono1 || '',
       direccion: cliente.direccionFisica || '',
+      direccionEntrega: '',
       // Preservar fecha, tipoDocumento, moneda y establecimiento
       fecha: prev.fecha,
       tipoDocumento: prev.tipoDocumento,
@@ -313,6 +327,7 @@ const Layout = () => {
     }));
     setSugerenciasClientes([]);
     setMostrarSugerenciasClientes(false);
+    setClienteSeleccionado(true);
   };
 
   useEffect(() => {
@@ -390,12 +405,14 @@ const Layout = () => {
         nombre: formCliente.nombreCliente,
         telefono: formCliente.telefono1,
         direccion: formCliente.direccionFisica,
+        direccionEntrega: '',
         // Preservar fecha, tipoDocumento, moneda y establecimiento
         fecha: prev.fecha,
         tipoDocumento: prev.tipoDocumento,
         moneda: prev.moneda,
         establecimiento: prev.establecimiento,
       }));
+      setClienteSeleccionado(true);
 
       cerrarModalCliente();
       cargarClientes();
@@ -435,7 +452,10 @@ const Layout = () => {
                     onChange={handleConsumidorFinal}
                   />
                 </CCol>
-                <CCol xs={12} md={6} className="d-flex justify-content-end">
+                <CCol xs={12} md={6} className="d-flex justify-content-end gap-2">
+                   <CButton color="secondary" onClick={limpiarFormulario}>
+                    Limpiar
+                  </CButton>
                   <CButton
                     color="success"
                     size="sm"
@@ -459,7 +479,7 @@ const Layout = () => {
                       placeholder="Ingrese el NIT para buscar cliente"
                       value={formFactura.nit}
                       onChange={handleNitChange}
-                      disabled={esConsumidorFinal}
+                      disabled={esConsumidorFinal || clienteSeleccionado}
                       autoComplete="off"
                     />
                     {mostrarSugerenciasClientes && sugerenciasClientes.length > 0 && (
@@ -510,7 +530,7 @@ const Layout = () => {
                       placeholder="Ingrese el nombre para buscar cliente"
                       value={formFactura.nombre}
                       onChange={handleNombreChange}
-                      disabled={esConsumidorFinal}
+                      disabled={esConsumidorFinal || clienteSeleccionado}
                       autoComplete="off"
                     />
                     {mostrarSugerenciasClientes && sugerenciasClientes.length > 0 && (
@@ -563,7 +583,7 @@ const Layout = () => {
                     placeholder="Ingrese el teléfono"
                     value={formFactura.telefono}
                     onChange={handleChange}
-                    disabled={esConsumidorFinal}
+                    disabled={esConsumidorFinal || clienteSeleccionado}
                   />
                 </CCol>
                 <CCol md={6}>
@@ -575,13 +595,24 @@ const Layout = () => {
                     placeholder="Ingrese la dirección"
                     value={formFactura.direccion}
                     onChange={handleChange}
-                    disabled={esConsumidorFinal}
+                    disabled={esConsumidorFinal || clienteSeleccionado}
                   />
                 </CCol>
               </CRow>
 
               <CRow className="mb-3">
-                <CCol md={6}>
+                <CCol xs={6}>
+                  <CFormLabel htmlFor="direccionEntrega">Dirección de entrega</CFormLabel>
+                  <CFormTextarea
+                    id="direccionEntrega"
+                    name="direccionEntrega"
+                    placeholder="Ingrese la dirección de entrega"
+                    value={formFactura.direccionEntrega}
+                    onChange={handleChange}
+                    rows={2}
+                  />
+                </CCol> 
+                <CCol md={3}>
                   <CFormLabel htmlFor="tipoDocumento">Tipo de Documento</CFormLabel>
                   <CFormSelect
                     id="tipoDocumento"
@@ -596,7 +627,7 @@ const Layout = () => {
                     <option value="consignacion">Consignación</option>
                   </CFormSelect>
                 </CCol>
-                <CCol md={6}>
+                 <CCol md={3}>
                   <CFormLabel htmlFor="moneda">Moneda</CFormLabel>
                   <CFormSelect
                     id="moneda"
@@ -608,9 +639,8 @@ const Layout = () => {
                     <option value="GTQ">Quetzales (GTQ)</option>
                     <option value="USD">Dólares (USD)</option>
                   </CFormSelect>
-                </CCol>
+                </CCol>       
               </CRow>
-
               {/* Sección: Detalle de Productos en el Formulario Principal */}
               <div className="mb-4 mt-4">
                 <div className="d-flex justify-content-between align-items-center mb-3">
@@ -656,7 +686,7 @@ const Layout = () => {
                               <small className="text-muted">Código: {item.codigo}</small>
                             </div>
                           </CTableDataCell>
-                          <CTableDataCell className="text-center">{item.cantidad}</CTableDataCell>
+                          <CTableDataCell className="text-center">{Number(item.cantidad) || 0}</CTableDataCell>
                           <CTableDataCell className="text-end">
                             {formFactura.moneda === 'GTQ' ? 'Q' : '$'}{item.precioUnitario.toFixed(2)}
                           </CTableDataCell>
@@ -664,7 +694,7 @@ const Layout = () => {
                             {formFactura.moneda === 'GTQ' ? 'Q' : '$'}{item.precio.toFixed(2)}
                           </CTableDataCell>
                           <CTableDataCell className="text-end">
-                            {formFactura.moneda === 'GTQ' ? 'Q' : '$'}{item.descuento.toFixed(2)}
+                            {formFactura.moneda === 'GTQ' ? 'Q' : '$'}{(Number(item.descuento) || 0).toFixed(2)}
                           </CTableDataCell>
                           <CTableDataCell className="text-end">
                             {formFactura.moneda === 'GTQ' ? 'Q' : '$'}{item.total.toFixed(2)}
@@ -695,7 +725,7 @@ const Layout = () => {
                       <CCol xs={7}>
                         <CFormInput
                           type="text"
-                          value={`${formFactura.moneda === 'GTQ' ? 'Q' : '$'}${calcularSubtotal().toFixed(2)}`}
+                          value={`${formFactura.moneda === 'GTQ' ? 'Q' : '$'}${calcularBaseImponible().toFixed(2)}`}
                           readOnly
                           disabled
                           size="sm"
@@ -761,9 +791,6 @@ const Layout = () => {
 
               <CRow className="mt-4">
                 <CCol className="d-flex justify-content-end gap-2">
-                  <CButton color="secondary" onClick={limpiarFormulario}>
-                    Limpiar
-                  </CButton>
                   <CButton color="primary" className="text-light" type="submit" disabled={detalleFactura.length === 0}>
                     Guardar Factura
                   </CButton>
@@ -887,20 +914,14 @@ const Layout = () => {
                               <CFormInput
                                 type="number"
                                 min="1"
-                                value={item.cantidad}
+                                value={item.cantidad === '' ? '' : item.cantidad}
                                 onChange={(e) => actualizarCantidadDetalle(index, e.target.value)}
+                                placeholder="0"
                                 size="sm"
                               />
                             </CTableDataCell>
-                            <CTableDataCell>
-                              <CFormInput
-                                type="number"
-                                min="0"
-                                step="0.01"
-                                value={item.precioUnitario}
-                                onChange={(e) => actualizarPrecioDetalle(index, e.target.value)}
-                                size="sm"
-                              />
+                            <CTableDataCell className="text-end">
+                              {formFactura.moneda === 'GTQ' ? 'Q' : '$'}{item.precioUnitario.toFixed(2)}
                             </CTableDataCell>
                             <CTableDataCell className="text-end">
                               {formFactura.moneda === 'GTQ' ? 'Q' : '$'}{item.precio.toFixed(2)}
@@ -910,8 +931,9 @@ const Layout = () => {
                                 type="number"
                                 min="0"
                                 step="0.01"
-                                value={item.descuento}
+                                value={item.descuento === '' ? '' : item.descuento}
                                 onChange={(e) => actualizarDescuentoDetalle(index, e.target.value)}
+                                placeholder="0"
                                 size="sm"
                               />
                             </CTableDataCell>
@@ -940,7 +962,11 @@ const Layout = () => {
                       <div className="border rounded p-3" style={{ minWidth: '300px' }}>
                         <div className="d-flex justify-content-between mb-2">
                           <strong>Total de productos:</strong>
-                          <span>{detalleFactura.reduce((sum, p) => sum + p.cantidad, 0)}</span>
+                          <span>{detalleFactura.reduce((sum, p) => sum + (Number(p.cantidad) || 0), 0)}</span>
+                        </div>
+                        <div className="d-flex justify-content-between mb-2">
+                          <strong>Total descuento:</strong>
+                          <span>{formFactura.moneda === 'GTQ' ? 'Q' : '$'}{calcularTotalDescuentoProductos().toFixed(2)}</span>
                         </div>
                         <div className="d-flex justify-content-between">
                           <strong>Total general:</strong>
@@ -972,6 +998,22 @@ const Layout = () => {
                 </CButton>
               </CModalFooter>
           </CModal>
+
+            <CModal visible={alertProductoDuplicado} onClose={() => setAlertProductoDuplicado(false)} alignment="center">
+              <CModalHeader className="bg-warning text-dark">
+                <CModalTitle className="d-flex align-items-center gap-2">
+                  <span>⚠️</span> Producto duplicado
+                </CModalTitle>
+              </CModalHeader>
+              <CModalBody className="text-center py-4">
+                <p className="mb-0">Este producto ya está en el detalle de la factura. No puede agregarlo dos veces.</p>
+              </CModalBody>
+              <CModalFooter className="justify-content-center">
+                <CButton color="secondary" onClick={() => setAlertProductoDuplicado(false)}>
+                  Aceptar
+                </CButton>
+              </CModalFooter>
+            </CModal>
 
             <CModal visible={modalCliente} onClose={cerrarModalCliente} backdrop="static" size="lg">
               <CModalHeader className="bg-light">
