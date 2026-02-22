@@ -33,6 +33,7 @@ const Layout = () => {
   const [modalCliente, setModalCliente] = useState(false);
   const [guardandoCliente, setGuardandoCliente] = useState(false);
   const [errorCliente, setErrorCliente] = useState('');
+  const [errorsCliente, setErrorsCliente] = useState({});
   const [clientes, setClientes] = useState([]);
   const [sugerenciasClientes, setSugerenciasClientes] = useState([]);
   const [mostrarSugerenciasClientes, setMostrarSugerenciasClientes] = useState(false);
@@ -46,6 +47,11 @@ const Layout = () => {
   const [detalleFactura, setDetalleFactura] = useState([]);
   const [cargandoProductos, setCargandoProductos] = useState(false);
   const [alertProductoDuplicado, setAlertProductoDuplicado] = useState(false);
+  const [guardandoFactura, setGuardandoFactura] = useState(false);
+  const [errorFactura, setErrorFactura] = useState('');
+  const [enviarCorreo, setEnviarCorreo] = useState(false);
+  const [documentoOpts, setDocumentoOpts] = useState([]);
+  const [documento, setDocumento] = useState('');
   
   // Estados para totales de factura
   const [impuestoIVA, setImpuestoIVA] = useState(12); // 12% IVA por defecto
@@ -68,13 +74,14 @@ const Layout = () => {
 
   // Estados para el formulario de facturación
   const [formFactura, setFormFactura] = useState({
+    idCliente: null,
     nit: '',
     nombre: '',
     telefono: '',
     direccion: '',
     direccionEntrega: '',
-    tipoDocumento: 'factura',
-    moneda: 'GTQ',
+    tipoDocumento: '1',
+    moneda: '1',
     fecha: obtenerFechaHoy(),
     establecimiento: 'Ferreteria y bloquera Agmner',
   });
@@ -101,7 +108,8 @@ const Layout = () => {
     
     if (checked) {
       setFormFactura({
-        nit: 'C/F',
+        idCliente: null,
+        nit: 'CF',
         nombre: 'Consumidor Final',
         telefono: '',
         direccion: 'Ciudad',
@@ -118,19 +126,34 @@ const Layout = () => {
 
   const limpiarFormulario = () => {
     setFormFactura({
+      idCliente: null,
       nit: '',
       nombre: '',
       telefono: '',
       direccion: '',
       direccionEntrega: '',
-      tipoDocumento: 'factura',
-      moneda: 'GTQ',
+      tipoDocumento: '1',
+      moneda: '1',
       fecha: obtenerFechaHoy(),
       establecimiento: 'Ferreteria y bloquera Agmner',
     });
     setEsConsumidorFinal(false);
     setClienteSeleccionado(false);
+    setDocumento('');
     setImpuestoIVA(12);
+    setErrorFactura('');
+  };
+
+  const cargarDocumentos = async () => {
+    try {
+      const response = await fetch('/api/diccionarios?diccionario=TIPODOCUMENTO&estado=1');
+      const data = await response.json();
+      const lista = Array.isArray(data) ? data : (data?.content || []);
+      setDocumentoOpts(lista);
+    } catch (e) {
+      console.error('Error al cargar tipos de documento:', e);
+      setDocumentoOpts([]);
+    }
   };
 
   const cargarClientes = async () => {
@@ -201,6 +224,7 @@ const Layout = () => {
     const nuevoItem = {
       idProductoInventario: producto.idProductoInventario,
       idProducto: producto.idProducto?.idProducto ?? producto.idProducto,
+      idUnidadMedida: producto.idProducto?.unidadDeMedida ?? producto.unidadDeMedida ?? null,
       codigo,
       descripcion,
       cantidad,
@@ -273,6 +297,15 @@ const Layout = () => {
     return calcularBaseImponible() + calcularIVA();
   };
 
+  const tipoBusqueda = () => {
+    const seleccionado = documentoOpts.find((d) => String(d.indice) === String(documento));
+    if (!seleccionado) return 'nit';
+    const valor = (seleccionado.valor || '').toLowerCase();
+    if (valor.includes('pasaporte')) return 'pasaporte';
+    if (valor.includes('dpi')) return 'dpi';
+    return 'nit';
+  };
+
   const handleNitChange = (e) => {
     const value = (e.target.value || '').toString();
     setFormFactura((prev) => ({ ...prev, nit: value }));
@@ -280,7 +313,12 @@ const Layout = () => {
     const valorLimpio = value.trim();
     if (valorLimpio.length >= 2) {
       const valorLower = valorLimpio.toLowerCase();
+      const tipo = tipoBusqueda();
       const encontrados = clientes.filter((c) => {
+        if (tipo === 'dpi' || tipo === 'pasaporte') {
+          const dpi = (c.documentoIdentificacion || '').toString().toLowerCase();
+          return dpi.includes(valorLower);
+        }
         const nit = (c.nit || '').toString().toLowerCase();
         return nit.includes(valorLower);
       });
@@ -312,14 +350,19 @@ const Layout = () => {
   };
 
   const seleccionarClienteSugerencia = (cliente) => {
+    const tipo = tipoBusqueda();
+    const docValue = (tipo === 'dpi' || tipo === 'pasaporte')
+      ? (cliente.documentoIdentificacion || '')
+      : (cliente.nit || '');
     setFormFactura((prev) => ({
       ...prev,
-      nit: cliente.nit || '',
+      idCliente: cliente.idCliente ?? cliente.id ?? null,
+      nit: docValue,
       nombre: cliente.nombreCliente || cliente.nombreFacturacion || '',
+      dpiPasaporte: cliente.documentoIdentificacion || '',
       telefono: cliente.telefono1 || '',
       direccion: cliente.direccionFisica || '',
       direccionEntrega: '',
-      // Preservar fecha, tipoDocumento, moneda y establecimiento
       fecha: prev.fecha,
       tipoDocumento: prev.tipoDocumento,
       moneda: prev.moneda,
@@ -332,6 +375,7 @@ const Layout = () => {
 
   useEffect(() => {
     cargarClientes();
+    cargarDocumentos();
   }, []);
 
   useEffect(() => {
@@ -356,20 +400,22 @@ const Layout = () => {
       telefono2: '',
     });
     setErrorCliente('');
+    setErrorsCliente({});
     setModalCliente(true);
   };
 
   const cerrarModalCliente = () => {
     setModalCliente(false);
     setErrorCliente('');
+    setErrorsCliente({});
   };
 
   const guardarCliente = async (e) => {
     e.preventDefault();
     setErrorCliente('');
 
-    if (!formCliente.nombreCliente?.trim() || !formCliente.nit?.trim() || !formCliente.nombreFacturacion?.trim() || !formCliente.direccionFisica?.trim()) {
-      setErrorCliente('Los campos Nombre, NIT, Nombre de Facturación y Dirección son obligatorios');
+    if (!formCliente.nombreCliente?.trim() || !formCliente.nombreFacturacion?.trim() || !formCliente.direccionFisica?.trim()) {
+      setErrorCliente('Los campos Nombre, Nombre de Facturación y Dirección son obligatorios');
       return;
     }
 
@@ -398,15 +444,35 @@ const Layout = () => {
         throw new Error(text || 'Error al guardar el cliente');
       }
 
-      // Rellenar los datos de factura con el cliente recién creado
+      const data = await response.json().catch(() => ({}));
+      const idClienteNuevo = data?.idCliente ?? data?.id ?? null;
+
+      const tieneNit = !!formCliente.nit?.trim();
+      const tieneDpi = !!formCliente.dpiPasaporte?.trim();
+
+      if (tieneNit) {
+        const opcionNit = documentoOpts.find((d) => (d.valor || '').toLowerCase().includes('nit'));
+        if (opcionNit) setDocumento(String(opcionNit.indice));
+      } else if (tieneDpi) {
+        const opcionDpi = documentoOpts.find((d) => (d.valor || '').toLowerCase().includes('dpi'));
+        if (opcionDpi) setDocumento(String(opcionDpi.indice));
+      }
+
+      const docValue = tieneNit
+        ? formCliente.nit
+        : tieneDpi
+        ? formCliente.dpiPasaporte
+        : '';
+
       setFormFactura((prev) => ({
         ...prev,
-        nit: formCliente.nit,
+        idCliente: idClienteNuevo,
+        nit: docValue,
         nombre: formCliente.nombreCliente,
+        dpiPasaporte: formCliente.dpiPasaporte || '',
         telefono: formCliente.telefono1,
         direccion: formCliente.direccionFisica,
         direccionEntrega: '',
-        // Preservar fecha, tipoDocumento, moneda y establecimiento
         fecha: prev.fecha,
         tipoDocumento: prev.tipoDocumento,
         moneda: prev.moneda,
@@ -422,6 +488,121 @@ const Layout = () => {
       setErrorCliente(err.message || 'No se pudo guardar el cliente');
     } finally {
       setGuardandoCliente(false);
+    }
+  };
+
+  const guardarFactura = async (e) => {
+    e.preventDefault();
+    setErrorFactura('');
+
+    if (!formFactura.nombre?.trim()) {
+      setErrorFactura('Debe seleccionar o agregar un cliente');
+      return;
+    }
+
+    if (detalleFactura.length === 0) {
+      setErrorFactura('Debe agregar al menos un producto');
+      return;
+    }
+
+    setGuardandoFactura(true);
+    try {
+      const totalBruto = detalleFactura.reduce((sum, item) => sum + (Number(item.cantidad) || 0) * item.precioUnitario, 0);
+      const cantidadDescuento = calcularTotalDescuentoProductos();
+      const baseImponible = calcularBaseImponible();
+      const totalNeto = totalBruto / 1.12;
+      const iva = calcularIVA();
+      const total = calcularTotal();
+
+      const body = {
+        tipoDocumento: formFactura.tipoDocumento,
+        idCliente: esConsumidorFinal ? 'CF' : { idCliente: formFactura.idCliente },
+        tipoVenta: 'B',
+        destinoVenta: '1',
+        FechaFactura: formFactura.fecha,
+        moneda: formFactura.moneda,
+        tasaDeCambio: formFactura.moneda === '1' ? '1.00' : '2.00',
+        referencia: '0',
+        numeroAcceso: '0',
+        serieAdmin: '',
+        numeroAdmin: '0',
+        totalBruto: totalBruto.toFixed(2),
+        cantidadDeDescuento: cantidadDescuento.toFixed(2),
+        porcentajeDeDescuento: 0,
+        exento: '0.00',
+        otro: '0.00',
+        totalNeto: totalNeto.toFixed(2),
+        isr: '0.00',
+        iva: iva.toFixed(2),
+        total: total.toFixed(2),
+        facturaProcesada: '',
+        direccionEntrega: formFactura.direccionEntrega || '',
+        idUsuarioModificacion: 1,
+      };
+
+      const response = await fetch('/api/grabarEncabezadoFacturas', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(text || 'Error al guardar la factura');
+      }
+
+      const idEncabezadoFactura = await response.text();
+
+      // Guardar el detalle de la factura
+      const detallePromises = detalleFactura.map((item) => {
+        const cantItem = Number(item.cantidad) || 0;
+        const descItem = Number(item.descuento) || 0;
+        const precioItem = item.precioUnitario || 0;
+        const totalItem = cantItem * precioItem;
+        const ivaItem = (totalItem * 0.12) / 1.12;
+        const netoItem = item.total / 1.12;
+        const totalConDescuento = totalItem - descItem;
+
+        const bodyDetalle = {
+          idEncabezadoFactura: String(idEncabezadoFactura),
+          idProducto: String(item.idProducto),
+          idUnidadDeMedida: String(item.idUnidadMedida ?? '1'),
+          cantidad: String(cantItem),
+          precioVenta: precioItem.toFixed(2),
+          cantidadDeDescuento: descItem.toFixed(2),
+          porcentajeDeDescuento: '0.00',
+          ImpBruto: totalItem.toFixed(2),
+          ImpExento: '0.00',
+          ImpOtros: '0.00',
+          ImpNeto: netoItem.toFixed(2),
+          iva: ivaItem.toFixed(2),
+          isr: '0.00',
+          ImpTotal: item.total.toFixed(2),
+          idUsuarioModificacion: '1',
+        };
+
+        return fetch('/api/grabarDetalleFactura', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(bodyDetalle),
+        });
+      });
+
+      const resultadosDetalle = await Promise.all(detallePromises);
+      const erroresDetalle = resultadosDetalle.filter((r) => !r.ok);
+      if (erroresDetalle.length > 0) {
+        throw new Error('La factura se guardó pero algunos productos del detalle fallaron');
+      }
+
+      alert('Factura guardada exitosamente');
+      limpiarFormulario();
+      setDetalleFactura([]);
+      setErrorFactura('');
+    } catch (err) {
+      console.error('Error al guardar factura:', err);
+      setErrorFactura(err.message || 'No se pudo guardar la factura');
+    } finally {
+      setGuardandoFactura(false);
     }
   };
 
@@ -442,83 +623,62 @@ const Layout = () => {
               </div>
             </CCardHeader>
 
-            <CForm className="mt-4">
+            <CForm className="mt-4" onSubmit={guardarFactura}>
+              {errorFactura && (
+                <div className="alert alert-danger mb-3" role="alert">
+                  {errorFactura}
+                </div>
+              )}
               <CRow className="mb-2 align-items-center">
-                <CCol xs={12} md={6}>
+                <CCol xs={12} md={6} className="d-flex gap-4">
                   <CFormCheck
                     id="consumidorFinal"
                     label="Consumidor Final"
                     checked={esConsumidorFinal}
                     onChange={handleConsumidorFinal}
                   />
+                  <CFormCheck
+                    id="enviarCorreo"
+                    label="Enviar Correo Electrónico"
+                    checked={enviarCorreo}
+                    onChange={(e) => setEnviarCorreo(e.target.checked)}
+                  />
                 </CCol>
                 <CCol xs={12} md={6} className="d-flex justify-content-end gap-2">
-                   <CButton color="secondary" onClick={limpiarFormulario}>
+                  <CButton color="secondary" className="text-light" onClick={limpiarFormulario}>
                     Limpiar
                   </CButton>
                   <CButton
                     color="success"
-                    size="sm"
                     className="text-light"
                     onClick={abrirModalCliente}
                     disabled={esConsumidorFinal}
                   >
-                    + Agregar Cliente
+                    + Agregar
                   </CButton>
                 </CCol>
               </CRow>
-
               <CRow className="mb-3">
                 <CCol md={6}>
-                  <CFormLabel htmlFor="nit">NIT</CFormLabel>
-                  <div style={{ position: 'relative' }}>
-                    <CFormInput
-                      type="text"
-                      id="nit"
-                      name="nit"
-                      placeholder="Ingrese el NIT para buscar cliente"
-                      value={formFactura.nit}
-                      onChange={handleNitChange}
-                      disabled={esConsumidorFinal || clienteSeleccionado}
-                      autoComplete="off"
-                    />
-                    {mostrarSugerenciasClientes && sugerenciasClientes.length > 0 && (
-                      <div
-                        style={{
-                          position: 'absolute',
-                          top: '100%',
-                          left: 0,
-                          right: 0,
-                          zIndex: 1050,
-                          maxHeight: '220px',
-                          overflowY: 'auto',
-                          border: '1px solid #dee2e6',
-                          borderRadius: '4px',
-                          backgroundColor: '#fff',
-                          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                        }}
-                        className="list-group"
-                      >
-                        <div className="list-group-item list-group-item-secondary py-2">
-                          <small><strong>Clientes encontrados:</strong> haga clic para seleccionar</small>
-                        </div>
-                        {sugerenciasClientes.map((cli) => (
-                          <button
-                            key={cli.idCliente ?? cli.id}
-                            type="button"
-                            className="list-group-item list-group-item-action text-start"
-                            onClick={() => seleccionarClienteSugerencia(cli)}
-                            style={{ cursor: 'pointer' }}
-                          >
-                            <div>
-                              <strong>{cli.nit}</strong> - {cli.nombreCliente || cli.nombreFacturacion}
-                            </div>
-                            <small className="text-muted">{cli.telefono1}</small>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                  <CFormLabel htmlFor="documento">Documento</CFormLabel>
+                  <CFormSelect
+                    id="documento"
+                    value={documento}
+                    disabled={clienteSeleccionado || esConsumidorFinal}
+                    onChange={(e) => {
+                      setDocumento(e.target.value);
+                      setFormFactura((prev) => ({ ...prev, nit: '' }));
+                      setSugerenciasClientes([]);
+                      setMostrarSugerenciasClientes(false);
+                    }}
+                  >
+                    <option value="">Seleccione documento</option>
+                    {documentoOpts.map((d) => (
+                      <option key={d.indice} value={d.indice}>
+                        {d.valor}
+                      </option>
+                    ))}
+                  </CFormSelect>
                 </CCol>
                 <CCol md={6}>
                   <CFormLabel htmlFor="nombre">Nombre</CFormLabel>
@@ -527,10 +687,10 @@ const Layout = () => {
                       type="text"
                       id="nombre"
                       name="nombre"
-                      placeholder="Ingrese el nombre para buscar cliente"
+                      placeholder={!documento && !esConsumidorFinal ? 'Seleccione un documento primero' : 'Ingrese el nombre para buscar cliente'}
                       value={formFactura.nombre}
                       onChange={handleNombreChange}
-                      disabled={esConsumidorFinal || clienteSeleccionado}
+                      disabled={esConsumidorFinal || clienteSeleccionado || !documento}
                       autoComplete="off"
                     />
                     {mostrarSugerenciasClientes && sugerenciasClientes.length > 0 && (
@@ -575,6 +735,59 @@ const Layout = () => {
 
               <CRow className="mb-3">
                 <CCol md={6}>
+                  <CFormLabel htmlFor="nit">
+                    {tipoBusqueda() === 'dpi' ? 'DPI' : tipoBusqueda() === 'pasaporte' ? 'Pasaporte' : 'NIT'}
+                  </CFormLabel>
+                  <div style={{ position: 'relative' }}>
+                    <CFormInput
+                      type="text"
+                      id="nit"
+                      name="nit"
+                      placeholder={!documento && !esConsumidorFinal ? 'Seleccione un documento primero' : tipoBusqueda() === 'dpi' ? 'Ingrese el DPI para buscar' : tipoBusqueda() === 'pasaporte' ? 'Ingrese el Pasaporte para buscar' : 'Ingrese el NIT para buscar cliente'}
+                      value={formFactura.nit}
+                      onChange={handleNitChange}
+                      disabled={esConsumidorFinal || clienteSeleccionado || !documento}
+                      autoComplete="off"
+                    />
+                    {mostrarSugerenciasClientes && sugerenciasClientes.length > 0 && (
+                      <div
+                        style={{
+                          position: 'absolute',
+                          top: '100%',
+                          left: 0,
+                          right: 0,
+                          zIndex: 1050,
+                          maxHeight: '220px',
+                          overflowY: 'auto',
+                          border: '1px solid #dee2e6',
+                          borderRadius: '4px',
+                          backgroundColor: '#fff',
+                          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                        }}
+                        className="list-group"
+                      >
+                        <div className="list-group-item list-group-item-secondary py-2">
+                          <small><strong>Clientes encontrados:</strong> haga clic para seleccionar</small>
+                        </div>
+                        {sugerenciasClientes.map((cli) => (
+                          <button
+                            key={cli.idCliente ?? cli.id}
+                            type="button"
+                            className="list-group-item list-group-item-action text-start"
+                            onClick={() => seleccionarClienteSugerencia(cli)}
+                            style={{ cursor: 'pointer' }}
+                          >
+                            <div>
+                              <strong>{(tipoBusqueda() === 'dpi' || tipoBusqueda() === 'pasaporte') ? (cli.documentoIdentificacion || '—') : cli.nit}</strong> - {cli.nombreCliente || cli.nombreFacturacion}
+                            </div>
+                            <small className="text-muted">{cli.telefono1}</small>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </CCol>
+                 <CCol md={6}>
                   <CFormLabel htmlFor="telefono">Teléfono</CFormLabel>
                   <CFormInput
                     type="text"
@@ -586,6 +799,8 @@ const Layout = () => {
                     disabled={esConsumidorFinal || clienteSeleccionado}
                   />
                 </CCol>
+              </CRow>
+              <CRow className="mb-3">              
                 <CCol md={6}>
                   <CFormLabel htmlFor="direccion">Dirección</CFormLabel>
                   <CFormInput
@@ -598,20 +813,7 @@ const Layout = () => {
                     disabled={esConsumidorFinal || clienteSeleccionado}
                   />
                 </CCol>
-              </CRow>
-
-              <CRow className="mb-3">
-                <CCol xs={6}>
-                  <CFormLabel htmlFor="direccionEntrega">Dirección de entrega</CFormLabel>
-                  <CFormTextarea
-                    id="direccionEntrega"
-                    name="direccionEntrega"
-                    placeholder="Ingrese la dirección de entrega"
-                    value={formFactura.direccionEntrega}
-                    onChange={handleChange}
-                    rows={2}
-                  />
-                </CCol> 
+                
                 <CCol md={3}>
                   <CFormLabel htmlFor="tipoDocumento">Tipo de Documento</CFormLabel>
                   <CFormSelect
@@ -621,10 +823,10 @@ const Layout = () => {
                     onChange={handleChange}
                   >
                     <option value="">Seleccione tipo de documento</option>
-                    <option value="factura">Factura</option>
-                    <option value="nota_credito">Nota de Crédito</option>
-                    <option value="nota_debito">Nota de Débito</option>
-                    <option value="consignacion">Consignación</option>
+                    <option value="1">Factura</option>
+                    <option value="2">Nota de Crédito</option>
+                    <option value="3">Nota de Débito</option>
+                    <option value="4">Consignación</option>
                   </CFormSelect>
                 </CCol>
                  <CCol md={3}>
@@ -636,10 +838,23 @@ const Layout = () => {
                     onChange={handleChange}
                   >
                     <option value="">Seleccione moneda</option>
-                    <option value="GTQ">Quetzales (GTQ)</option>
-                    <option value="USD">Dólares (USD)</option>
+                    <option value="1">Quetzales</option>
+                    <option value="2">Dólares</option>
                   </CFormSelect>
                 </CCol>       
+              </CRow >
+              <CRow className="g-1">
+                 <CCol xs={6}>
+                  <CFormLabel htmlFor="direccionEntrega">Dirección de entrega</CFormLabel>
+                  <CFormTextarea
+                    id="direccionEntrega"
+                    name="direccionEntrega"
+                    placeholder="Ingrese la dirección de entrega"
+                    value={formFactura.direccionEntrega}
+                    onChange={handleChange}
+                    rows={2}
+                  />
+                </CCol> 
               </CRow>
               {/* Sección: Detalle de Productos en el Formulario Principal */}
               <div className="mb-4 mt-4">
@@ -688,16 +903,16 @@ const Layout = () => {
                           </CTableDataCell>
                           <CTableDataCell className="text-center">{Number(item.cantidad) || 0}</CTableDataCell>
                           <CTableDataCell className="text-end">
-                            {formFactura.moneda === 'GTQ' ? 'Q' : '$'}{item.precioUnitario.toFixed(2)}
+                            {formFactura.moneda === '1' ? 'Q' : '$'}{item.precioUnitario.toFixed(2)}
                           </CTableDataCell>
                           <CTableDataCell className="text-end">
-                            {formFactura.moneda === 'GTQ' ? 'Q' : '$'}{item.precio.toFixed(2)}
+                            {formFactura.moneda === '1' ? 'Q' : '$'}{item.precio.toFixed(2)}
                           </CTableDataCell>
                           <CTableDataCell className="text-end">
-                            {formFactura.moneda === 'GTQ' ? 'Q' : '$'}{(Number(item.descuento) || 0).toFixed(2)}
+                            {formFactura.moneda === '1' ? 'Q' : '$'}{(Number(item.descuento) || 0).toFixed(2)}
                           </CTableDataCell>
                           <CTableDataCell className="text-end">
-                            {formFactura.moneda === 'GTQ' ? 'Q' : '$'}{item.total.toFixed(2)}
+                            {formFactura.moneda === '1' ? 'Q' : '$'}{item.total.toFixed(2)}
                           </CTableDataCell>
                           <CTableDataCell className="text-center">
                             <CButton
@@ -725,7 +940,7 @@ const Layout = () => {
                       <CCol xs={7}>
                         <CFormInput
                           type="text"
-                          value={`${formFactura.moneda === 'GTQ' ? 'Q' : '$'}${calcularBaseImponible().toFixed(2)}`}
+                          value={`${formFactura.moneda === '1' ? 'Q' : '$'}${calcularBaseImponible().toFixed(2)}`}
                           readOnly
                           disabled
                           size="sm"
@@ -742,7 +957,7 @@ const Layout = () => {
                       <CCol xs={7}>
                         <CFormInput
                           type="text"
-                          value={`${formFactura.moneda === 'GTQ' ? 'Q' : '$'}${calcularTotalDescuentoProductos().toFixed(2)}`}
+                          value={`${formFactura.moneda === '1' ? 'Q' : '$'}${calcularTotalDescuentoProductos().toFixed(2)}`}
                           readOnly
                           disabled
                           size="sm"
@@ -759,7 +974,7 @@ const Layout = () => {
                       <CCol xs={7}>
                         <CFormInput
                           type="text"
-                          value={`${formFactura.moneda === 'GTQ' ? 'Q' : '$'}${calcularIVA().toFixed(2)}`}
+                          value={`${formFactura.moneda === '1' ? 'Q' : '$'}${calcularIVA().toFixed(2)}`}
                           readOnly
                           disabled
                           size="sm"
@@ -776,7 +991,7 @@ const Layout = () => {
                       <CCol xs={7}>
                         <CFormInput
                           type="text"
-                          value={`${formFactura.moneda === 'GTQ' ? 'Q' : '$'}${calcularTotal().toFixed(2)}`}
+                          value={`${formFactura.moneda === '1' ? 'Q' : '$'}${calcularTotal().toFixed(2)}`}
                           readOnly
                           disabled
                           size="sm"
@@ -791,8 +1006,8 @@ const Layout = () => {
 
               <CRow className="mt-4">
                 <CCol className="d-flex justify-content-end gap-2">
-                  <CButton color="primary" className="text-light" type="submit" disabled={detalleFactura.length === 0}>
-                    Guardar Factura
+                  <CButton color="primary" className="text-light" type="submit" disabled={detalleFactura.length === 0 || guardandoFactura}>
+                    {guardandoFactura ? 'Guardando...' : 'Guardar Factura'}
                   </CButton>
                 </CCol>
               </CRow>
@@ -860,7 +1075,7 @@ const Layout = () => {
                                     </div>
                                     <div>
                                       <span className="badge bg-success">
-                                        {formFactura.moneda === 'GTQ' ? 'Q' : '$'} {prod.precioVenta?.toFixed(2) || '0.00'}
+                                        {formFactura.moneda === '1' ? 'Q' : '$'} {prod.precioVenta?.toFixed(2) || '0.00'}
                                       </span>
                                     </div>
                                   </div>
@@ -921,10 +1136,10 @@ const Layout = () => {
                               />
                             </CTableDataCell>
                             <CTableDataCell className="text-end">
-                              {formFactura.moneda === 'GTQ' ? 'Q' : '$'}{item.precioUnitario.toFixed(2)}
+                              {formFactura.moneda === '1' ? 'Q' : '$'}{item.precioUnitario.toFixed(2)}
                             </CTableDataCell>
                             <CTableDataCell className="text-end">
-                              {formFactura.moneda === 'GTQ' ? 'Q' : '$'}{item.precio.toFixed(2)}
+                              {formFactura.moneda === '1' ? 'Q' : '$'}{item.precio.toFixed(2)}
                             </CTableDataCell>
                             <CTableDataCell>
                               <CFormInput
@@ -938,7 +1153,7 @@ const Layout = () => {
                               />
                             </CTableDataCell>
                             <CTableDataCell className="text-end">
-                              {formFactura.moneda === 'GTQ' ? 'Q' : '$'}{item.total.toFixed(2)}
+                              {formFactura.moneda === '1' ? 'Q' : '$'}{item.total.toFixed(2)}
                             </CTableDataCell>
                             <CTableDataCell className="text-center">
                               <CButton
@@ -966,12 +1181,12 @@ const Layout = () => {
                         </div>
                         <div className="d-flex justify-content-between mb-2">
                           <strong>Total descuento:</strong>
-                          <span>{formFactura.moneda === 'GTQ' ? 'Q' : '$'}{calcularTotalDescuentoProductos().toFixed(2)}</span>
+                          <span>{formFactura.moneda === '1' ? 'Q' : '$'}{calcularTotalDescuentoProductos().toFixed(2)}</span>
                         </div>
                         <div className="d-flex justify-content-between">
                           <strong>Total general:</strong>
                           <strong className="text-primary">
-                            {formFactura.moneda === 'GTQ' ? 'Q' : '$'}{calcularTotal().toFixed(2)}
+                            {formFactura.moneda === '1' ? 'Q' : '$'}{calcularTotal().toFixed(2)}
                           </strong>
                         </div>
                       </div>
@@ -1058,9 +1273,19 @@ const Layout = () => {
                           value={formCliente.nit}
                           onChange={handleClienteChange}
                           placeholder="NIT"
-                          required
                         />
                       </CCol>
+                      <CCol xs={6}>
+                        <CFormLabel className="text-dark fw-bold">DPI / Pasaporte</CFormLabel>
+                        <CFormInput
+                          name="dpiPasaporte"
+                          value={formCliente.dpiPasaporte}
+                          onChange={handleClienteChange}
+                          placeholder="DPI o Pasaporte"
+                        />
+                      </CCol>
+                    </CRow>
+                    <CRow className="g-3">
                       <CCol xs={6}>
                         <CFormLabel className="text-dark fw-bold">Nombre Facturación</CFormLabel>
                         <CFormInput
@@ -1068,12 +1293,13 @@ const Layout = () => {
                           value={formCliente.nombreFacturacion}
                           onChange={handleClienteChange}
                           placeholder="Nombre para facturación"
-                          required
+                          invalid={!!errorsCliente.nombreFacturacion}
                         />
+                        {errorsCliente.nombreFacturacion && (
+                          <div className="invalid-feedback d-block">{errorsCliente.nombreFacturacion}</div>
+                        )}
                       </CCol>
-                    </CRow>
-                    <CRow className="g-3">
-                      <CCol xs={12}>
+                      <CCol xs={6}>
                         <CFormLabel className="text-dark fw-bold">Dirección física</CFormLabel>
                         <CFormTextarea
                           name="direccionFisica"
@@ -1081,11 +1307,13 @@ const Layout = () => {
                           onChange={handleClienteChange}
                           placeholder="Dirección"
                           rows={2}
-                          required
+                          invalid={!!errorsCliente.direccionFisica}
                         />
+                        {errorsCliente.direccionFisica && (
+                          <div className="invalid-feedback d-block">{errorsCliente.direccionFisica}</div>
+                        )}
                       </CCol>
                     </CRow>
-
                     <CRow className="g-3">
                       <CCol xs={6}>
                         <CFormLabel className="text-dark fw-bold">Teléfono 1</CFormLabel>

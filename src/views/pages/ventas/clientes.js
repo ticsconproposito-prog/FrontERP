@@ -48,6 +48,7 @@ const Layout = () => {
     direccionFisica: '',
     correoElectronico: '',
     nit: '',
+    dpiPasaporte: '',
     nombreFacturacion: '',
     telefono1: '',
     telefono2: '',
@@ -97,6 +98,7 @@ const Layout = () => {
       direccionFisica: '',
       correoElectronico: '',
       nit: '',
+      dpiPasaporte: '',
       nombreFacturacion: '',
       telefono1: '',
       telefono2: '',
@@ -116,6 +118,7 @@ const Layout = () => {
       direccionFisica: cliente.direccionFisica ?? '',
       correoElectronico: cliente.correoElectronico ?? '',
       nit: cliente.nit ?? '',
+      dpiPasaporte: cliente.documentoIdentificacion ?? '',
       nombreFacturacion: cliente.nombreFacturacion ?? '',
       telefono1: cliente.telefono1 ?? '',
       telefono2: cliente.telefono2 ?? '',
@@ -236,7 +239,6 @@ const Layout = () => {
     if (!formCliente.nit?.trim()) nuevosErrores.nit = 'El NIT es obligatorio'
     if (!formCliente.nombreFacturacion?.trim()) nuevosErrores.nombreFacturacion = 'El nombre de facturación es obligatorio'
     if (!formCliente.direccionFisica?.trim()) nuevosErrores.direccionFisica = 'La dirección física es obligatoria'
-    if (!formCliente.telefono1?.trim()) nuevosErrores.telefono1 = 'El teléfono 1 es obligatorio'
     if (Object.keys(nuevosErrores).length > 0) {
       setErrorsCliente(nuevosErrores)
       return
@@ -249,6 +251,7 @@ const Layout = () => {
         direccionFisica: formCliente.direccionFisica?.trim() || '',
         correoElectronico: formCliente.correoElectronico?.trim() || '',
         nit: formCliente.nit?.trim() || '',
+        documentoIdentificacion: formCliente.dpiPasaporte?.trim() || '',
         nombreFacturacion: formCliente.nombreFacturacion?.trim() || '',
         telefono1: formCliente.telefono1?.trim() || '',
         telefono2: formCliente.telefono2?.trim() || '',
@@ -338,6 +341,7 @@ const Layout = () => {
                     <CTableHeaderCell className="py-2 text-nowrap">Dirección Física</CTableHeaderCell>
                     <CTableHeaderCell className="py-2 text-nowrap">Correo Electrónico</CTableHeaderCell>
                     <CTableHeaderCell className="py-2 text-nowrap">NIT</CTableHeaderCell>
+                    <CTableHeaderCell className="py-2 text-nowrap">DPI / Pasaporte</CTableHeaderCell>
                     <CTableHeaderCell className="py-2 text-nowrap">Nombre Facturación</CTableHeaderCell>
                     <CTableHeaderCell className="py-2 text-nowrap">Teléfono 1</CTableHeaderCell>
                     <CTableHeaderCell className="py-2 text-nowrap text-center">Acciones</CTableHeaderCell>
@@ -351,6 +355,7 @@ const Layout = () => {
                       <CTableDataCell>{cliente.direccionFisica ?? ''}</CTableDataCell>
                       <CTableDataCell>{cliente.correoElectronico ?? ''}</CTableDataCell>
                       <CTableDataCell>{cliente.nit ?? ''}</CTableDataCell>
+                      <CTableDataCell>{cliente.documentoIdentificacion ?? ''}</CTableDataCell>
                       <CTableDataCell>{cliente.nombreFacturacion ?? ''}</CTableDataCell>
                       <CTableDataCell>{cliente.telefono1 ?? ''}</CTableDataCell>
                       <CTableDataCell className="py-2 text-nowrap text-center">
@@ -424,7 +429,18 @@ const Layout = () => {
                           )}
                         </CCol>
                         <CCol xs={6}>
-                          <CFormLabel className="text-dark fw-bold">Nombre Facturación</CFormLabel>
+                          <CFormLabel className="text-dark fw-bold">DPI / Pasaporte</CFormLabel>
+                          <CFormInput
+                            name="dpiPasaporte"
+                            value={formCliente.dpiPasaporte}
+                            onChange={handleFormClienteChange}
+                            placeholder="DPI o Pasaporte"
+                          />
+                        </CCol>
+                      </CRow>
+                      <CRow className="g-3">
+                        <CCol xs={6}>
+                          <CFormLabel className="text-dark fw-bold">Nombre para Facturación</CFormLabel>
                           <CFormInput
                             name="nombreFacturacion"
                             value={formCliente.nombreFacturacion}
@@ -435,10 +451,8 @@ const Layout = () => {
                           {errorsCliente.nombreFacturacion && (
                             <div className="invalid-feedback d-block">{errorsCliente.nombreFacturacion}</div>
                           )}
-                        </CCol>
-                      </CRow>
-                      <CRow className="g-3">
-                        <CCol xs={12}>
+                          </CCol>
+                        <CCol xs={6}>
                           <CFormLabel className="text-dark fw-bold">Dirección física</CFormLabel>
                           <CFormTextarea
                             name="direccionFisica"
@@ -463,11 +477,7 @@ const Layout = () => {
                             value={formCliente.telefono1}
                             onChange={handleFormClienteChange}
                             placeholder="Número de teléfono principal"
-                            invalid={!!errorsCliente.telefono1}
                           />
-                          {errorsCliente.telefono1 && (
-                            <div className="invalid-feedback d-block">{errorsCliente.telefono1}</div>
-                          )}
                         </CCol>
                         <CCol xs={6}>
                           <CFormLabel className="text-dark fw-bold">Teléfono 2</CFormLabel>
@@ -578,6 +588,12 @@ const Layout = () => {
                             <div>
                               <span className="text-muted small d-block mb-1">NIT</span>
                               <span className="d-block">{clienteVer.nit ?? '—'}</span>
+                            </div>
+                          </CCol>
+                          <CCol xs={12} md={6}>
+                            <div>
+                              <span className="text-muted small d-block mb-1">DPI / Pasaporte</span>
+                              <span className="d-block">{clienteVer.documentoIdentificacion ?? '—'}</span>
                             </div>
                           </CCol>
                           <CCol xs={12} md={6}>

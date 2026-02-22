@@ -35,9 +35,13 @@ const AppSidebar = () => {
         dispatch({ type: 'set', sidebarShow: visible })
       }}
     >
-      <CSidebarHeader className="border-bottom">
-        <CSidebarBrand className="d-none d-md-flex" to="/">
-          <img src={logo} height={55} alt="Ferreteriay Bloquera Agmner"/>
+      <CSidebarHeader className="border-bottom py-3">
+        <CSidebarBrand className="d-none d-md-flex justify-content-center w-100" to="/">
+          <img
+            src={logo}
+            alt="Ferreteria y Bloquera Agmner"
+            style={{ display: 'block', margin: '0 auto', width: '85%', maxWidth: '220px', height: 'auto' }}
+          />
         </CSidebarBrand>
         <CCloseButton
           className="d-lg-none"

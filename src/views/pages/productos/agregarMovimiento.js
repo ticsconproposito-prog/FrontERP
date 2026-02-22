@@ -32,6 +32,7 @@ const AgregarMovimiento = () => {
     proveedor: '',
     tipoMovimiento: '',
     tipoOrden: '',
+    tipoDocumento: '',
     numeroDocumento: '',
     fechaIngreso: '',
     estadoFactura: '',
@@ -44,6 +45,7 @@ const AgregarMovimiento = () => {
   const [tipoMovimiento, setTipoMovimiento] = useState([])
   const [tipoOrden, setTipoOrden] = useState([])
   const [estadoFactura, setEstadoFactura] = useState([])
+  const [tipoDocumentoOpts, setTipoDocumentoOpts] = useState([])
   const [proveedores, setProveedores] = useState([])
 
   // Estado para productos disponibles
@@ -498,6 +500,7 @@ const AgregarMovimiento = () => {
       const responseTipoMovimiento = await fetch('/api/diccionarios?diccionario=TIPODEMOVIMIENTO')
       const responseTipoOrden = await fetch('/api/diccionarios?diccionario=TIPODEORDEN')
       const responseEstadoFactura = await fetch('/api/diccionarios?diccionario=ESTADOFATURAORDEN')
+      const responseTipoDocumento = await fetch('/api/diccionarios?diccionario=TIPODEDOCUMENTO')
 
       if (!responseTipoMovimiento.ok || !responseTipoOrden.ok || !responseEstadoFactura.ok) {
         throw new Error('Error al cargar diccionarios')
@@ -506,6 +509,7 @@ const AgregarMovimiento = () => {
       const dataTipoMovimiento = await responseTipoMovimiento.json()
       const dataTipoOrden = await responseTipoOrden.json()
       const dataEstadoFactura = await responseEstadoFactura.json()
+      const dataTipoDocumento = await responseTipoDocumento.json()
 
       // Extraer arrays de tipo de movimiento (puede venir como array directo o en content)
       const tipoMov = Array.isArray(dataTipoMovimiento)
@@ -537,11 +541,19 @@ const AgregarMovimiento = () => {
       console.log('Estados Factura cargados:', tipoEstadoFactura)
       setEstadoFactura(tipoEstadoFactura)
 
+      const tipoDoc = Array.isArray(dataTipoDocumento)
+        ? dataTipoDocumento
+        : Array.isArray(dataTipoDocumento?.content)
+          ? dataTipoDocumento.content
+          : []
+      setTipoDocumentoOpts(tipoDoc)
+
     } catch (error) {
       console.error('Error al cargar diccionarios:', error)
       setTipoMovimiento([])
       setTipoOrden([])
       setEstadoFactura([])
+      setTipoDocumentoOpts([])
     }
   }
 
@@ -718,7 +730,24 @@ const AgregarMovimiento = () => {
                 <CRow className="mb-3">
 
 
-                  <CCol xs={12} md={4}>
+                  <CCol xs={12} md={3}>
+                    <CFormLabel htmlFor="tipoDocumento">Tipo Documento</CFormLabel>
+                    <CFormSelect
+                      id="tipoDocumento"
+                      name="tipoDocumento"
+                      value={formData.tipoDocumento}
+                      onChange={handleChange}
+                      required>
+                      <option value="">Seleccione</option>
+                      {tipoDocumentoOpts.map((doc) => (
+                        <option key={doc.indice} value={doc.indice}>
+                          {doc.valor}
+                        </option>
+                      ))}
+                    </CFormSelect>
+                  </CCol>
+
+                  <CCol xs={12} md={3}>
                     <CFormLabel htmlFor="numeroDocumento">Número de Documento</CFormLabel>
                     <CFormInput
                       type="text"
@@ -731,7 +760,7 @@ const AgregarMovimiento = () => {
                     />
                   </CCol>
 
-                  <CCol xs={12} md={4}>
+                  <CCol xs={12} md={3}>
                     <CFormLabel htmlFor="fechaIngreso">Fecha de Ingreso</CFormLabel>
                     <CFormInput
                       type="date"
@@ -743,7 +772,7 @@ const AgregarMovimiento = () => {
                     />
                   </CCol>
 
-                  <CCol xs={12} md={4}>
+                  <CCol xs={12} md={3}>
                     <CFormLabel htmlFor="estadoFactura">Estado de Factura</CFormLabel>
                     <CFormSelect
                       id="estadoFactura"
