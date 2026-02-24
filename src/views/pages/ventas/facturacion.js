@@ -50,6 +50,7 @@ const Layout = () => {
   const [guardandoFactura, setGuardandoFactura] = useState(false);
   const [errorFactura, setErrorFactura] = useState('');
   const [enviarCorreo, setEnviarCorreo] = useState(false);
+  const [alertaSinCorreo, setAlertaSinCorreo] = useState(false);
   const [documentoOpts, setDocumentoOpts] = useState([]);
   const [documento, setDocumento] = useState('');
   
@@ -77,13 +78,14 @@ const Layout = () => {
     idCliente: null,
     nit: '',
     nombre: '',
+    correoElectronico: '',
     telefono: '',
     direccion: '',
     direccionEntrega: '',
     tipoDocumento: '1',
     moneda: '1',
     fecha: obtenerFechaHoy(),
-    establecimiento: 'Ferreteria y bloquera Agmner',
+    establecimiento: 'Ferreteria y Blockera Agmner',
   });
 
   // Estados para el formulario de nuevo cliente
@@ -111,6 +113,7 @@ const Layout = () => {
         idCliente: null,
         nit: 'CF',
         nombre: 'Consumidor Final',
+        correoElectronico: '',
         telefono: '',
         direccion: 'Ciudad',
         direccionEntrega: '',
@@ -129,6 +132,7 @@ const Layout = () => {
       idCliente: null,
       nit: '',
       nombre: '',
+      correoElectronico: '',
       telefono: '',
       direccion: '',
       direccionEntrega: '',
@@ -139,6 +143,8 @@ const Layout = () => {
     });
     setEsConsumidorFinal(false);
     setClienteSeleccionado(false);
+    setEnviarCorreo(false);
+    setAlertaSinCorreo(false);
     setDocumento('');
     setImpuestoIVA(12);
     setErrorFactura('');
@@ -354,11 +360,13 @@ const Layout = () => {
     const docValue = (tipo === 'dpi' || tipo === 'pasaporte')
       ? (cliente.documentoIdentificacion || '')
       : (cliente.nit || '');
+    const correo = cliente.correoElectronico || '';
     setFormFactura((prev) => ({
       ...prev,
       idCliente: cliente.idCliente ?? cliente.id ?? null,
       nit: docValue,
       nombre: cliente.nombreCliente || cliente.nombreFacturacion || '',
+      correoElectronico: correo,
       dpiPasaporte: cliente.documentoIdentificacion || '',
       telefono: cliente.telefono1 || '',
       direccion: cliente.direccionFisica || '',
@@ -469,6 +477,7 @@ const Layout = () => {
         idCliente: idClienteNuevo,
         nit: docValue,
         nombre: formCliente.nombreCliente,
+        correoElectronico: formCliente.correoElectronico?.trim() || '',
         dpiPasaporte: formCliente.dpiPasaporte || '',
         telefono: formCliente.telefono1,
         direccion: formCliente.direccionFisica,
@@ -510,7 +519,7 @@ const Layout = () => {
       const totalBruto = detalleFactura.reduce((sum, item) => sum + (Number(item.cantidad) || 0) * item.precioUnitario, 0);
       const cantidadDescuento = calcularTotalDescuentoProductos();
       const baseImponible = calcularBaseImponible();
-      const totalNeto = totalBruto / 1.12;
+      const totalNeto = calcularSubtotal() / 1.12; // precio con descuento, sin IVA
       const iva = calcularIVA();
       const total = calcularTotal();
 
@@ -537,6 +546,7 @@ const Layout = () => {
         total: total.toFixed(2),
         facturaProcesada: '',
         direccionEntrega: formFactura.direccionEntrega || '',
+        enviarCorreo: enviarCorreo ? 'S' : 'N',
         idUsuarioModificacion: 1,
       };
 
@@ -559,9 +569,9 @@ const Layout = () => {
         const descItem = Number(item.descuento) || 0;
         const precioItem = item.precioUnitario || 0;
         const totalItem = cantItem * precioItem;
-        const ivaItem = (totalItem * 0.12) / 1.12;
-        const netoItem = item.total / 1.12;
-        const totalConDescuento = totalItem - descItem;
+        const totalConDescuento = totalItem - descItem; // total con descuento (incluye IVA)
+        const ivaItem = (totalConDescuento * 0.12) / 1.12; // IVA sobre precio con descuento
+        const netoItem = totalConDescuento / 1.12; // base imponible con descuento, sin IVA
 
         const bodyDetalle = {
           idEncabezadoFactura: String(idEncabezadoFactura),
@@ -641,7 +651,15 @@ const Layout = () => {
                     id="enviarCorreo"
                     label="Enviar Correo Electrónico"
                     checked={enviarCorreo}
-                    onChange={(e) => setEnviarCorreo(e.target.checked)}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      if (checked && !esConsumidorFinal && !formFactura.correoElectronico?.trim()) {
+                        setAlertaSinCorreo(true);
+                        return;
+                      }
+                      setAlertaSinCorreo(false);
+                      setEnviarCorreo(checked);
+                    }}
                   />
                 </CCol>
                 <CCol xs={12} md={6} className="d-flex justify-content-end gap-2">
@@ -658,6 +676,16 @@ const Layout = () => {
                   </CButton>
                 </CCol>
               </CRow>
+              {alertaSinCorreo && (
+                <CRow className="mb-2">
+                  <CCol xs={12}>
+                    <div className="alert alert-warning d-flex align-items-center justify-content-between mb-0" role="alert">
+                      <span>El cliente no tiene un correo electrónico registrado. No se puede activar el envío de correo.</span>
+                      <button type="button" className="btn-close ms-2" aria-label="Cerrar" onClick={() => setAlertaSinCorreo(false)} />
+                    </div>
+                  </CCol>
+                </CRow>
+              )}
               <CRow className="mb-3">
                 <CCol md={6}>
                   <CFormLabel htmlFor="documento">Documento</CFormLabel>
