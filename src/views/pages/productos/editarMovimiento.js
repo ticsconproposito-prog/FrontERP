@@ -69,6 +69,14 @@ const EditarMovimiento = () => {
   const [modalError, setModalError] = useState(false)
   const [mensajeError, setMensajeError] = useState('')
   const returnFocusRef = useRef(null)
+  const tablaDetallesRef = useRef(null)
+
+  // Estados modal agregar producto
+  const [visibleModalProducto, setVisibleModalProducto] = useState(false)
+  const [productosModal, setProductosModal] = useState([])
+  const [ubicacionModalTexto, setUbicacionModalTexto] = useState({})
+  const [ubicacionModalSugerencias, setUbicacionModalSugerencias] = useState({})
+  const [ubicacionModalMostrar, setUbicacionModalMostrar] = useState({})
   // Filas con cantidad y precio habilitados para editar (por índice)
   const [filasEditables, setFilasEditables] = useState(new Set())
 
@@ -102,6 +110,14 @@ const EditarMovimiento = () => {
 
   const habilitarEdicionFila = (index) => {
     setFilasEditables(prev => new Set([...prev, index]))
+  }
+
+  const bloquearEdicionFila = (index) => {
+    setFilasEditables(prev => {
+      const next = new Set(prev)
+      next.delete(index)
+      return next
+    })
   }
 
   const eliminarDetalle = (index) => {
@@ -242,6 +258,121 @@ const EditarMovimiento = () => {
     setUbicacionAgregarTexto('')
   }
 
+  // ── Funciones del modal de agregar productos ──────────────────────────────
+  const abrirModalAgregarProducto = () => {
+    setProductosModal([])
+    setUbicacionModalTexto({})
+    setUbicacionModalSugerencias({})
+    setUbicacionModalMostrar({})
+    setBusquedaProducto('')
+    setSugerenciasProductos([])
+    setMostrarSugerencias(false)
+    setVisibleModalProducto(true)
+  }
+
+  const agregarProductoAlModal = (producto) => {
+    const existe = productosModal.find(
+      (p) => p.idProducto === (producto.idProducto ?? null)
+    )
+    if (existe) return
+    setProductosModal((prev) => [
+      ...prev,
+      {
+        id: Date.now(),
+        idProducto: producto.idProducto ?? null,
+        codigoProducto: (producto.codigoProducto ?? '').toString(),
+        codigoProductoProveedor: (producto.codigoProductoProveedor ?? '').toString(),
+        descripcion: (producto.descripcionProducto ?? '').toString(),
+        cantidad: 1,
+        precio: 0,
+        idUbicacion: '',
+        ubicacionTexto: '',
+      },
+    ])
+    setSugerenciasProductos([])
+    setMostrarSugerencias(false)
+    setBusquedaProducto('')
+  }
+
+  const actualizarCantidadModal = (index, valor) => {
+    setProductosModal((prev) => {
+      const lista = [...prev]
+      lista[index] = { ...lista[index], cantidad: valor === '' ? '' : Number(valor) || 0 }
+      return lista
+    })
+  }
+
+  const actualizarPrecioModal = (index, valor) => {
+    setProductosModal((prev) => {
+      const lista = [...prev]
+      lista[index] = { ...lista[index], precio: valor === '' ? '' : Number(valor) || 0 }
+      return lista
+    })
+  }
+
+  const eliminarProductoModal = (index) => {
+    setProductosModal((prev) => prev.filter((_, i) => i !== index))
+    setUbicacionModalTexto((prev) => { const n = { ...prev }; delete n[index]; return n })
+    setUbicacionModalSugerencias((prev) => { const n = { ...prev }; delete n[index]; return n })
+    setUbicacionModalMostrar((prev) => { const n = { ...prev }; delete n[index]; return n })
+  }
+
+  const handleUbicacionModalChange = (index, valor) => {
+    setUbicacionModalTexto((prev) => ({ ...prev, [index]: valor }))
+    setProductosModal((prev) => {
+      const lista = [...prev]
+      lista[index] = { ...lista[index], idUbicacion: '', ubicacionTexto: valor }
+      return lista
+    })
+    const valorLimpio = valor.trim()
+    if (valorLimpio.length >= 2) {
+      const valorLower = valorLimpio.toLowerCase()
+      const encontrados = ubicaciones.filter((u) => {
+        const nombre = (u.nombre || u.nombreUbicacion || u.descripcion || '').toString().toLowerCase()
+        return nombre.includes(valorLower)
+      })
+      setUbicacionModalSugerencias((prev) => ({ ...prev, [index]: encontrados.slice(0, 10) }))
+      setUbicacionModalMostrar((prev) => ({ ...prev, [index]: encontrados.length > 0 }))
+    } else {
+      setUbicacionModalSugerencias((prev) => ({ ...prev, [index]: [] }))
+      setUbicacionModalMostrar((prev) => ({ ...prev, [index]: false }))
+    }
+  }
+
+  const seleccionarUbicacionModal = (index, ubicacion) => {
+    const id = ubicacion.idUbicacion ?? ubicacion.id
+    const texto = ubicacion.nombre || ubicacion.nombreUbicacion || ubicacion.descripcion || ''
+    setUbicacionModalTexto((prev) => ({ ...prev, [index]: texto }))
+    setProductosModal((prev) => {
+      const lista = [...prev]
+      lista[index] = { ...lista[index], idUbicacion: id != null ? String(id) : '', ubicacionTexto: texto }
+      return lista
+    })
+    setUbicacionModalSugerencias((prev) => ({ ...prev, [index]: [] }))
+    setUbicacionModalMostrar((prev) => ({ ...prev, [index]: false }))
+  }
+
+  const confirmarProductosModal = () => {
+    const nuevosDetalles = productosModal.map((prod) => ({
+      idMovimientoProducto: null,
+      idOrdenProducto: parseInt(id, 10),
+      idProducto: prod.idProducto,
+      cantidad: Number(prod.cantidad) || 0,
+      precioCompra: Number(prod.precio) || 0,
+      idUbicacion: prod.idUbicacion ? parseInt(prod.idUbicacion, 10) : 1,
+    }))
+    setDetalles((prev) => [...prev, ...nuevosDetalles])
+    setVisibleModalProducto(false)
+    setProductosModal([])
+    setUbicacionModalTexto({})
+    setUbicacionModalSugerencias({})
+    setUbicacionModalMostrar({})
+    setBusquedaProducto('')
+    setSugerenciasProductos([])
+    setMostrarSugerencias(false)
+  }
+  // ── Fin funciones modal ────────────────────────────────────────────────────
+
   const cargarDiccionario = async () => {
     try {
       const [r1, r2, r3] = await Promise.all([
@@ -355,6 +486,17 @@ const EditarMovimiento = () => {
       cargarDetalles()
     }
   }, [id])
+
+  useEffect(() => {
+    const handleClickFuera = (e) => {
+      if (filasEditables.size === 0) return
+      if (tablaDetallesRef.current && !tablaDetallesRef.current.contains(e.target)) {
+        setFilasEditables(new Set())
+      }
+    }
+    document.addEventListener('mousedown', handleClickFuera)
+    return () => document.removeEventListener('mousedown', handleClickFuera)
+  }, [filasEditables])
 
   const totalOrden = detalles.reduce((sum, d) => sum + (d.cantidad || 0) * (d.precioCompra || 0), 0)
 
@@ -601,82 +743,19 @@ const EditarMovimiento = () => {
                   </CCol>
                 </CRow>
 
-                <h6 className="text-primary mb-3 mt-4">Detalle de productos</h6>
-
-                <div className="mb-3 p-3 border rounded bg-light">
-                  <CFormLabel className="fw-bold">Agregar producto</CFormLabel>
-                  <CRow className="g-2 align-items-end">
-                    <CCol md={3}>
-                      <CFormLabel className="small">Buscar (código o descripción)</CFormLabel>
-                      <div style={{ position: 'relative' }}>
-                        <CFormInput placeholder="Escriba al menos 2 caracteres..." value={busquedaProducto} onChange={handleBusquedaProducto} autoComplete="off" />
-                        {mostrarSugerencias && sugerenciasProductos.length > 0 && (
-                          <div className="list-group position-absolute w-100 mt-1 shadow" style={{ zIndex: 1050, maxHeight: '220px', overflowY: 'auto' }}>
-                            {sugerenciasProductos.map(p => (
-                              <button key={p.idProducto} type="button" className="list-group-item list-group-item-action text-start" onClick={() => seleccionarProductoAgregar(p)}>
-                                <strong>{p.codigoProducto}</strong> {p.codigoProductoProveedor && `| ${p.codigoProductoProveedor}`} — {String(p.descripcionProducto || '').substring(0, 50)}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </CCol>
-                    <CCol md={3}>
-                      <CFormLabel className="small">Ubicación</CFormLabel>
-                      <div style={{ position: 'relative' }}>
-                        <CFormInput
-                          placeholder="Buscar ubicación..."
-                          value={ubicacionAgregarTexto}
-                          onChange={handleUbicacionAgregarChange}
-                          autoComplete="off"
-                        />
-                        {mostrarSugerenciasUbicacion && sugerenciasUbicaciones.length > 0 && (
-                          <div className="list-group position-absolute w-100 mt-1 shadow" style={{ zIndex: 1050, maxHeight: '180px', overflowY: 'auto' }}>
-                            {sugerenciasUbicaciones.map(u => (
-                              <button
-                                key={u.idUbicacion ?? u.id}
-                                type="button"
-                                className="list-group-item list-group-item-action text-start"
-                                onClick={() => seleccionarUbicacionAgregarSugerencia(u)}
-                              >
-                                {u.nombre || u.nombreUbicacion || u.descripcion || '—'}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </CCol>
-                    <CCol md={2}>
-                      <CFormLabel className="small">Cantidad</CFormLabel>
-                      <CFormInput
-                        type="number"
-                        min="0"
-                        value={productoTemp.cantidad === '' ? '' : productoTemp.cantidad}
-                        onChange={e => {
-                          const v = e.target.value
-                          setProductoTemp(prev => ({ ...prev, cantidad: v === '' ? '' : (Number(v) || 0) }))
-                        }}
-                      />
-                    </CCol>
-                    <CCol md={2}>
-                      <CFormLabel className="small">Precio compra</CFormLabel>
-                      <CFormInput
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        value={productoTemp.precioCompra === '' ? '' : productoTemp.precioCompra}
-                        onChange={e => {
-                          const v = e.target.value
-                          setProductoTemp(prev => ({ ...prev, precioCompra: v === '' ? '' : (Number(v) || 0) }))
-                        }}
-                      />
-                    </CCol>
-                    <CCol md={2}>
-                      <CButton type="button" color="success" className="me-2 text-white" onClick={agregarProductoALista}>Agregar producto</CButton>
-                    </CCol>
-                  </CRow>
+                <div className="d-flex justify-content-between align-items-center mb-3 mt-4">
+                  <h6 className="text-primary mb-0">Detalle de productos</h6>
+                  <CButton
+                    color="success"
+                    size="sm"
+                    className="text-light"
+                    onClick={abrirModalAgregarProducto}
+                  >
+                    + Agregar Producto
+                  </CButton>
                 </div>
 
+                <div ref={tablaDetallesRef}>
                 <CTable striped hover bordered responsive>
                   <CTableHead>
                     <CTableRow>
@@ -720,9 +799,15 @@ const EditarMovimiento = () => {
                           <CTableDataCell className="text-end">Q{(subtotal || 0).toFixed(2)}</CTableDataCell>
                           <CTableDataCell className="text-center text-nowrap">
                             <CButtonGroup size="sm" role="group" aria-label="Acciones del producto">
-                              <CButton type="button" color="warning" className="text-dark" onClick={() => habilitarEdicionFila(index)} title="Editar cantidad y precio">
-                                ✏️
-                              </CButton>
+                              {editable ? (
+                                <CButton type="button" color="success" className="text-white" onClick={() => bloquearEdicionFila(index)} title="Confirmar y bloquear">
+                                  🔒
+                                </CButton>
+                              ) : (
+                                <CButton type="button" color="warning" className="text-dark" onClick={() => habilitarEdicionFila(index)} title="Editar cantidad y precio">
+                                  ✏️
+                                </CButton>
+                              )}
                               <CButton type="button" color="danger" className="text-white" onClick={() => eliminarDetalle(index)} title="Eliminar">
                                 🗑️
                               </CButton>
@@ -733,6 +818,7 @@ const EditarMovimiento = () => {
                     })}
                   </CTableBody>
                 </CTable>
+                </div>
                 {detalles.length > 0 && (
                   <div className="d-flex justify-content-end mt-2">
                     <strong>Total orden: Q{totalOrden.toFixed(2)}</strong>
@@ -752,6 +838,181 @@ const EditarMovimiento = () => {
           </CCard>
         </CCol>
       </CRow>
+
+      {/* Modal Agregar Producto */}
+      <CModal
+        visible={visibleModalProducto}
+        onClose={() => setVisibleModalProducto(false)}
+        size="xl"
+        backdrop="static"
+        keyboard={false}
+      >
+        <CModalHeader className="bg-primary text-white">
+          <CModalTitle className="d-flex align-items-center gap-2">
+            <span>🛒</span> Agregar Producto al Movimiento
+          </CModalTitle>
+        </CModalHeader>
+        <CModalBody className="p-4">
+          {/* Búsqueda */}
+          <div className="mb-3">
+            <h6 className="mb-3">🔍 Buscar Producto</h6>
+            <CFormInput
+              type="text"
+              placeholder="Buscar por código, código proveedor o descripción..."
+              value={busquedaProducto}
+              onChange={handleBusquedaProducto}
+              autoComplete="off"
+              className="form-control-lg mb-3"
+            />
+            {mostrarSugerencias && sugerenciasProductos.length > 0 && (
+              <div className="list-group" style={{ maxHeight: '220px', overflowY: 'auto', border: '1px solid #dee2e6', borderRadius: '6px' }}>
+                <div className="list-group-item list-group-item-primary py-2" style={{ position: 'sticky', top: 0, zIndex: 1 }}>
+                  <small><strong>Productos encontrados ({sugerenciasProductos.length}):</strong> Haga clic para agregar</small>
+                </div>
+                {sugerenciasProductos.map((producto, index) => (
+                  <button
+                    key={producto.idProducto || index}
+                    type="button"
+                    className="list-group-item list-group-item-action text-start"
+                    onClick={() => agregarProductoAlModal(producto)}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    <strong className="text-primary">{producto.codigoProducto}</strong>
+                    {producto.codigoProductoProveedor && <span className="text-muted ms-2">| Prov: {producto.codigoProductoProveedor}</span>}
+                    <div><small className="text-muted">{producto.descripcionProducto}</small></div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Tabla de productos en el modal */}
+          <div className="mt-4">
+            <h6 className="text-primary mb-3">Detalle de Productos</h6>
+            <CTable bordered hover responsive>
+              <CTableHead className="bg-light text-dark">
+                <CTableRow>
+                  <CTableHeaderCell className="py-2">No.</CTableHeaderCell>
+                  <CTableHeaderCell className="py-2">Código</CTableHeaderCell>
+                  <CTableHeaderCell className="py-2">Cód. Proveedor</CTableHeaderCell>
+                  <CTableHeaderCell className="py-2">Descripción</CTableHeaderCell>
+                  <CTableHeaderCell className="py-2">Ubicación</CTableHeaderCell>
+                  <CTableHeaderCell className="py-2">Cantidad</CTableHeaderCell>
+                  <CTableHeaderCell className="py-2">Precio Compra</CTableHeaderCell>
+                  <CTableHeaderCell className="py-2 text-end">Subtotal</CTableHeaderCell>
+                  <CTableHeaderCell className="py-2 text-center">Eliminar</CTableHeaderCell>
+                </CTableRow>
+              </CTableHead>
+              <CTableBody>
+                {productosModal.length === 0 ? (
+                  <CTableRow>
+                    <CTableDataCell colSpan={9} className="text-center py-4 text-muted">
+                      No hay productos agregados. Busque y seleccione productos arriba.
+                    </CTableDataCell>
+                  </CTableRow>
+                ) : (
+                  productosModal.map((prod, index) => (
+                    <CTableRow key={prod.id || index}>
+                      <CTableDataCell>{index + 1}</CTableDataCell>
+                      <CTableDataCell><strong>{prod.codigoProducto}</strong></CTableDataCell>
+                      <CTableDataCell>{prod.codigoProductoProveedor || '—'}</CTableDataCell>
+                      <CTableDataCell>{prod.descripcion}</CTableDataCell>
+                      <CTableDataCell style={{ minWidth: '150px', position: 'relative' }}>
+                        <CFormInput
+                          type="text"
+                          size="sm"
+                          placeholder="Buscar ubicación..."
+                          value={ubicacionModalTexto[index] ?? prod.ubicacionTexto ?? ''}
+                          onChange={(e) => handleUbicacionModalChange(index, e.target.value)}
+                          autoComplete="off"
+                        />
+                        {ubicacionModalMostrar[index] && (ubicacionModalSugerencias[index] || []).length > 0 && (
+                          <div style={{
+                            position: 'absolute', top: '100%', left: 0, right: 0,
+                            zIndex: 1060, maxHeight: '180px', overflowY: 'auto',
+                            border: '1px solid #dee2e6', borderRadius: '4px',
+                            backgroundColor: '#fff', boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                          }} className="list-group">
+                            {(ubicacionModalSugerencias[index] || []).map((u) => (
+                              <button
+                                key={u.idUbicacion ?? u.id}
+                                type="button"
+                                className="list-group-item list-group-item-action text-start py-1"
+                                onClick={() => seleccionarUbicacionModal(index, u)}
+                                style={{ cursor: 'pointer', fontSize: '0.85rem' }}
+                              >
+                                {u.nombre || u.nombreUbicacion || u.descripcion || '—'}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </CTableDataCell>
+                      <CTableDataCell style={{ width: '90px' }}>
+                        <CFormInput
+                          type="number"
+                          size="sm"
+                          min="1"
+                          value={prod.cantidad}
+                          onChange={(e) => actualizarCantidadModal(index, e.target.value)}
+                          placeholder="0"
+                        />
+                      </CTableDataCell>
+                      <CTableDataCell style={{ width: '120px' }}>
+                        <CFormInput
+                          type="number"
+                          size="sm"
+                          min="0"
+                          step="0.01"
+                          value={prod.precio}
+                          onChange={(e) => actualizarPrecioModal(index, e.target.value)}
+                          placeholder="0.00"
+                        />
+                      </CTableDataCell>
+                      <CTableDataCell className="text-end">
+                        Q{((Number(prod.cantidad) || 0) * (Number(prod.precio) || 0)).toFixed(2)}
+                      </CTableDataCell>
+                      <CTableDataCell className="text-center">
+                        <CButton color="danger" size="sm" onClick={() => eliminarProductoModal(index)}>
+                          🗑️
+                        </CButton>
+                      </CTableDataCell>
+                    </CTableRow>
+                  ))
+                )}
+              </CTableBody>
+            </CTable>
+            {productosModal.length > 0 && (
+              <div className="d-flex justify-content-end mt-2">
+                <div className="border rounded p-2" style={{ minWidth: '220px' }}>
+                  <div className="d-flex justify-content-between">
+                    <strong>Total general:</strong>
+                    <strong className="text-primary">
+                      Q{productosModal.reduce((sum, p) => sum + (Number(p.cantidad) || 0) * (Number(p.precio) || 0), 0).toFixed(2)}
+                    </strong>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </CModalBody>
+        <CModalFooter className="bg-light">
+          <CButton
+            color="light"
+            className="border d-flex align-items-center gap-2"
+            onClick={() => setVisibleModalProducto(false)}
+          >
+            <span>✖️</span> Cancelar
+          </CButton>
+          <CButton
+            color="primary"
+            className="text-light d-flex align-items-center gap-2"
+            onClick={confirmarProductosModal}
+            disabled={productosModal.length === 0}
+          >
+            <span>✔️</span> Confirmar Productos
+          </CButton>
+        </CModalFooter>
+      </CModal>
 
       <CModal
         visible={modalExito}
