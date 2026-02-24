@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import logoFerreteria from 'src/assets/images/logo-ferreteria-agmner.png'
 import {
   CButton,
   CCard,
@@ -500,6 +501,266 @@ const Layout = () => {
     }
   };
 
+  const formatearFechaFactura = (fecha) => {
+    if (!fecha) return '—';
+    try {
+      const [yyyy, mm, dd] = fecha.split('-');
+      return `${dd}-${mm}-${yyyy}`;
+    } catch (_) {
+      return fecha;
+    }
+  };
+
+  const imprimirFactura = async ({ cliente, detalle, iva, total, totalDescuento, numeroAutorizacion, serieRes, referenciaRes }) => {
+    const moneda = cliente.moneda === '1' ? 'Q' : '$';
+
+    // Convertir logo a base64 para que funcione en la ventana de impresión
+    let logoBase64 = '';
+    try {
+      const resp = await fetch(logoFerreteria);
+      const blob = await resp.blob();
+      logoBase64 = await new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result);
+        reader.readAsDataURL(blob);
+      });
+    } catch (_) {
+      logoBase64 = '';
+    }
+
+    const FILAS_MINIMAS = 25;
+    const filasProducto = detalle.map((item) => `
+      <tr>
+        <td style="text-align:center;">${item.cantidad}</td>
+        <td>${item.descripcion || item.nombre || ''}</td>
+        <td style="text-align:right;">${moneda}${Number(item.precioUnitario || 0).toFixed(2)}</td>
+        <td style="text-align:right;">${moneda}${Number(item.total || 0).toFixed(2)}</td>
+      </tr>
+    `).join('');
+
+    const filasVacias = Math.max(0, FILAS_MINIMAS - detalle.length);
+    const filasRelleno = Array.from({ length: filasVacias }, () => `
+      <tr>
+        <td>&nbsp;</td>
+        <td>&nbsp;</td>
+        <td>&nbsp;</td>
+        <td>&nbsp;</td>
+      </tr>
+    `).join('');
+
+    const filas = filasProducto + filasRelleno;
+
+    const html = `
+      <!DOCTYPE html>
+      <html lang="es">
+      <head>
+        <meta charset="UTF-8" />
+        <title></title>
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { font-family: Arial, sans-serif; font-size: 12px; color: #222; }
+
+          @page { size: A4; margin: 8mm 10mm; }
+
+          @media print {
+            body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          }
+
+          .page { width: 100%; min-height: 277mm; padding: 6mm 8mm; }
+
+          /* ── Encabezado ── */
+          .header-empresa {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            border-bottom: 2px solid #555;
+            padding-bottom: 10px;
+            margin-bottom: 10px;
+            width: 100%;
+          }
+          .logo { min-width: 140px; text-align: center; }
+          .logo img { width: 140px; height: auto; display: block; margin: 0 auto; }
+          .logo .telefonos { font-size: 12px; font-weight: bold; color: #222; margin-top: 6px; }
+          .empresa-info { flex: 1; text-align: center; }
+          .empresa-nombre { font-size: 15px; font-weight: bold; margin-bottom: 3px; }
+          .empresa-linea { font-size: 11px; margin-bottom: 2px; }
+          .factura-id { text-align: right; min-width: 185px; }
+          .factura-id .factura-titulo { font-size: 17px; font-weight: bold; margin-bottom: 4px; }
+          .factura-id .factura-linea { font-size: 11px; margin-bottom: 3px; color: #333; }
+
+          /* ── Datos cliente ── */
+          .cliente-box {
+            border: 1px solid #555;
+            border-radius: 3px;
+            padding: 7px 10px;
+            margin-bottom: 10px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4px 24px;
+            font-size: 11.5px;
+          }
+          .cliente-box .field label { font-weight: bold; color: #000; }
+
+          /* ── Tabla detalle ── */
+          .detalle-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            margin-bottom: 10px;
+            font-size: 11.5px;
+            table-layout: fixed;
+            border: 1px solid #555;
+            border-radius: 6px;
+            overflow: hidden;
+          }
+          .detalle-table th {
+            background: #fff;
+            color: #000;
+            padding: 6px 8px;
+            font-weight: bold;
+            border-left: 1px solid #555;
+            border-right: 1px solid #555;
+            border-top: none;
+            border-bottom: 1px solid #555;
+            text-align: left;
+          }
+          .detalle-table tbody tr:last-child td {
+            border-bottom: none;
+          }
+          .detalle-table td {
+            padding: 5px 8px;
+            border-left: 1px solid #555;
+            border-right: 1px solid #555;
+            border-top: none;
+            border-bottom: none;
+            vertical-align: top;
+            height: 22px;
+          }
+          .detalle-table col.col-cant  { width: 60px; }
+          .detalle-table col.col-desc  { width: auto; }
+          .detalle-table col.col-precio { width: 110px; }
+          .detalle-table col.col-total  { width: 110px; }
+          .detalle-table th:nth-child(1),
+          .detalle-table td:nth-child(1) { text-align: center; }
+          .detalle-table th:nth-child(3),
+          .detalle-table td:nth-child(3),
+          .detalle-table th:nth-child(4),
+          .detalle-table td:nth-child(4) { text-align: right; }
+
+          /* ── Totales ── */
+          .totales-wrap { display: flex; justify-content: flex-end; margin-bottom: 12px; }
+          .totales-tabla {
+            border: 1px solid #555;
+            border-collapse: separate;
+            border-spacing: 0;
+            font-size: 12px;
+            min-width: 240px;
+            border-radius: 6px;
+            overflow: hidden;
+          }
+          .totales-tabla td {
+            padding: 5px 12px;
+            border-bottom: 1px solid #555;
+          }
+          .totales-tabla tr:last-child td { border-bottom: none; }
+          .totales-tabla td:last-child { text-align: right; }
+          .totales-tabla .fila-total {
+            font-weight: bold;
+            font-size: 13px;
+            border-top: 1px solid #555;
+          }
+
+          /* ── Pie ── */
+          .footer {
+            text-align: center;
+            font-size: 10px;
+            color: #777;
+            border-top: 1px solid #ccc;
+            padding-top: 7px;
+            margin-top: 8px;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="page">
+
+          <!-- Encabezado empresa -->
+          <div class="header-empresa">
+            <div class="logo">
+              ${logoBase64 ? `<img src="${logoBase64}" alt="Logo" />` : ''}
+              <div class="telefonos">📞 7888-9138 / 5203-0726</div>
+            </div>
+            <div class="empresa-info">
+              <div class="empresa-nombre">Ferretería y Blockera Agmner</div>
+              <div class="empresa-linea">JUAN ALBERTO, ARREDONDO GARCIA</div>
+              <div class="empresa-linea">CALLE PRINCIPAL SECTOR PALIN NUEVA SANTA ROSA</div>
+              <div class="empresa-linea">SANTA ROSA</div>
+              <div class="empresa-linea">NIT: 16949447</div>
+            </div>
+            <div class="factura-id">
+              <div class="factura-titulo">FACTURA</div>
+              <div class="factura-linea"><strong>NÚMERO DE AUTORIZACIÓN</strong></div>
+              <div class="factura-linea">${numeroAutorizacion || '—'}</div>
+              <div class="factura-linea"><strong>Serie:</strong> ${serieRes || '—'}</div>
+              <div class="factura-linea"><strong>No. Referencia:</strong> ${referenciaRes || '—'}</div>
+              <div class="factura-linea" style="margin-top:5px;"><strong>Fecha Factura:</strong> ${formatearFechaFactura(cliente.fecha)}</div>
+            </div>
+          </div>
+
+          <!-- Datos del cliente -->
+          <div class="cliente-box">
+            <div class="field"><label>Nombre: </label>${cliente.nombre || 'Consumidor Final'}</div>
+            <div class="field"><label>NIT: </label>${cliente.nit || 'CF'}</div>
+            <div class="field"><label>Dirección: </label>${cliente.direccion || '—'}</div>
+            <div class="field"><label>Dirección de entrega: </label>${cliente.direccionEntrega || '—'}</div>
+          </div>
+
+          <!-- Tabla de detalle -->
+          <table class="detalle-table">
+            <colgroup>
+              <col class="col-cant" />
+              <col class="col-desc" />
+              <col class="col-precio" />
+              <col class="col-total" />
+            </colgroup>
+            <thead>
+              <tr>
+                <th>Cantidad</th>
+                <th>Descripción</th>
+                <th>Precio Unitario</th>
+                <th>Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${filas}
+            </tbody>
+          </table>
+
+          <!-- Totales -->
+          <div class="totales-wrap">
+            <table class="totales-tabla">
+              ${totalDescuento > 0 ? `<tr><td>Descuento:</td><td>- ${moneda}${totalDescuento.toFixed(2)}</td></tr>` : ''}
+              <tr><td>IVA:</td><td>${moneda}${iva.toFixed(2)}</td></tr>
+              <tr class="fila-total"><td>TOTAL:</td><td>${moneda}${total.toFixed(2)}</td></tr>
+            </table>
+          </div>
+
+          <div class="footer">Gracias por su compra — Ferretería y Blockera Agmner</div>
+        </div>
+        <script>
+          window.onload = function() { window.print(); window.onafterprint = function() { window.close(); }; };
+        </script>
+      </body>
+      </html>
+    `;
+
+    const ventana = window.open('', '_blank', 'width=900,height=700');
+    if (ventana) {
+      ventana.document.write(html);
+      ventana.document.close();
+    }
+  };
+
   const guardarFactura = async (e) => {
     e.preventDefault();
     setErrorFactura('');
@@ -604,7 +865,33 @@ const Layout = () => {
         throw new Error('La factura se guardó pero algunos productos del detalle fallaron');
       }
 
-      alert('Factura guardada exitosamente');
+      // Consultar el encabezado guardado para obtener datos generados por el backend
+      let numeroAutorizacion = '';
+      let serieRes = '';
+      let referenciaRes = body.referencia ?? '';
+      try {
+        const resConsulta = await fetch(`/api/encabezadoFacturas/${idEncabezadoFactura.trim()}`);
+        if (resConsulta.ok) {
+          const dataConsulta = await resConsulta.json();
+          numeroAutorizacion = dataConsulta?.numeroAutorizacionResAPI ?? '';
+          serieRes = dataConsulta?.serieResAPI ?? '';
+          referenciaRes = dataConsulta?.referencia ?? referenciaRes;
+        }
+      } catch (_) {
+        // Si la consulta falla, se imprime sin esos datos
+      }
+
+      await imprimirFactura({
+        cliente: { ...formFactura },
+        detalle: [...detalleFactura],
+        iva: calcularIVA(),
+        total: calcularTotal(),
+        totalDescuento: calcularTotalDescuentoProductos(),
+        numeroAutorizacion,
+        serieRes,
+        referenciaRes,
+      });
+
       limpiarFormulario();
       setDetalleFactura([]);
       setErrorFactura('');
