@@ -61,7 +61,7 @@ const _nav = [
       {
         component: CNavItem,
         name: 'Inventario',
-        to: '/buttons/button-groups',
+        to: '/pages/productos/reporte-inventario',
       },
       {
         component: CNavItem,
@@ -75,11 +75,6 @@ const _nav = [
     name: 'Reportes',
     icon: <CIcon icon={cilChart} customClassName="nav-icon" />,
     items: [
-      {
-        component: CNavItem,
-        name: 'Reporte de Inventario',
-        to: '/pages/productos/reporte-inventario',
-      },
       {
         component: CNavItem,
         name: 'Resumen de Ventas',
