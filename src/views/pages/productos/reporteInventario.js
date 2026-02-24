@@ -294,28 +294,33 @@ const ReporteInventario = () => {
 
                   {/* Paginación */}
                   {totalPages > 1 && (
-                    <CPagination align="center" aria-label="Paginación de inventario">
-                      <CPaginationItem
-                        disabled={page === 0}
-                        onClick={() => cargarInventario(page - 1)}
-                      >
-                        Anterior
-                      </CPaginationItem>
-                      {[...Array(totalPages)].map((_, idx) => (
-                        <CPaginationItem
-                          key={idx}
-                          active={idx === page}
-                          onClick={() => cargarInventario(idx)}
-                        >
-                          {idx + 1}
-                        </CPaginationItem>
-                      ))}
-                      <CPaginationItem
-                        disabled={page === totalPages - 1}
-                        onClick={() => cargarInventario(page + 1)}
-                      >
-                        Siguiente
-                      </CPaginationItem>
+                    <CPagination align="center" aria-label="Paginación de inventario" className="flex-wrap align-items-center">
+                      <CPaginationItem disabled={page === 0} onClick={() => cargarInventario(0)} title="Primera página">«</CPaginationItem>
+                      <CPaginationItem disabled={page === 0} onClick={() => cargarInventario(page - 1)}>Anterior</CPaginationItem>
+                      {(() => {
+                        if (totalPages <= 7) {
+                          return [...Array(totalPages)].map((_, i) => (
+                            <CPaginationItem key={i} active={i === page} onClick={() => cargarInventario(i)}>{i + 1}</CPaginationItem>
+                          ))
+                        }
+                        const items = []
+                        const inicio = Math.max(0, page - 2)
+                        const fin = Math.min(totalPages - 1, page + 2)
+                        if (page > 2) {
+                          items.push(<CPaginationItem key={0} onClick={() => cargarInventario(0)}>1</CPaginationItem>)
+                          if (page > 3) items.push(<CPaginationItem key="e1" disabled>…</CPaginationItem>)
+                        }
+                        for (let i = inicio; i <= fin; i++) {
+                          items.push(<CPaginationItem key={i} active={i === page} onClick={() => cargarInventario(i)}>{i + 1}</CPaginationItem>)
+                        }
+                        if (page < totalPages - 3) {
+                          if (page < totalPages - 4) items.push(<CPaginationItem key="e2" disabled>…</CPaginationItem>)
+                          items.push(<CPaginationItem key={totalPages - 1} onClick={() => cargarInventario(totalPages - 1)}>{totalPages}</CPaginationItem>)
+                        }
+                        return items
+                      })()}
+                      <CPaginationItem disabled={page === totalPages - 1} onClick={() => cargarInventario(page + 1)}>Siguiente</CPaginationItem>
+                      <CPaginationItem disabled={page === totalPages - 1} onClick={() => cargarInventario(totalPages - 1)} title="Última página">»</CPaginationItem>
                     </CPagination>
                   )}
                 </>

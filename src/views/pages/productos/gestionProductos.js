@@ -522,11 +522,6 @@ const Layout = () => {
                     </CCol>
                     {!modoEdicion && (
                       <CCol className="d-flex justify-content-end">
-                        <div className="mt-auto">
-                          <CButton className="text-dark" color="warning">
-                            Carga Masiva
-                          </CButton>
-                        </div>
                       </CCol>
                     )}
                   </CRow>
@@ -653,7 +648,7 @@ const Layout = () => {
                     <CTableDataCell>{producto.descripcionProducto}</CTableDataCell>
                     <CTableDataCell>{obtenerNombreUnidad(producto.unidadDeMedida)}</CTableDataCell>
                     <CTableDataCell>
-                      <span className={`badge ${producto.estado === 1 ? 'bg-success' : 'bg-secondary'}`}>
+                      <span style={{ color: '#000' }}>
                         {obtenerNombreEstado(producto.estado)}
                       </span>
                     </CTableDataCell>
@@ -676,30 +671,45 @@ const Layout = () => {
                 ))}
               </CTableBody>
             </CTable>
-            <CPagination className="justify-content-end mt-3">
-              <CPaginationItem
-                disabled={page === 0}
-                onClick={() => cargarProductos(page - 1)}
-              >
-                Anterior
-              </CPaginationItem>
+            <CPagination className="justify-content-end mt-3 flex-wrap align-items-center">
+              {/* Primera */}
+              <CPaginationItem disabled={page === 0} onClick={() => cargarProductos(0)} title="Primera página">«</CPaginationItem>
+              {/* Anterior */}
+              <CPaginationItem disabled={page === 0} onClick={() => cargarProductos(page - 1)}>Anterior</CPaginationItem>
 
-              {[...Array(totalPages)].map((_, index) => (
-                <CPaginationItem
-                  key={index}
-                  active={index === page}
-                  onClick={() => cargarProductos(index)}
-                >
-                  {index + 1}
-                </CPaginationItem>
-              ))}
+              {/* Ventana de páginas */}
+              {(() => {
+                if (totalPages <= 7) {
+                  return [...Array(totalPages)].map((_, i) => (
+                    <CPaginationItem key={i} active={i === page} onClick={() => cargarProductos(i)}>{i + 1}</CPaginationItem>
+                  ))
+                }
+                const items = []
+                const mostrarPrimera = page > 2
+                const mostrarUltima = page < totalPages - 3
+                const inicio = Math.max(0, page - 2)
+                const fin = Math.min(totalPages - 1, page + 2)
 
-              <CPaginationItem
-                disabled={page === totalPages - 1}
-                onClick={() => cargarProductos(page + 1)}
-              >
-                Siguiente
-              </CPaginationItem>
+                if (mostrarPrimera) {
+                  items.push(<CPaginationItem key={0} onClick={() => cargarProductos(0)}>1</CPaginationItem>)
+                  if (page > 3) items.push(<CPaginationItem key="e1" disabled>…</CPaginationItem>)
+                }
+                for (let i = inicio; i <= fin; i++) {
+                  items.push(
+                    <CPaginationItem key={i} active={i === page} onClick={() => cargarProductos(i)}>{i + 1}</CPaginationItem>
+                  )
+                }
+                if (mostrarUltima) {
+                  if (page < totalPages - 4) items.push(<CPaginationItem key="e2" disabled>…</CPaginationItem>)
+                  items.push(<CPaginationItem key={totalPages - 1} onClick={() => cargarProductos(totalPages - 1)}>{totalPages}</CPaginationItem>)
+                }
+                return items
+              })()}
+
+              {/* Siguiente */}
+              <CPaginationItem disabled={page === totalPages - 1} onClick={() => cargarProductos(page + 1)}>Siguiente</CPaginationItem>
+              {/* Última */}
+              <CPaginationItem disabled={page === totalPages - 1} onClick={() => cargarProductos(totalPages - 1)} title="Última página">»</CPaginationItem>
             </CPagination>
           </CCardBody>
         </CCard>
