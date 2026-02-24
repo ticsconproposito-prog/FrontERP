@@ -32,7 +32,7 @@ const AgregarMovimiento = () => {
     proveedor: '',
     tipoMovimiento: '',
     tipoOrden: '',
-    tipoDocumento: '',
+
     numeroDocumento: '',
     fechaIngreso: '',
     estadoFactura: '',
@@ -45,7 +45,6 @@ const AgregarMovimiento = () => {
   const [tipoMovimiento, setTipoMovimiento] = useState([])
   const [tipoOrden, setTipoOrden] = useState([])
   const [estadoFactura, setEstadoFactura] = useState([])
-  const [tipoDocumentoOpts, setTipoDocumentoOpts] = useState([])
   const [proveedores, setProveedores] = useState([])
 
   // Estado para productos disponibles
@@ -69,6 +68,11 @@ const AgregarMovimiento = () => {
   const [mostrarSugerenciasProveedor, setMostrarSugerenciasProveedor] = useState(false)
 
   // Estados para los modales
+  const [visibleModalProducto, setVisibleModalProducto] = useState(false)
+  const [productosModal, setProductosModal] = useState([])
+  const [ubicacionModalTexto, setUbicacionModalTexto] = useState({}) // { [index]: texto }
+  const [ubicacionModalSugerencias, setUbicacionModalSugerencias] = useState({}) // { [index]: [] }
+  const [ubicacionModalMostrar, setUbicacionModalMostrar] = useState({}) // { [index]: bool }
   const [modalExito, setModalExito] = useState(false)
   const [numeroOrdenGuardada, setNumeroOrdenGuardada] = useState(null)
   const [modalAdvertencia, setModalAdvertencia] = useState(false)
@@ -90,6 +94,116 @@ const AgregarMovimiento = () => {
   })
 
   // Función para agregar una nueva fila editable
+  const abrirModalAgregarProducto = () => {
+    setFilaEditando('nuevo')
+    setProductoTemp({
+      idProducto: null,
+      codigoProducto: '',
+      codigoProductoProveedor: '',
+      descripcion: '',
+      cantidad: 0,
+      precio: 0
+    })
+    setSugerenciasProductos([])
+    setMostrarSugerencias(false)
+    setUbicacionDetalleTexto('')
+    setIdUbicacionDetalle('')
+    setProductosModal([...productos])
+    setVisibleModalProducto(true)
+  }
+
+  const agregarProductoAlModal = (producto) => {
+    const existe = productosModal.find(
+      (p) => p.idProducto === (producto.idProducto ?? null) &&
+             p.codigoProducto === (producto.codigoProducto ?? '')
+    )
+    if (existe) return
+
+    const nuevoProducto = {
+      id: Date.now(),
+      idProducto: producto.idProducto ?? null,
+      codigoProducto: (producto.codigoProducto ?? '').toString(),
+      codigoProductoProveedor: (producto.codigoProductoProveedor ?? '').toString(),
+      descripcion: (producto.descripcionProducto ?? '').toString(),
+      cantidad: 1,
+      precio: 0,
+      idUbicacion: '',
+      ubicacionTexto: '',
+    }
+    setProductosModal((prev) => [...prev, nuevoProducto])
+    setSugerenciasProductos([])
+    setMostrarSugerencias(false)
+    setProductoTemp((prev) => ({ ...prev, codigoProducto: '', codigoProductoProveedor: '', descripcion: '' }))
+  }
+
+  const actualizarCantidadModal = (index, valor) => {
+    setProductosModal((prev) => {
+      const lista = [...prev]
+      lista[index] = { ...lista[index], cantidad: valor === '' ? '' : Number(valor) || 0 }
+      return lista
+    })
+  }
+
+  const actualizarPrecioModal = (index, valor) => {
+    setProductosModal((prev) => {
+      const lista = [...prev]
+      lista[index] = { ...lista[index], precio: valor === '' ? '' : Number(valor) || 0 }
+      return lista
+    })
+  }
+
+  const eliminarProductoModal = (index) => {
+    setProductosModal((prev) => prev.filter((_, i) => i !== index))
+    setUbicacionModalTexto((prev) => { const n = { ...prev }; delete n[index]; return n })
+    setUbicacionModalSugerencias((prev) => { const n = { ...prev }; delete n[index]; return n })
+    setUbicacionModalMostrar((prev) => { const n = { ...prev }; delete n[index]; return n })
+  }
+
+  const handleUbicacionModalChange = (index, valor) => {
+    setUbicacionModalTexto((prev) => ({ ...prev, [index]: valor }))
+    setProductosModal((prev) => {
+      const lista = [...prev]
+      lista[index] = { ...lista[index], idUbicacion: '', ubicacionTexto: valor }
+      return lista
+    })
+    const valorLimpio = valor.trim()
+    if (valorLimpio.length >= 2) {
+      const valorLower = valorLimpio.toLowerCase()
+      const encontrados = ubicaciones.filter((u) => {
+        const nombre = (u.nombre || u.nombreUbicacion || u.descripcion || '').toString().toLowerCase()
+        return nombre.includes(valorLower)
+      })
+      setUbicacionModalSugerencias((prev) => ({ ...prev, [index]: encontrados.slice(0, 10) }))
+      setUbicacionModalMostrar((prev) => ({ ...prev, [index]: encontrados.length > 0 }))
+    } else {
+      setUbicacionModalSugerencias((prev) => ({ ...prev, [index]: [] }))
+      setUbicacionModalMostrar((prev) => ({ ...prev, [index]: false }))
+    }
+  }
+
+  const seleccionarUbicacionModal = (index, ubicacion) => {
+    const id = ubicacion.idUbicacion ?? ubicacion.id
+    const texto = ubicacion.nombre || ubicacion.nombreUbicacion || ubicacion.descripcion || ''
+    setUbicacionModalTexto((prev) => ({ ...prev, [index]: texto }))
+    setProductosModal((prev) => {
+      const lista = [...prev]
+      lista[index] = { ...lista[index], idUbicacion: id != null ? String(id) : '', ubicacionTexto: texto }
+      return lista
+    })
+    setUbicacionModalSugerencias((prev) => ({ ...prev, [index]: [] }))
+    setUbicacionModalMostrar((prev) => ({ ...prev, [index]: false }))
+  }
+
+  const confirmarProductosModal = () => {
+    setProductos(productosModal.map((p) => ({
+      ...p,
+      cantidad: parseFloat(p.cantidad) || 0,
+      precio: parseFloat(p.precio) || 0,
+    })))
+    setVisibleModalProducto(false)
+    cancelarEdicion()
+  }
+
   const agregarNuevaFila = () => {
     setFilaEditando('nuevo')
     setProductoTemp({
@@ -500,8 +614,6 @@ const AgregarMovimiento = () => {
       const responseTipoMovimiento = await fetch('/api/diccionarios?diccionario=TIPODEMOVIMIENTO')
       const responseTipoOrden = await fetch('/api/diccionarios?diccionario=TIPODEORDEN')
       const responseEstadoFactura = await fetch('/api/diccionarios?diccionario=ESTADOFATURAORDEN')
-      const responseTipoDocumento = await fetch('/api/diccionarios?diccionario=TIPODEDOCUMENTO')
-
       if (!responseTipoMovimiento.ok || !responseTipoOrden.ok || !responseEstadoFactura.ok) {
         throw new Error('Error al cargar diccionarios')
       }
@@ -509,8 +621,6 @@ const AgregarMovimiento = () => {
       const dataTipoMovimiento = await responseTipoMovimiento.json()
       const dataTipoOrden = await responseTipoOrden.json()
       const dataEstadoFactura = await responseEstadoFactura.json()
-      const dataTipoDocumento = await responseTipoDocumento.json()
-
       // Extraer arrays de tipo de movimiento (puede venir como array directo o en content)
       const tipoMov = Array.isArray(dataTipoMovimiento)
         ? dataTipoMovimiento
@@ -541,19 +651,11 @@ const AgregarMovimiento = () => {
       console.log('Estados Factura cargados:', tipoEstadoFactura)
       setEstadoFactura(tipoEstadoFactura)
 
-      const tipoDoc = Array.isArray(dataTipoDocumento)
-        ? dataTipoDocumento
-        : Array.isArray(dataTipoDocumento?.content)
-          ? dataTipoDocumento.content
-          : []
-      setTipoDocumentoOpts(tipoDoc)
-
     } catch (error) {
       console.error('Error al cargar diccionarios:', error)
       setTipoMovimiento([])
       setTipoOrden([])
       setEstadoFactura([])
-      setTipoDocumentoOpts([])
     }
   }
 
@@ -730,24 +832,7 @@ const AgregarMovimiento = () => {
                 <CRow className="mb-3">
 
 
-                  <CCol xs={12} md={3}>
-                    <CFormLabel htmlFor="tipoDocumento">Tipo Documento</CFormLabel>
-                    <CFormSelect
-                      id="tipoDocumento"
-                      name="tipoDocumento"
-                      value={formData.tipoDocumento}
-                      onChange={handleChange}
-                      required>
-                      <option value="">Seleccione</option>
-                      {tipoDocumentoOpts.map((doc) => (
-                        <option key={doc.indice} value={doc.indice}>
-                          {doc.valor}
-                        </option>
-                      ))}
-                    </CFormSelect>
-                  </CCol>
-
-                  <CCol xs={12} md={3}>
+                  <CCol xs={12} md={4}>
                     <CFormLabel htmlFor="numeroDocumento">Número de Documento</CFormLabel>
                     <CFormInput
                       type="text"
@@ -760,7 +845,7 @@ const AgregarMovimiento = () => {
                     />
                   </CCol>
 
-                  <CCol xs={12} md={3}>
+                  <CCol xs={12} md={4}>
                     <CFormLabel htmlFor="fechaIngreso">Fecha de Ingreso</CFormLabel>
                     <CFormInput
                       type="date"
@@ -772,7 +857,7 @@ const AgregarMovimiento = () => {
                     />
                   </CCol>
 
-                  <CCol xs={12} md={3}>
+                  <CCol xs={12} md={4}>
                     <CFormLabel htmlFor="estadoFactura">Estado de Factura</CFormLabel>
                     <CFormSelect
                       id="estadoFactura"
@@ -827,12 +912,12 @@ const AgregarMovimiento = () => {
               <div className="mb-4">
                 <div className="d-flex justify-content-between align-items-center mb-3">
                   <h6 className="text-primary mb-0">Detalle de Productos</h6>
-                  <CButton 
-                    color="primary" 
-                    size="sm" 
+                  <CButton
+                    color="success"
+                    size="sm"
                     className="text-light"
-                    onClick={agregarNuevaFila}
-                    disabled={filaEditando === 'nuevo'}>
+                    onClick={abrirModalAgregarProducto}
+                  >
                     + Agregar Producto
                   </CButton>
                 </div>
@@ -852,99 +937,8 @@ const AgregarMovimiento = () => {
                     </CTableRow>
                   </CTableHead>
                     <CTableBody>
-                      {/* Fila editable para agregar nuevo producto */}
-                      {filaEditando === 'nuevo' && (
-                        <CTableRow className="table-warning">
-                          <CTableDataCell>*</CTableDataCell>
-                          <CTableDataCell>
-                            <CFormInput
-                              type="text"
-                              name="codigoProducto"
-                              value={productoTemp.codigoProducto}
-                              onChange={handleProductoChange}
-                              placeholder="Código"
-                              size="sm"
-                              required
-                            />
-                          </CTableDataCell>
-                          <CTableDataCell>
-                            <CFormInput
-                              type="text"
-                              name="codigoProductoProveedor"
-                              value={productoTemp.codigoProductoProveedor}
-                              onChange={handleProductoChange}
-                              placeholder="Código Prov."
-                              size="sm"
-                            />
-                          </CTableDataCell>
-                          <CTableDataCell>
-                            <CFormInput
-                              type="text"
-                              name="descripcion"
-                              value={productoTemp.descripcion}
-                              onChange={handleProductoChange}
-                              placeholder="Descripción"
-                              size="sm"
-                            />
-                          </CTableDataCell>
-                          <CTableDataCell>
-                            <CFormInput
-                              type="text"
-                              placeholder="Escriba al menos 2 caracteres..."
-                              value={ubicacionDetalleTexto}
-                              onChange={handleUbicacionDetalleChange}
-                              autoComplete="off"
-                              size="sm"
-                            />
-                          </CTableDataCell>
-                          <CTableDataCell>
-                            <CFormInput
-                              type="number"
-                              name="cantidad"
-                              value={productoTemp.cantidad}
-                              onChange={handleProductoChange}
-                              placeholder="0"
-                              size="sm"
-                              min="1"
-                              required
-                            />
-                          </CTableDataCell>
-                          <CTableDataCell>
-                            <CFormInput
-                              type="number"
-                              name="precio"
-                              value={productoTemp.precio}
-                              onChange={handleProductoChange}
-                              placeholder="0.00"
-                              size="sm"
-                              step="0.01"
-                              min="0.01"
-                              required
-                            />
-                          </CTableDataCell>
-                          <CTableDataCell className="text-end">
-                            Q{(productoTemp.cantidad * productoTemp.precio).toFixed(2)}
-                          </CTableDataCell>
-                          <CTableDataCell className="text-nowrap">
-                            <CButton
-                              color="success"
-                              size="sm"
-                              className="me-1"
-                              onClick={guardarProducto}>
-                              ✓
-                            </CButton>
-                            <CButton
-                              color="danger"
-                              size="sm"
-                              onClick={cancelarEdicion}>
-                              ✗
-                            </CButton>
-                          </CTableDataCell>
-                        </CTableRow>
-                      )}
-
                       {/* Productos existentes */}
-                      {productos.length === 0 && filaEditando !== 'nuevo' ? (
+                      {productos.length === 0 ? (
                         <CTableRow>
                           <CTableDataCell colSpan="10" className="text-center py-4 text-muted">
                             No hay productos agregados. Haga clic en "+ Agregar Producto" para añadir productos.
@@ -1050,47 +1044,6 @@ const AgregarMovimiento = () => {
                   </div>
                 )}
 
-                {/* Lista de sugerencias de productos */}
-                {mostrarSugerencias && sugerenciasProductos.length > 0 && (
-                  <div className="mb-3" style={{ 
-                    maxHeight: '250px', 
-                    overflowY: 'auto', 
-                    border: '1px solid #dee2e6',
-                    borderRadius: '4px',
-                    backgroundColor: '#fff',
-                    position: 'relative',
-                    zIndex: 1000
-                  }}>
-                    <div className="p-2 bg-light border-bottom">
-                      <small className="text-muted">
-                        <strong>Productos encontrados ({sugerenciasProductos.length}):</strong> Haga clic para seleccionar
-                      </small>
-                    </div>
-                    <div className="list-group list-group-flush">
-                      {sugerenciasProductos.map((producto, index) => (
-                        <button
-                          key={producto.idProducto || index}
-                          type="button"
-                          className="list-group-item list-group-item-action text-start"
-                          onClick={() => seleccionarProductoSugerencia(producto)}
-                          style={{ cursor: 'pointer' }}>
-                          <div className="d-flex justify-content-between align-items-start">
-                            <div className="flex-grow-1">
-                              <div>
-                                <strong className="text-primary">{producto.codigoProducto}</strong>
-                                {producto.codigoProductoProveedor && (
-                                  <span className="text-muted ms-2">| Prov: {producto.codigoProductoProveedor}</span>
-                                )}
-                              </div>
-                              <small className="text-muted">{producto.descripcionProducto}</small>
-                            </div>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
                 {/* Totales */}
                 {productos.length > 0 && (
                   <div className="d-flex justify-content-end mt-3">
@@ -1134,6 +1087,174 @@ const AgregarMovimiento = () => {
     </CRow>
 
       {/* Modal de confirmación */}
+      {/* Modal Agregar Producto */}
+      <CModal visible={visibleModalProducto} onClose={() => { setVisibleModalProducto(false); cancelarEdicion(); }} size="xl" backdrop="static" keyboard={false}>
+        <CModalHeader className="bg-primary text-white">
+          <CModalTitle className="d-flex align-items-center gap-2">
+            <span>🛒</span> Agregar Producto al Movimiento
+          </CModalTitle>
+        </CModalHeader>
+        <CModalBody className="p-4">
+          {/* Búsqueda */}
+          <div className="mb-3">
+            <h6 className="mb-3">🔍 Buscar Producto</h6>
+            <CFormInput
+              type="text"
+              placeholder="Buscar por código, código proveedor o descripción..."
+              value={productoTemp.descripcion || productoTemp.codigoProducto || ''}
+              onChange={handleProductoChange}
+              name="descripcion"
+              autoComplete="off"
+              className="form-control-lg mb-3"
+            />
+
+            {/* Sugerencias desplegables */}
+            {mostrarSugerencias && sugerenciasProductos.length > 0 && (
+              <div className="list-group" style={{ maxHeight: '220px', overflowY: 'auto', border: '1px solid #dee2e6', borderRadius: '6px' }}>
+                <div className="list-group-item list-group-item-primary py-2" style={{ position: 'sticky', top: 0, zIndex: 1 }}>
+                  <small><strong>Productos encontrados ({sugerenciasProductos.length}):</strong> Haga clic para agregar</small>
+                </div>
+                {sugerenciasProductos.map((producto, index) => (
+                  <button
+                    key={producto.idProducto || index}
+                    type="button"
+                    className="list-group-item list-group-item-action text-start"
+                    onClick={() => agregarProductoAlModal(producto)}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    <strong className="text-primary">{producto.codigoProducto}</strong>
+                    {producto.codigoProductoProveedor && <span className="text-muted ms-2">| Prov: {producto.codigoProductoProveedor}</span>}
+                    <div><small className="text-muted">{producto.descripcionProducto}</small></div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Tabla de productos agregados en el modal */}
+          <div className="mt-4">
+            <h6 className="text-primary mb-3">Detalle de Productos</h6>
+            <CTable bordered hover responsive>
+              <CTableHead className="bg-light text-dark">
+                <CTableRow>
+                  <CTableHeaderCell className="py-2">No.</CTableHeaderCell>
+                  <CTableHeaderCell className="py-2">Código</CTableHeaderCell>
+                  <CTableHeaderCell className="py-2">Cód. Proveedor</CTableHeaderCell>
+                  <CTableHeaderCell className="py-2">Descripción</CTableHeaderCell>
+                  <CTableHeaderCell className="py-2">Ubicación</CTableHeaderCell>
+                  <CTableHeaderCell className="py-2">Cantidad</CTableHeaderCell>
+                  <CTableHeaderCell className="py-2">Precio</CTableHeaderCell>
+                  <CTableHeaderCell className="py-2 text-end">Subtotal</CTableHeaderCell>
+                  <CTableHeaderCell className="py-2 text-center">Eliminar</CTableHeaderCell>
+                </CTableRow>
+              </CTableHead>
+              <CTableBody>
+                {productosModal.length === 0 ? (
+                  <CTableRow>
+                    <CTableDataCell colSpan={9} className="text-center py-4 text-muted">
+                      No hay productos agregados. Busque y seleccione productos arriba.
+                    </CTableDataCell>
+                  </CTableRow>
+                ) : (
+                  productosModal.map((prod, index) => (
+                    <CTableRow key={prod.id || index}>
+                      <CTableDataCell>{index + 1}</CTableDataCell>
+                      <CTableDataCell><strong>{prod.codigoProducto}</strong></CTableDataCell>
+                      <CTableDataCell>{prod.codigoProductoProveedor || '—'}</CTableDataCell>
+                      <CTableDataCell>{prod.descripcion}</CTableDataCell>
+                      <CTableDataCell style={{ minWidth: '150px', position: 'relative' }}>
+                        <CFormInput
+                          type="text"
+                          size="sm"
+                          placeholder="Buscar ubicación..."
+                          value={ubicacionModalTexto[index] ?? prod.ubicacionTexto ?? ''}
+                          onChange={(e) => handleUbicacionModalChange(index, e.target.value)}
+                          autoComplete="off"
+                        />
+                        {ubicacionModalMostrar[index] && (ubicacionModalSugerencias[index] || []).length > 0 && (
+                          <div style={{
+                            position: 'absolute', top: '100%', left: 0, right: 0,
+                            zIndex: 1060, maxHeight: '180px', overflowY: 'auto',
+                            border: '1px solid #dee2e6', borderRadius: '4px',
+                            backgroundColor: '#fff', boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                          }} className="list-group">
+                            {(ubicacionModalSugerencias[index] || []).map((u) => (
+                              <button
+                                key={u.idUbicacion ?? u.id}
+                                type="button"
+                                className="list-group-item list-group-item-action text-start py-1"
+                                onClick={() => seleccionarUbicacionModal(index, u)}
+                                style={{ cursor: 'pointer', fontSize: '0.85rem' }}
+                              >
+                                {u.nombre || u.nombreUbicacion || u.descripcion || '—'}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </CTableDataCell>
+                      <CTableDataCell style={{ width: '90px' }}>
+                        <CFormInput
+                          type="number"
+                          size="sm"
+                          min="1"
+                          value={prod.cantidad}
+                          onChange={(e) => actualizarCantidadModal(index, e.target.value)}
+                          placeholder="0"
+                        />
+                      </CTableDataCell>
+                      <CTableDataCell style={{ width: '110px' }}>
+                        <CFormInput
+                          type="number"
+                          size="sm"
+                          min="0"
+                          step="0.01"
+                          value={prod.precio}
+                          onChange={(e) => actualizarPrecioModal(index, e.target.value)}
+                          placeholder="0.00"
+                        />
+                      </CTableDataCell>
+                      <CTableDataCell className="text-end">
+                        Q{((Number(prod.cantidad) || 0) * (Number(prod.precio) || 0)).toFixed(2)}
+                      </CTableDataCell>
+                      <CTableDataCell className="text-center">
+                        <CButton color="danger" size="sm" onClick={() => eliminarProductoModal(index)}>
+                          🗑️
+                        </CButton>
+                      </CTableDataCell>
+                    </CTableRow>
+                  ))
+                )}
+              </CTableBody>
+            </CTable>
+            {productosModal.length > 0 && (
+              <div className="d-flex justify-content-end mt-2">
+                <div className="border rounded p-2" style={{ minWidth: '220px' }}>
+                  <div className="d-flex justify-content-between">
+                    <strong>Total general:</strong>
+                    <strong className="text-primary">
+                      Q{productosModal.reduce((sum, p) => sum + (Number(p.cantidad) || 0) * (Number(p.precio) || 0), 0).toFixed(2)}
+                    </strong>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </CModalBody>
+        <CModalFooter className="bg-light">
+          <CButton color="light" className="border d-flex align-items-center gap-2" onClick={() => { setVisibleModalProducto(false); cancelarEdicion(); }}>
+            <span>✖️</span> Cancelar
+          </CButton>
+          <CButton
+            color="primary"
+            className="text-light d-flex align-items-center gap-2"
+            onClick={confirmarProductosModal}
+            disabled={productosModal.length === 0}
+          >
+            <span>✔️</span> Confirmar Productos ({productosModal.length})
+          </CButton>
+        </CModalFooter>
+      </CModal>
+
       <CModal visible={modalConfirmacion} onClose={() => setModalConfirmacion(false)} alignment="center">
         <CModalHeader>
           <CModalTitle>💾 Confirmar Guardado</CModalTitle>
