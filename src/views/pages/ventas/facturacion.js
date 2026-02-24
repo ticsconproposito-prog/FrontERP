@@ -139,7 +139,7 @@ const Layout = () => {
       tipoDocumento: '1',
       moneda: '1',
       fecha: obtenerFechaHoy(),
-      establecimiento: 'Ferreteria y bloquera Agmner',
+      establecimiento: 'Ferreteria y Blockera Agmner',
     });
     setEsConsumidorFinal(false);
     setClienteSeleccionado(false);

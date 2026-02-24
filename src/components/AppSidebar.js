@@ -39,7 +39,7 @@ const AppSidebar = () => {
         <CSidebarBrand className="d-none d-md-flex justify-content-center w-100" to="/">
           <img
             src={logo}
-            alt="Ferreteria y Bloquera Agmner"
+            alt="Ferreteria y Blockera Agmner"
             style={{ display: 'block', margin: '0 auto', width: '85%', maxWidth: '220px', height: 'auto' }}
           />
         </CSidebarBrand>
