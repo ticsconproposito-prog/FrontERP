@@ -39,7 +39,7 @@ const Layout = () => {
   const [sugerenciasClientes, setSugerenciasClientes] = useState([]);
   const [mostrarSugerenciasClientes, setMostrarSugerenciasClientes] = useState(false);
   const [clienteSeleccionado, setClienteSeleccionado] = useState(false);
-  
+
   // Estados para productos
   const [productos, setProductos] = useState([]);
   const [busquedaProducto, setBusquedaProducto] = useState('');
@@ -54,10 +54,10 @@ const Layout = () => {
   const [alertaSinCorreo, setAlertaSinCorreo] = useState(false);
   const [documentoOpts, setDocumentoOpts] = useState([]);
   const [documento, setDocumento] = useState('');
-  
+
   // Estados para totales de factura
   const [impuestoIVA, setImpuestoIVA] = useState(12); // 12% IVA por defecto
-  
+
   // Obtener fecha de hoy en formato YYYY-MM-DD
   const obtenerFechaHoy = () => {
     const hoy = new Date();
@@ -108,10 +108,14 @@ const Layout = () => {
   const handleConsumidorFinal = (e) => {
     const checked = e.target.checked;
     setEsConsumidorFinal(checked);
-    
+
     if (checked) {
+      const clienteCF = clientes.find(
+        (c) => (c.nit || '').toString().toUpperCase() === 'CF' ||
+               (c.nombreCliente || c.nombreFacturacion || '').toLowerCase().includes('consumidor final')
+      );
       setFormFactura({
-        idCliente: null,
+        idCliente: clienteCF?.idCliente ?? clienteCF?.id ?? null,
         nit: 'CF',
         nombre: 'Consumidor Final',
         correoElectronico: '',
@@ -470,8 +474,8 @@ const Layout = () => {
       const docValue = tieneNit
         ? formCliente.nit
         : tieneDpi
-        ? formCliente.dpiPasaporte
-        : '';
+          ? formCliente.dpiPasaporte
+          : '';
 
       setFormFactura((prev) => ({
         ...prev,
@@ -601,7 +605,7 @@ const Layout = () => {
           }
           .cliente-box .field label { font-weight: bold; color: #000; }
 
-          /* ── Tabla detalle ── */
+        /* ── Tabla detalle ── */
           .detalle-table {
             width: 100%;
             border-collapse: separate;
@@ -613,39 +617,69 @@ const Layout = () => {
             border-radius: 6px;
             overflow: hidden;
           }
+
+          /* Encabezado */
           .detalle-table th {
             background: #fff;
             color: #000;
             padding: 6px 8px;
             font-weight: bold;
-            border-left: 1px solid #555;
-            border-right: 1px solid #555;
+            text-align: left;
             border-top: none;
             border-bottom: 1px solid #555;
-            text-align: left;
+            border-left: none;
+            border-right: none;
           }
-          .detalle-table tbody tr:last-child td {
-            border-bottom: none;
-          }
+
+          /* Celdas */
           .detalle-table td {
             padding: 5px 8px;
-            border-left: 1px solid #555;
-            border-right: 1px solid #555;
-            border-top: none;
-            border-bottom: none;
+            border: none;
             vertical-align: top;
             height: 22px;
           }
+
+          /* Líneas verticales internas */
+          .detalle-table th + th,
+          .detalle-table td + td {
+            border-left: 1px solid #000;
+          }
+
+          /* 🔹 Redondear SOLO esquinas externas */
+          .detalle-table tr:first-child th:first-child {
+            border-top-left-radius: 6px;
+          }
+
+          .detalle-table tr:first-child th:last-child {
+            border-top-right-radius: 6px;
+          }
+
+          .detalle-table tr:last-child td:first-child {
+            border-bottom-left-radius: 6px;
+          }
+
+          .detalle-table tr:last-child td:last-child {
+            border-bottom-right-radius: 6px;
+          }
+
+          /* Anchos de columnas */
           .detalle-table col.col-cant  { width: 60px; }
           .detalle-table col.col-desc  { width: auto; }
           .detalle-table col.col-precio { width: 110px; }
           .detalle-table col.col-total  { width: 110px; }
+
+          /* Alineaciones */
           .detalle-table th:nth-child(1),
-          .detalle-table td:nth-child(1) { text-align: center; }
+          .detalle-table td:nth-child(1) {
+            text-align: center;
+          }
+
           .detalle-table th:nth-child(3),
           .detalle-table td:nth-child(3),
           .detalle-table th:nth-child(4),
-          .detalle-table td:nth-child(4) { text-align: right; }
+          .detalle-table td:nth-child(4) {
+            text-align: right;
+          } 
 
           /* ── Totales ── */
           .totales-wrap { display: flex; justify-content: flex-end; margin-bottom: 12px; }
@@ -739,7 +773,6 @@ const Layout = () => {
           <!-- Totales -->
           <div class="totales-wrap">
             <table class="totales-tabla">
-              ${totalDescuento > 0 ? `<tr><td>Descuento:</td><td>- ${moneda}${totalDescuento.toFixed(2)}</td></tr>` : ''}
               <tr><td>IVA:</td><td>${moneda}${iva.toFixed(2)}</td></tr>
               <tr class="fila-total"><td>TOTAL:</td><td>${moneda}${total.toFixed(2)}</td></tr>
             </table>
@@ -786,7 +819,7 @@ const Layout = () => {
 
       const body = {
         tipoDocumento: formFactura.tipoDocumento,
-        idCliente: esConsumidorFinal ? 'CF' : { idCliente: formFactura.idCliente },
+        idCliente: { idCliente: formFactura.idCliente },
         tipoVenta: 'B',
         destinoVenta: '1',
         FechaFactura: formFactura.fecha,
@@ -915,7 +948,7 @@ const Layout = () => {
                   📅 Fecha: {formatearFechaParaMostrar(formFactura.fecha)}
                 </span>
                 <span className="badge bg-secondary" style={{ fontSize: '0.85rem' }}>
-                🏪 Establecimiento: {formFactura.establecimiento}
+                  🏪 Establecimiento: {formFactura.establecimiento}
                 </span>
               </div>
             </CCardHeader>
@@ -1102,7 +1135,7 @@ const Layout = () => {
                     )}
                   </div>
                 </CCol>
-                 <CCol md={6}>
+                <CCol md={6}>
                   <CFormLabel htmlFor="telefono">Teléfono</CFormLabel>
                   <CFormInput
                     type="text"
@@ -1115,7 +1148,7 @@ const Layout = () => {
                   />
                 </CCol>
               </CRow>
-              <CRow className="mb-3">              
+              <CRow className="mb-3">
                 <CCol md={6}>
                   <CFormLabel htmlFor="direccion">Dirección</CFormLabel>
                   <CFormInput
@@ -1128,7 +1161,7 @@ const Layout = () => {
                     disabled={esConsumidorFinal || clienteSeleccionado}
                   />
                 </CCol>
-                
+
                 <CCol md={3}>
                   <CFormLabel htmlFor="tipoDocumento">Tipo de Documento</CFormLabel>
                   <CFormSelect
@@ -1144,7 +1177,7 @@ const Layout = () => {
                     <option value="4">Consignación</option>
                   </CFormSelect>
                 </CCol>
-                 <CCol md={3}>
+                <CCol md={3}>
                   <CFormLabel htmlFor="moneda">Moneda</CFormLabel>
                   <CFormSelect
                     id="moneda"
@@ -1156,10 +1189,10 @@ const Layout = () => {
                     <option value="1">Quetzales</option>
                     <option value="2">Dólares</option>
                   </CFormSelect>
-                </CCol>       
+                </CCol>
               </CRow >
               <CRow className="g-1">
-                 <CCol xs={6}>
+                <CCol xs={6}>
                   <CFormLabel htmlFor="direccionEntrega">Dirección de entrega</CFormLabel>
                   <CFormTextarea
                     id="direccionEntrega"
@@ -1169,15 +1202,15 @@ const Layout = () => {
                     onChange={handleChange}
                     rows={2}
                   />
-                </CCol> 
+                </CCol>
               </CRow>
               {/* Sección: Detalle de Productos en el Formulario Principal */}
               <div className="mb-4 mt-4">
                 <div className="d-flex justify-content-between align-items-center mb-3">
                   <h6 className="text-primary mb-0">Detalle de Productos</h6>
-                  <CButton 
-                    color="success" 
-                    size="sm" 
+                  <CButton
+                    color="success"
+                    size="sm"
                     className="text-light"
                     onClick={() => setVisible(true)}
                   >
@@ -1408,7 +1441,7 @@ const Layout = () => {
                 {/* Sección: Detalle de Productos */}
                 <div className="mb-3">
                   <h6 className="text-primary mb-3">Detalle de Productos</h6>
-                  
+
                   <CTable bordered hover responsive>
                     <CTableHead className="bg-light text-dark">
                       <CTableRow>
@@ -1511,14 +1544,14 @@ const Layout = () => {
               </CModalBody>
 
               <CModalFooter className="bg-light">
-                <CButton 
-                  color="light" 
+                <CButton
+                  color="light"
                   onClick={() => setVisible(false)}
                   className="border d-flex align-items-center gap-2"
                 >
                   <span>✖️</span> Cerrar
                 </CButton>
-                <CButton 
+                <CButton
                   color="primary"
                   className="d-flex align-items-center gap-2"
                   onClick={() => setVisible(false)}
@@ -1527,7 +1560,7 @@ const Layout = () => {
                   <span>✅</span> Confirmar Productos
                 </CButton>
               </CModalFooter>
-          </CModal>
+            </CModal>
 
             <CModal visible={alertProductoDuplicado} onClose={() => setAlertProductoDuplicado(false)} alignment="center">
               <CModalHeader className="bg-warning text-dark">
@@ -1660,7 +1693,7 @@ const Layout = () => {
                   </CButton>
                 </CModalFooter>
               </CForm>
-          </CModal>
+            </CModal>
           </CCardBody>
         </CCard>
       </CCol>
