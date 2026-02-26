@@ -4,6 +4,7 @@ import {
   cilCash,
   cilChart,
   cilHome,
+  cilPeople,
   cilStar,
 } from '@coreui/icons'
 import { CNavGroup, CNavItem, CNavTitle } from '@coreui/react'
@@ -33,7 +34,7 @@ const _nav = [
       {
         component: CNavItem,
         name: 'Consulta Facturas',
-        to: '/base/breadcrumbs',
+        to: '/pages/ventas/consultaFacturas',
       },
       {
         component: CNavItem,
@@ -89,6 +90,47 @@ const _nav = [
         component: CNavItem,
         name: 'Facturas Proveedores',
         to: '/forms/form-control',
+      },
+    ],
+  },
+  {
+    component: CNavTitle,
+    name: 'Seguridad',
+  },
+  {
+    component: CNavGroup,
+    name: 'Usuarios',
+    icon: <CIcon icon={cilPeople} customClassName="nav-icon" />,
+    items: [
+      {
+        component: CNavItem,
+        name: 'Empleados',
+        to: '/pages/seguridad/empleados',
+      },
+      {
+        component: CNavItem,
+        name: 'Usuarios',
+        to: '/pages/seguridad/usuarios',
+      },
+      {
+        component: CNavItem,
+        name: 'Páginas',
+        to: '/pages/seguridad/paginas',
+      },
+      {
+        component: CNavItem,
+        name: 'Perfiles',
+        to: '/pages/seguridad/perfiles',
+      },
+      {
+        component: CNavItem,
+        name: 'Páginas por Perfil',
+        to: '/pages/seguridad/perfilesPaginas',
+      },
+      {
+        component: CNavItem,
+        name: 'Perfiles por Usuario',
+        to: '/pages/seguridad/usuariosPerfiles',
       },
     ],
   },
