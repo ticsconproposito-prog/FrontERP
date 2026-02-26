@@ -28,6 +28,7 @@ const FORM_INICIAL = {
   idEmpleado: '',
   empleadoTexto: '',
   usuario: '',
+  contrasena: '',
   comentario: '',
 }
 
@@ -50,6 +51,7 @@ const Usuarios = () => {
   const [modalEliminar, setModalEliminar] = useState(false)
   const [idEliminar, setIdEliminar] = useState(null)
   const [modalVer, setModalVer] = useState(false)
+  const [mostrarContrasena, setMostrarContrasena] = useState(false)
   const [usuarioVer, setUsuarioVer] = useState(null)
 
   // Búsqueda de empleado
@@ -141,6 +143,7 @@ const Usuarios = () => {
       idEmpleado: String(idEmp),
       empleadoTexto: emp ? `${emp.nombre || ''} ${emp.apellido || ''}`.trim() : String(idEmp),
       usuario: usr.usuario || '',
+      contrasena: '',
       comentario: usr.comentario || '',
     })
     setErrores({})
@@ -159,6 +162,7 @@ const Usuarios = () => {
         idEmpleado: parseInt(form.idEmpleado, 10),
         id_Empleado: parseInt(form.idEmpleado, 10),
         usuario: String(form.usuario || '').trim(),
+        contrasena: String(form.contrasena || '').trim(),
         comentario: String(form.comentario || '').trim(),
         idUsuarioModificacion: 1,
       }
@@ -290,7 +294,6 @@ const Usuarios = () => {
                 <CTableHead className="table-primary">
                   <CTableRow>
                     <CTableHeaderCell className="py-2">#</CTableHeaderCell>
-                    <CTableHeaderCell className="py-2">ID Empleado</CTableHeaderCell>
                     <CTableHeaderCell className="py-2">Usuario</CTableHeaderCell>
                     <CTableHeaderCell className="py-2">Empleado</CTableHeaderCell>
                     <CTableHeaderCell className="py-2">Comentario</CTableHeaderCell>
@@ -308,7 +311,6 @@ const Usuarios = () => {
                     usuariosFiltrados.map((usr, idx) => (
                       <CTableRow key={usr.id_Usuario ?? usr.idUsuario ?? idx}>
                         <CTableDataCell>{idx + 1}</CTableDataCell>
-                        <CTableDataCell>{getIdEmpleado(usr) || '—'}</CTableDataCell>
                         <CTableDataCell><strong>{usr.usuario || '—'}</strong></CTableDataCell>
                         <CTableDataCell>{obtenerNombreEmpleado(getIdEmpleado(usr))}</CTableDataCell>
                         <CTableDataCell>{usr.comentario || '—'}</CTableDataCell>
@@ -415,6 +417,48 @@ const Usuarios = () => {
                 {errores.usuario && <div className="invalid-feedback">{errores.usuario}</div>}
               </CCol>
 
+              {/* Contraseña */}
+              <CCol md={12}>
+                <CFormLabel className="fw-semibold">
+                  Contraseña {!modoEdicion && <span className="text-danger">*</span>}
+                  {modoEdicion && <span className="text-muted small"> (dejar vacío para no cambiar)</span>}
+                </CFormLabel>
+                <div className="input-group">
+                  <CFormInput
+                    type={mostrarContrasena ? 'text' : 'password'}
+                    name="contrasena"
+                    value={form.contrasena}
+                    onChange={handleChange}
+                    placeholder={modoEdicion ? 'Dejar vacío para mantener la contraseña actual' : 'Ingrese la contraseña'}
+                    autoComplete="new-password"
+                  />
+                  <CButton
+                    type="button"
+                    color="secondary"
+                    variant="outline"
+                    onClick={() => setMostrarContrasena((v) => !v)}
+                    title={mostrarContrasena ? 'Ocultar contraseña' : 'Ver contraseña'}
+                    style={{ borderRadius: '0 4px 4px 0' }}
+                  >
+                    <span style={{ position: 'relative', display: 'inline-block', lineHeight: 1 }}>
+                      👁️
+                      {mostrarContrasena && (
+                        <span style={{
+                          position: 'absolute',
+                          top: '50%',
+                          left: '-1px',
+                          right: '-1px',
+                          height: '2px',
+                          background: 'currentColor',
+                          transform: 'rotate(-45deg)',
+                          display: 'block',
+                        }} />
+                      )}
+                    </span>
+                  </CButton>
+                </div>
+              </CCol>
+
               {/* Comentario */}
               <CCol md={12}>
                 <CFormLabel className="fw-semibold">Comentario</CFormLabel>
@@ -453,13 +497,17 @@ const Usuarios = () => {
                 <CFormLabel className="fw-semibold text-muted small">Usuario</CFormLabel>
                 <p className="mb-0 fs-6"><strong>{usuarioVer.usuario || '—'}</strong></p>
               </CCol>
-              <CCol md={6}>
-                <CFormLabel className="fw-semibold text-muted small">ID Empleado</CFormLabel>
-                <p className="mb-0 fs-6">{getIdEmpleado(usuarioVer) || '—'}</p>
-              </CCol>
               <CCol md={12}>
                 <CFormLabel className="fw-semibold text-muted small">Empleado</CFormLabel>
                 <p className="mb-0 fs-6">{obtenerNombreEmpleado(getIdEmpleado(usuarioVer))}</p>
+              </CCol>
+              <CCol md={6}>
+                <CFormLabel className="fw-semibold text-muted small">Contraseña</CFormLabel>
+                <p className="mb-0 fs-6">
+                  {usuarioVer.contrasena
+                    ? <span className="text-success">✔ Configurada</span>
+                    : <span className="text-muted">No configurada</span>}
+                </p>
               </CCol>
               <CCol md={12}>
                 <CFormLabel className="fw-semibold text-muted small">Comentario</CFormLabel>
