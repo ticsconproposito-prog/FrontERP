@@ -34,8 +34,15 @@ const VerMovimiento = React.lazy(() => import('./views/pages/productos/verMovimi
 const EditarMovimiento = React.lazy(() => import('./views/pages/productos/editarMovimiento'))
 const ReporteInventario = React.lazy(() => import('./views/pages/productos/reporteInventario'))
 const Proveedores = React.lazy(() => import('./views/pages/productos/proveedores'))
-const Facturacion = React.lazy(() => import('./views/pages/Ventas/facturacion'))
-const Clientes = React.lazy(() => import('./views/pages/Ventas/clientes'))
+const Facturacion = React.lazy(() => import('./views/pages/ventas/facturacion'))
+const Clientes = React.lazy(() => import('./views/pages/ventas/clientes'))
+const ConsultaFacturas = React.lazy(() => import('./views/pages/ventas/consultaFacturas'))
+const Empleados = React.lazy(() => import('./views/pages/seguridad/empleados'))
+const Usuarios = React.lazy(() => import('./views/pages/seguridad/usuarios'))
+const Paginas = React.lazy(() => import('./views/pages/seguridad/paginas'))
+const Perfiles = React.lazy(() => import('./views/pages/seguridad/perfiles'))
+const PerfilesPaginas = React.lazy(() => import('./views/pages/seguridad/perfilesPaginas'))
+const UsuariosPerfiles = React.lazy(() => import('./views/pages/seguridad/usuariosPerfiles'))
 
 
 //Forms
@@ -98,6 +105,13 @@ const routes = [
   { path: '/pages/productos/proveedores', name: 'Proveedores', element: Proveedores },
   { path: '/pages/ventas/facturacion', name: 'Facturacion', element: Facturacion },
   { path: '/pages/ventas/clientes', name: 'Clientes', element: Clientes },
+  { path: '/pages/ventas/consultaFacturas', name: 'Consulta Facturas', element: ConsultaFacturas },
+  { path: '/pages/seguridad/empleados', name: 'Empleados', element: Empleados },
+  { path: '/pages/seguridad/usuarios', name: 'Usuarios', element: Usuarios },
+  { path: '/pages/seguridad/paginas', name: 'Paginas', element: Paginas },
+  { path: '/pages/seguridad/perfiles', name: 'Perfiles', element: Perfiles },
+  { path: '/pages/seguridad/perfilesPaginas', name: 'Páginas por Perfil', element: PerfilesPaginas },
+  { path: '/pages/seguridad/usuariosPerfiles', name: 'Perfiles por Usuario', element: UsuariosPerfiles },
   { path: '/charts', name: 'Charts', element: Charts },
   { path: '/forms', name: 'Forms', element: FormControl, exact: true },
   { path: '/forms/form-control', name: 'Form Control', element: FormControl },
