@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { useAuth } from '../../../context/AuthContext'
 import {
   CButton,
   CCard,
@@ -33,6 +34,8 @@ const FORM_INICIAL = {
 }
 
 const UsuariosPerfiles = () => {
+  const { usuario } = useAuth()
+  const idUsuarioActual = Number(usuario?.idUsuario ?? usuario?.id_Usuario ?? 0)
   const [registros, setRegistros] = useState([])
   const [usuarios, setUsuarios] = useState([])
   const [perfiles, setPerfiles] = useState([])
@@ -165,7 +168,7 @@ const UsuariosPerfiles = () => {
         idPerfil: parseInt(form.idPerfil, 10),
         permiso: 0,
         comentario: String(form.comentario || '').trim(),
-        idUsuarioModificacion: 0,
+        idUsuarioModificacion: idUsuarioActual,
       }
 
       let url = '/api/grabarUsuarioPerfil'

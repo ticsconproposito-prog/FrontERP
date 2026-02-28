@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { useAuth } from '../../../context/AuthContext'
 import {
   CButton,
   CCard,
@@ -28,6 +29,8 @@ import "react-datepicker/dist/react-datepicker.css"
 import * as XLSX from 'xlsx'
 
 const Layout = () => {
+  const { usuario } = useAuth()
+  const idUsuarioActual = Number(usuario?.idUsuario ?? usuario?.id_Usuario ?? 0)
   const [proveedores, setProveedores] = useState([])
   const [page, setPage] = useState(0)
   const [totalPages, setTotalPages] = useState(0)
@@ -186,6 +189,7 @@ const Layout = () => {
         telefono2: formProveedor.telefono2?.trim() || '',
         creditoAutorizado: formProveedor.creditoAutorizado !== '' ? Number(formProveedor.creditoAutorizado) : null,
         deudaActual: formProveedor.deudaActual !== '' ? Number(formProveedor.deudaActual) : null,
+        idUsuarioModificacion: idUsuarioActual,
       }
       const url = modoEdicionProveedor && idProveedorEditar
         ? `/api/editarProveedor/${idProveedorEditar}`
@@ -228,7 +232,11 @@ const Layout = () => {
     if (!proveedorAEliminar?.idProveedor) return
     setEliminando(true)
     try {
-      const response = await fetch(`/api/eliminarProveedor/${proveedorAEliminar.idProveedor}`, { method: 'DELETE' })
+      const response = await fetch(`/api/eliminarProveedor/${proveedorAEliminar.idProveedor}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idUsuarioModificacion: idUsuarioActual }),
+      })
       if (!response.ok) {
         const text = await response.text()
         throw new Error(text || 'Error al eliminar el proveedor')

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { useAuth } from '../../../context/AuthContext'
 import {
   CButton,
   CCard,
@@ -33,6 +34,8 @@ const FORM_INICIAL = {
 }
 
 const Usuarios = () => {
+  const { usuario } = useAuth()
+  const idUsuarioActual = Number(usuario?.idUsuario ?? usuario?.id_Usuario ?? 0)
   const [usuarios, setUsuarios] = useState([])
   const [empleados, setEmpleados] = useState([])
   const [loading, setLoading] = useState(true)
@@ -164,7 +167,7 @@ const Usuarios = () => {
         usuario: String(form.usuario || '').trim(),
         contrasena: String(form.contrasena || '').trim(),
         comentario: String(form.comentario || '').trim(),
-        idUsuarioModificacion: 1,
+        idUsuarioModificacion: idUsuarioActual,
       }
 
       let url = '/api/grabarUsuario'

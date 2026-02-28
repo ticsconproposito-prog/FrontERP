@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { useAuth } from '../../../context/AuthContext'
 import {
   CButton,
   CCard,
@@ -25,6 +26,8 @@ import {
 import * as XLSX from 'xlsx'
 
 const Layout = () => {
+  const { usuario } = useAuth()
+  const idUsuarioActual = Number(usuario?.idUsuario ?? usuario?.id_Usuario ?? 0)
   const [clientes, setClientes] = useState([])
   const [filtros, setFiltros] = useState({
     nombreCliente: '',
@@ -212,7 +215,11 @@ const Layout = () => {
     if (!id) return
     setEliminando(true)
     try {
-      const response = await fetch(`/api/eliminarCliente/${id}`, { method: 'DELETE' })
+      const response = await fetch(`/api/eliminarCliente/${id}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idUsuarioModificacion: idUsuarioActual }),
+      })
       if (!response.ok) {
         const text = await response.text()
         throw new Error(text || 'Error al eliminar el cliente')
@@ -257,6 +264,7 @@ const Layout = () => {
         telefono2: formCliente.telefono2?.trim() || '',
         creditoAutorizado: formCliente.creditoAutorizado !== '' ? Number(formCliente.creditoAutorizado) : null,
         deudaActual: formCliente.deudaActual !== '' ? Number(formCliente.deudaActual) : null,
+        idUsuarioModificacion: idUsuarioActual,
       }
       const url = modoEdicionCliente && idClienteEditar
         ? `/api/editarCliente/${idClienteEditar}`

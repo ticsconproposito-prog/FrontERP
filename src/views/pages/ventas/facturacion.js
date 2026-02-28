@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { useAuth } from '../../../context/AuthContext'
 import logoFerreteria from 'src/assets/images/logo-ferreteria-agmner.png'
 import {
   CButton,
@@ -29,6 +30,8 @@ import CIcon from '@coreui/icons-react'
 import { cilPlus } from '@coreui/icons'
 
 const Layout = () => {
+  const { usuario } = useAuth()
+  const idUsuarioActual = Number(usuario?.idUsuario ?? usuario?.id_Usuario ?? 0)
   const [visible, setVisible] = useState(false);
   const [esConsumidorFinal, setEsConsumidorFinal] = useState(false);
   const [modalCliente, setModalCliente] = useState(false);
@@ -841,7 +844,7 @@ const Layout = () => {
         facturaProcesada: '',
         direccionEntrega: formFactura.direccionEntrega || '',
         enviarCorreo: enviarCorreo ? 'S' : 'N',
-        idUsuarioModificacion: 1,
+        idUsuarioModificacion: idUsuarioActual,
       };
 
       const response = await fetch('/api/grabarEncabezadoFacturas', {
@@ -882,7 +885,7 @@ const Layout = () => {
           iva: ivaItem.toFixed(2),
           isr: '0.00',
           ImpTotal: item.total.toFixed(2),
-          idUsuarioModificacion: '1',
+          idUsuarioModificacion: String(idUsuarioActual),
         };
 
         return fetch('/api/grabarDetalleFactura', {

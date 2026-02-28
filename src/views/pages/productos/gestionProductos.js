@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { useAuth } from '../../../context/AuthContext'
 import {
   CButton,
   CCard,
@@ -29,6 +30,11 @@ import "react-datepicker/dist/react-datepicker.css";
 import * as XLSX from 'xlsx';
 
 const Layout = () => {
+  const { usuario } = useAuth()
+  const idUsuarioActual = Number(usuario?.idUsuario ?? usuario?.id_Usuario ?? 0)
+
+  const quitarFoco = () => document.activeElement?.blur()
+
   const [visible, setVisible] = useState(false);
   const [productos, setProductos] = useState([]);
   const [unidadesMedida, setUnidadesMedida] = useState([]);
@@ -176,9 +182,8 @@ const Layout = () => {
         `/api/eliminarProducto/${idEliminar}`,
         {
           method: 'DELETE',
-          headers: {
-            'Content-Type': 'application/json'
-          }
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ idUsuarioModificacion: idUsuarioActual }),
         }
       )
 
@@ -268,7 +273,8 @@ const Layout = () => {
       // Preparar los datos para enviar al backend
       const datosAEnviar = {
         ...form,
-        unidadDeMedida: unidadEncontrada ? unidadEncontrada.indice : form.unidadDeMedida
+        unidadDeMedida: unidadEncontrada ? unidadEncontrada.indice : form.unidadDeMedida,
+        idUsuarioModificacion: idUsuarioActual,
       }
 
       console.log('Datos a enviar al backend:', datosAEnviar)
@@ -284,6 +290,7 @@ const Layout = () => {
       //refrescar tabla
       await cargarProductos(page)
 
+      quitarFoco()
       setVisible(false)
       setModoEdicion(false)
 
@@ -317,19 +324,12 @@ const Layout = () => {
   const pageSize = 20
 
   const cargarProductos = async (pagina = 0, filtrosActuales = filtros) => {
-    
     const params = new URLSearchParams({
       ...filtrosActuales,
       page: pagina,
-   
     })
-
-    const response = await fetch(
-      `/api/productos?${params.toString()}`
-    )
-
+    const response = await fetch(`/api/productos?${params.toString()}`)
     const data = await response.json()
-
     setProductos(data.content)
     setPage(data.number)
     setTotalPages(data.totalPages)
@@ -342,15 +342,10 @@ const Layout = () => {
       const params = new URLSearchParams({
         ...filtros,
         page: 0,
-        size: 10000, // Obtener todos los registros
+        size: 10000,
       })
-
-      const response = await fetch(
-        `/api/productos?${params.toString()}`
-      )
-
+      const response = await fetch(`/api/productos?${params.toString()}`)
       if (!response.ok) throw new Error('Error al obtener los productos')
-
       const data = await response.json()
       const todosLosProductos = data.content
 
@@ -413,33 +408,14 @@ const Layout = () => {
 
   const handleFiltroChange = (e) => {
     const { name, value } = e.target
-
-    setFiltros((prev) => ({
-      ...prev,
-      [name]: value,
-    }))
+    setFiltros((prev) => ({ ...prev, [name]: value }))
   }
 
   useEffect(() => {
     const delayDebounce = setTimeout(() => {
-
-      if (
-        filtros.codigoProducto.length < 2 &&
-        filtros.codigoProductoProveedor.length < 2 &&
-        filtros.descripcionProducto.length < 2
-      ) {
-        cargarProductos(0)
-        return
-      } else {
-
-        cargarProductos(0, filtros)
-
-      }
-
+      cargarProductos(0, filtros)
     }, 500)
-
     return () => clearTimeout(delayDebounce)
-
   }, [filtros])
 
   // Cargar diccionario para unidades de medida y Estado
@@ -474,32 +450,38 @@ const Layout = () => {
             </div>
 
             <CForm>
-              <CRow className="gy-3" >
-                <CCol md={4} >
-                  <CFormLabel>Código Producto: </CFormLabel>
-                  <CFormInput name="codigoProducto"
-                    placeholder='Código producto'
+              <CRow className="gy-3">
+                <CCol md={4}>
+                  <CFormLabel>Código Producto:</CFormLabel>
+                  <CFormInput
+                    name="codigoProducto"
+                    placeholder="Código producto"
                     value={filtros.codigoProducto}
-                    onChange={handleFiltroChange} />
+                    onChange={handleFiltroChange}
+                  />
                 </CCol>
                 <CCol md={4}>
-                  <CFormLabel>Código Producto Proveedor: </CFormLabel>
-                  <CFormInput name="codigoProductoProveedor"
-                    placeholder='Código proveedor'
+                  <CFormLabel>Código Producto Proveedor:</CFormLabel>
+                  <CFormInput
+                    name="codigoProductoProveedor"
+                    placeholder="Código proveedor"
                     value={filtros.codigoProductoProveedor}
-                    onChange={handleFiltroChange} />
+                    onChange={handleFiltroChange}
+                  />
                 </CCol>
                 <CCol md={4}>
-                  <CFormLabel>Descripción Producto: </CFormLabel>
-                  <CFormInput name="descripcionProducto"
-                    placeholder='Buscar por descripción producto'
+                  <CFormLabel>Descripción Producto:</CFormLabel>
+                  <CFormInput
+                    name="descripcionProducto"
+                    placeholder="Buscar por descripción"
                     value={filtros.descripcionProducto}
-                    onChange={handleFiltroChange} />
+                    onChange={handleFiltroChange}
+                  />
                 </CCol>
               </CRow>
             </CForm >
 
-            <CModal visible={visible} onClose={() => setVisible(false)} size="lg" backdrop="static">
+            <CModal visible={visible} onClose={() => { quitarFoco(); setVisible(false) }} size="lg" backdrop="static">
               <CModalHeader className="bg-light">
                 <CModalTitle className='text-dark' >{modoEdicion ? 'Editar Producto' : 'Agregar Producto'}</CModalTitle>
               </CModalHeader>
@@ -580,7 +562,7 @@ const Layout = () => {
                 </CForm>
               </CModalBody>
               <CModalFooter>
-                <CButton className="text-light" color="danger" onClick={() => setVisible(false)}>
+                <CButton className="text-light" color="danger" onClick={() => { quitarFoco(); setVisible(false) }}>
                   Cerrar
                 </CButton>
                 <CButton className="text-light" color="info" onClick={handleSubmit}>
@@ -590,7 +572,7 @@ const Layout = () => {
             </CModal>
             <CModal
               visible={modalMsgVisible}
-              onClose={() => setModalMsgVisible(false)}
+              onClose={() => { quitarFoco(); setModalMsgVisible(false) }}
               backdrop="static">
               <CModalHeader className={`bg-${modalMsgColor} text-white`}>
                 <CModalTitle>{modalMsgTitle}</CModalTitle>
@@ -604,6 +586,7 @@ const Layout = () => {
                     <CButton
                       color="secondary"
                       onClick={() => {
+                        quitarFoco()
                         setModalMsgVisible(false)
                         setIdEliminar(null)
                       }}>
@@ -620,7 +603,7 @@ const Layout = () => {
                   <CButton
                     color={modalMsgColor}
                     className="text-white"
-                    onClick={() => setModalMsgVisible(false)}>
+                    onClick={() => { quitarFoco(); setModalMsgVisible(false) }}>
                     Aceptar
                   </CButton>
                 )}

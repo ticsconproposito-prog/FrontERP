@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
+import { useAuth } from '../../../context/AuthContext'
 import {
   CButton,
   CButtonGroup,
@@ -28,6 +29,8 @@ import {
 import { useNavigate, useParams } from 'react-router-dom'
 
 const EditarMovimiento = () => {
+  const { usuario } = useAuth()
+  const idUsuarioActual = Number(usuario?.idUsuario ?? usuario?.id_Usuario ?? 0)
   const navigate = useNavigate()
   const { id } = useParams()
 
@@ -527,7 +530,7 @@ const EditarMovimiento = () => {
         precioTotalOrden: totalOrden,
         valorCancelado: formData.valorCancelado ? parseFloat(formData.valorCancelado) : 0,
         comentario: formData.comentarios || '',
-        idUsuarioModificacion: 1
+        idUsuarioModificacion: idUsuarioActual
       }
       const resOrden = await fetch(`/api/editarOrdenProducto/${id}`, {
         method: 'PUT',
@@ -565,7 +568,7 @@ const EditarMovimiento = () => {
             cantidad: parseInt(det.cantidad, 10) || 0,
             precioCompra: parseFloat(det.precioCompra) || 0,
             idUbicacion: det.idUbicacion || 1,
-            idUsuarioModificacion: 1
+            idUsuarioModificacion: idUsuarioActual
           }
           const resDet = await fetch(`/api/editarMovimientosProductos/${det.idMovimientoProducto}`, {
             method: 'PUT',
@@ -580,7 +583,7 @@ const EditarMovimiento = () => {
             cantidad: parseInt(det.cantidad, 10) || 0,
             precioCompra: parseFloat(det.precioCompra) || 0,
             idUbicacion: det.idUbicacion || 1,
-            idUsuarioModificacion: 1
+            idUsuarioModificacion: idUsuarioActual
           }
           const resNew = await fetch('/api/grabarMovimientosProductos', {
             method: 'POST',

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { useAuth } from '../../../context/AuthContext'
 import {
   CButton,
   CCard,
@@ -26,6 +27,8 @@ import {
 import { useNavigate } from 'react-router-dom'
 
 const AgregarMovimiento = () => {
+  const { usuario } = useAuth()
+  const idUsuarioActual = Number(usuario?.idUsuario ?? usuario?.id_Usuario ?? 0)
   const navigate = useNavigate()
 
   const [formData, setFormData] = useState({
@@ -568,7 +571,7 @@ const AgregarMovimiento = () => {
           cantidad: parseInt(producto.cantidad, 10),
           precioCompra: parseFloat(producto.precio),
           idUbicacion: Number.isNaN(idUbic) ? 1 : idUbic,
-          idUsuarioModificacion: 1
+          idUsuarioModificacion: idUsuarioActual
         }
       })
 

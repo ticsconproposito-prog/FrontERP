@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { useAuth } from '../../../context/AuthContext'
 import {
   CButton,
   CCard,
@@ -31,10 +32,12 @@ const FORM_INICIAL = {
   direccionResidencia: '',
   fechaNacimiento: '',
   fechaIngresoLaboral: '',
-  idUsuarioModificacion: 1,
+  idUsuarioModificacion: 0,
 }
 
 const Empleados = () => {
+  const { usuario } = useAuth()
+  const idUsuarioActual = Number(usuario?.idUsuario ?? usuario?.id_Usuario ?? 0)
   const [empleados, setEmpleados] = useState([])
   const [loading, setLoading] = useState(true)
   const [guardando, setGuardando] = useState(false)
@@ -118,7 +121,7 @@ const Empleados = () => {
       direccionResidencia: emp.direccionResidencia || '',
       fechaNacimiento: (emp.fechaNacimiento || '').toString().substring(0, 10),
       fechaIngresoLaboral: (emp.fechaIngresoLaboral || '').toString().substring(0, 10),
-      idUsuarioModificacion: 1,
+      idUsuarioModificacion: idUsuarioActual,
     })
     setErrores({})
     setModoEdicion(true)
@@ -140,7 +143,7 @@ const Empleados = () => {
         direccionResidencia: String(form.direccionResidencia || '').trim(),
         fechaNacimiento: form.fechaNacimiento,
         fechaIngresoLaboral: form.fechaIngresoLaboral,
-        idUsuarioModificacion: 1,
+        idUsuarioModificacion: idUsuarioActual,
       }
 
       let url = '/api/grabarEmpleado'
