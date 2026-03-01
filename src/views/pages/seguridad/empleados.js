@@ -191,7 +191,11 @@ const Empleados = () => {
 
   const eliminarEmpleado = async () => {
     try {
-      const res = await fetch(`/api/eliminarEmpleado/${idEliminar}`, { method: 'DELETE' })
+      const res = await fetch(`/api/eliminarEmpleado/${idEliminar}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idUsuarioModificacion: idUsuarioActual }),
+      })
       if (!res.ok) throw new Error('Error al eliminar el empleado')
       setModalEliminar(false)
       setMensajeExito('Empleado eliminado correctamente.')

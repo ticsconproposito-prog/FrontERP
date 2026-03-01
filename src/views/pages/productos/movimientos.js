@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
+import { useAuth } from '../../../context/AuthContext'
 import {
   CButton,
   CCard,
@@ -28,6 +29,8 @@ import {
 import { useNavigate } from 'react-router-dom'
 
 const Layout = () => {
+  const { usuario } = useAuth()
+  const idUsuarioActual = Number(usuario?.idUsuario ?? usuario?.id_Usuario ?? 0)
   const navigate = useNavigate()
 
   // Estado para las órdenes de productos
@@ -315,7 +318,11 @@ const Layout = () => {
     const idOrden = ordenAEliminar.idOrdenProducto
     try {
       // Primero eliminar los productos asociados al movimiento
-      const resMov = await fetch(`/api/eliminarMovProXIdOrden/${idOrden}`, { method: 'DELETE' })
+      const resMov = await fetch(`/api/eliminarMovProXIdOrden/${idOrden}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idUsuarioModificacion: idUsuarioActual }),
+      })
       if (!resMov.ok) {
         const errText = await resMov.text()
         let errMsg = `Error al eliminar productos del movimiento (${resMov.status})`
@@ -333,7 +340,11 @@ const Layout = () => {
         return
       }
       // Luego eliminar la orden
-      const res = await fetch(`/api/eliminarOrdenProducto/${idOrden}`, { method: 'DELETE' })
+      const res = await fetch(`/api/eliminarOrdenProducto/${idOrden}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idUsuarioModificacion: idUsuarioActual }),
+      })
       returnFocusRef.current?.focus()
       setModalConfirmarEliminar(false)
       setOrdenAEliminar(null)

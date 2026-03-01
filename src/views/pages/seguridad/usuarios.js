@@ -147,6 +147,7 @@ const Usuarios = () => {
       empleadoTexto: emp ? `${emp.nombre || ''} ${emp.apellido || ''}`.trim() : String(idEmp),
       usuario: usr.usuario || '',
       contrasena: '',
+      contrasenaOriginal: usr.contrasena || '',
       comentario: usr.comentario || '',
     })
     setErrores({})
@@ -165,7 +166,9 @@ const Usuarios = () => {
         idEmpleado: parseInt(form.idEmpleado, 10),
         id_Empleado: parseInt(form.idEmpleado, 10),
         usuario: String(form.usuario || '').trim(),
-        contrasena: String(form.contrasena || '').trim(),
+        contrasena: modoEdicion
+          ? (String(form.contrasena || '').trim() || String(form.contrasenaOriginal || '').trim())
+          : String(form.contrasena || '').trim(),
         comentario: String(form.comentario || '').trim(),
         idUsuarioModificacion: idUsuarioActual,
       }
@@ -223,7 +226,11 @@ const Usuarios = () => {
 
   const eliminarUsuario = async () => {
     try {
-      const res = await fetch(`/api/eliminarUsuario/${idEliminar}`, { method: 'DELETE' })
+      const res = await fetch(`/api/eliminarUsuario/${idEliminar}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idUsuarioModificacion: idUsuarioActual }),
+      })
       if (!res.ok) throw new Error('Error al eliminar el usuario')
       setModalEliminar(false)
       setMensajeExito('Usuario eliminado correctamente.')

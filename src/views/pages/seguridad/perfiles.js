@@ -159,7 +159,11 @@ const Perfiles = () => {
 
   const eliminarPerfil = async () => {
     try {
-      const res = await fetch(`/api/eliminarPerfil/${idEliminar}`, { method: 'DELETE' })
+      const res = await fetch(`/api/eliminarPerfil/${idEliminar}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idUsuarioModificacion: idUsuarioActual }),
+      })
       if (!res.ok) throw new Error('Error al eliminar el perfil')
       setModalEliminar(false)
       setMensajeExito('Perfil eliminado correctamente.')

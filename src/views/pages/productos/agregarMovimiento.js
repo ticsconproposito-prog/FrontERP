@@ -475,7 +475,8 @@ const AgregarMovimiento = () => {
       precioTotalOrden: totalOrden,
       valorCancelado: formData.valorCancelado ? parseFloat(formData.valorCancelado) : 0,
       comentario: formData.comentarios || '',
-      idUsuario: 1,
+      idUsuario: idUsuarioActual,
+      idUsuarioModificacion: idUsuarioActual,
     }
 
     try {

@@ -165,7 +165,11 @@ const Paginas = () => {
 
   const eliminarPagina = async () => {
     try {
-      const res = await fetch(`/api/eliminarPagina/${idEliminar}`, { method: 'DELETE' })
+      const res = await fetch(`/api/eliminarPagina/${idEliminar}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idUsuarioModificacion: idUsuarioActual }),
+      })
       if (!res.ok) throw new Error('Error al eliminar la página')
       setModalEliminar(false)
       setMensajeExito('Página eliminada correctamente.')

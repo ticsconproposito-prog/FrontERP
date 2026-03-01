@@ -215,7 +215,11 @@ const PerfilesPaginas = () => {
 
   const eliminarRegistro = async () => {
     try {
-      const res = await fetch(`/api/eliminarPerfilPagina/${idEliminar}`, { method: 'DELETE' })
+      const res = await fetch(`/api/eliminarPerfilPagina/${idEliminar}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idUsuarioModificacion: idUsuarioActual }),
+      })
       if (!res.ok) throw new Error('Error al eliminar el registro')
       setModalEliminar(false)
       setMensajeExito('Registro eliminado correctamente.')
