@@ -57,6 +57,8 @@ const Layout = () => {
   const [alertaSinCorreo, setAlertaSinCorreo] = useState(false);
   const [documentoOpts, setDocumentoOpts] = useState([]);
   const [documento, setDocumento] = useState('');
+  const [errorDteModal, setErrorDteModal] = useState({ visible: false, mensaje: '' });
+  const [clienteGuardadoModal, setClienteGuardadoModal] = useState(false);
 
   // Estados para totales de factura
   const [impuestoIVA, setImpuestoIVA] = useState(12); // 12% IVA por defecto
@@ -460,8 +462,11 @@ const Layout = () => {
         throw new Error(text || 'Error al guardar el cliente');
       }
 
-      const data = await response.json().catch(() => ({}));
-      const idClienteNuevo = data?.idCliente ?? data?.id ?? null;
+      const rawCliente = await response.text();
+      console.log('[grabarCliente] Respuesta raw:', rawCliente);
+      const numCliente = parseInt(rawCliente.trim(), 10);
+      const idClienteNuevo = !isNaN(numCliente) ? numCliente : null;
+      console.log('[grabarCliente] idClienteNuevo:', idClienteNuevo);
 
       const tieneNit = !!formCliente.nit?.trim();
       const tieneDpi = !!formCliente.dpiPasaporte?.trim();
@@ -499,7 +504,7 @@ const Layout = () => {
 
       cerrarModalCliente();
       cargarClientes();
-      alert('Cliente guardado exitosamente');
+      setClienteGuardadoModal(true);
     } catch (err) {
       console.error('Error al guardar cliente:', err);
       setErrorCliente(err.message || 'No se pudo guardar el cliente');
@@ -562,7 +567,7 @@ const Layout = () => {
       <html lang="es">
       <head>
         <meta charset="UTF-8" />
-        <title></title>
+        <title>${referenciaRes || 'Factura'}</title>
         <style>
           * { margin: 0; padding: 0; box-sizing: border-box; }
           body { font-family: Arial, sans-serif; font-size: 12px; color: #222; }
@@ -737,7 +742,8 @@ const Layout = () => {
             <div class="factura-id">
               <div class="factura-titulo">FACTURA</div>
               <div class="factura-linea"><strong>NÚMERO DE AUTORIZACIÓN</strong></div>
-              <div class="factura-linea">${numeroAutorizacion || '—'}</div>
+              <div class="factura-linea" style="font-size:10px;line-height:1.4;">${numeroAutorizacion ? numeroAutorizacion.slice(0, 26) : '—'}</div>
+              ${numeroAutorizacion && numeroAutorizacion.length > 26 ? `<div class="factura-linea" style="font-size:10px;line-height:1.4;">${numeroAutorizacion.slice(26)}</div>` : ''}
               <div class="factura-linea"><strong>Serie:</strong> ${serieRes || '—'}</div>
               <div class="factura-linea"><strong>No. Referencia:</strong> ${referenciaRes || '—'}</div>
               <div class="factura-linea" style="margin-top:5px;"><strong>Fecha Factura:</strong> ${formatearFechaFactura(cliente.fecha)}</div>
@@ -786,6 +792,12 @@ const Layout = () => {
         <script>
           window.onload = function() { window.print(); window.onafterprint = function() { window.close(); }; };
         </script>
+      <script>
+        window.onload = function() {
+          window.print();
+          window.close();
+        };
+      </script>
       </body>
       </html>
     `;
@@ -808,6 +820,11 @@ const Layout = () => {
 
     if (detalleFactura.length === 0) {
       setErrorFactura('Debe agregar al menos un producto');
+      return;
+    }
+
+    if (!formFactura.idCliente) {
+      setErrorFactura('El cliente no tiene un ID válido. Por favor seleccione o guarde el cliente nuevamente.');
       return;
     }
 
@@ -847,6 +864,7 @@ const Layout = () => {
         idUsuarioModificacion: idUsuarioActual,
       };
 
+      console.log('[grabarEncabezadoFacturas] Body enviado:', body);
       const response = await fetch('/api/grabarEncabezadoFacturas', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -901,20 +919,111 @@ const Layout = () => {
         throw new Error('La factura se guardó pero algunos productos del detalle fallaron');
       }
 
-      // Consultar el encabezado guardado para obtener datos generados por el backend
+      // Construir la referencia en memoria: prefijo + idEncabezadoFactura
+      const idFacturaTrimmed = idEncabezadoFactura.trim()
+      const tipoDoc = String(formFactura.tipoDocumento)
+      const prefijoRef = tipoDoc === '1' ? 'FACT' : tipoDoc === '2' ? 'NCRE' : tipoDoc === '3' ? 'NDEB' : ''
+      const referenciaCalculada = prefijoRef ? `${prefijoRef}${idFacturaTrimmed}` : idFacturaTrimmed
+
       let numeroAutorizacion = '';
       let serieRes = '';
-      let referenciaRes = body.referencia ?? '';
+      let referenciaRes = referenciaCalculada;
+
+      // Enviar DTE al API /dtes
       try {
-        const resConsulta = await fetch(`/api/encabezadoFacturas/${idEncabezadoFactura.trim()}`);
-        if (resConsulta.ok) {
-          const dataConsulta = await resConsulta.json();
-          numeroAutorizacion = dataConsulta?.numeroAutorizacionResAPI ?? '';
-          serieRes = dataConsulta?.serieResAPI ?? '';
-          referenciaRes = dataConsulta?.referencia ?? referenciaRes;
+        const fechaDte = (() => {
+          const f = formFactura.fecha || ''
+          if (f.includes('-')) {
+            const [y, m, d] = f.split('-')
+            return `${d}/${m}/${y}`
+          }
+          return f
+        })()
+
+        const itemsDte = detalleFactura.map((item) => {
+          const cantItem = Number(item.cantidad) || 0
+          const descItem = Number(item.descuento) || 0
+          const precioItem = Number(item.precioUnitario) || 0
+          const impBruto = cantItem * precioItem
+          const totalConDescuento = impBruto - descItem
+          const impNeto = totalConDescuento / 1.12
+          const impIva = totalConDescuento - impNeto
+          return {
+            producto: item.codigo || String(item.idProducto || ''),
+            descripcion: item.descripcion || '',
+            medida: 1,
+            cantidad: cantItem,
+            precio: precioItem,
+            porcDesc: 0.00,
+            impBruto: parseFloat(impBruto.toFixed(2)),
+            impDescuento: parseFloat(descItem.toFixed(2)),
+            impExento: 0.00,
+            impOtros: 0.00,
+            impNeto: parseFloat(impNeto.toFixed(2)),
+            impIsr: 0.00,
+            impIva: parseFloat(impIva.toFixed(2)),
+            impTotal: parseFloat(totalConDescuento.toFixed(2)),
+            TipoVentaDet: 'B',
+          }
+        })
+
+        const bodyDte = {
+          tipoDoc: Number(formFactura.tipoDocumento),
+          tipoVenta: 'B',
+          destinoVenta: 1,
+          fecha: '28/02/2026',
+          moneda: Number(formFactura.moneda),
+          tasa: formFactura.moneda === '1' ? 1.0 : 2.0,
+          referencia: referenciaCalculada,
+          items: itemsDte,
+          receptor: {
+            nitReceptor: formFactura.nit || 'CF',
+            nombre: formFactura.nombre || 'Consumidor Final',
+            direccion: formFactura.direccion || formFactura.direccionEntrega || 'Ciudad',
+          },
+          totales: {
+            bruto: parseFloat(totalBruto.toFixed(2)),
+            descuento: parseFloat(cantidadDescuento.toFixed(2)),
+            exento: 0.00,
+            otros: 0.00,
+            neto: parseFloat(totalNeto.toFixed(2)),
+            isr: 0.00,
+            iva: parseFloat(iva.toFixed(2)),
+            total: parseFloat(total.toFixed(2)),
+          },
+          datosAdicionales: {
+            tipoReceptor: '1',
+            email: formFactura.correoElectronico || '',
+            enviar: enviarCorreo ? 'S' : 'N',
+          },
         }
-      } catch (_) {
-        // Si la consulta falla, se imprime sin esos datos
+
+        console.log('[DTE] Enviando a /fel/dtes:', bodyDte)
+        const resDte = await fetch('/api/fel/dtes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(bodyDte),
+        })
+        const rawDte = await resDte.text()
+        let responseDte = null
+        try { responseDte = JSON.parse(rawDte) } catch (_) { responseDte = rawDte }
+        console.log('[DTE] Response completo:', responseDte)
+
+        // La respuesta viene envuelta en { mensaje, fel: { ok, error, referencia, ... } }
+        const fel = responseDte?.fel ?? responseDte
+
+        if (fel?.ok === false) {
+          const mensajeError = fel.error || 'Error desconocido al emitir el DTE'
+          console.warn('[DTE] Error FEL:', mensajeError)
+          setErrorDteModal({ visible: true, mensaje: mensajeError })
+        } else {
+          if (fel?.referencia) referenciaRes = fel.referencia
+          if (fel?.numeroAutorizacion) numeroAutorizacion = fel.numeroAutorizacion
+          if (fel?.serie) serieRes = fel.serie
+          console.log('[DTE] DTE exitoso. Referencia:', referenciaRes, '| Autorización:', numeroAutorizacion, '| Serie:', serieRes)
+        }
+      } catch (eDte) {
+        console.warn('[DTE] Error al enviar DTE:', eDte)
       }
 
       await imprimirFactura({
@@ -940,6 +1049,7 @@ const Layout = () => {
   };
 
   return (
+    <>
     <CRow>
       <CCol xs={12}>
         <CCard className="mb-4">
@@ -1701,6 +1811,48 @@ const Layout = () => {
         </CCard>
       </CCol>
     </CRow>
+
+    {/* Modal éxito guardar cliente */}
+    <CModal
+      visible={clienteGuardadoModal}
+      onClose={() => setClienteGuardadoModal(false)}
+      alignment="center"
+    >
+      <CModalHeader className="bg-success text-white">
+        <CModalTitle>Cliente guardado</CModalTitle>
+      </CModalHeader>
+      <CModalBody>
+        <p className="mb-0">El cliente fue guardado exitosamente y quedó seleccionado en la factura.</p>
+      </CModalBody>
+      <CModalFooter>
+        <CButton color="success" className="text-white" onClick={() => setClienteGuardadoModal(false)}>
+          Aceptar
+        </CButton>
+      </CModalFooter>
+    </CModal>
+
+    {/* Modal error DTE / FEL */}
+    <CModal
+      visible={errorDteModal.visible}
+      onClose={() => setErrorDteModal({ visible: false, mensaje: '' })}
+      backdrop="static"
+      alignment="center"
+    >
+      <CModalHeader className="bg-danger text-white">
+        <CModalTitle>Error al emitir DTE</CModalTitle>
+      </CModalHeader>
+      <CModalBody>
+        <p className="mb-0" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+          {errorDteModal.mensaje}
+        </p>
+      </CModalBody>
+      <CModalFooter>
+        <CButton color="secondary" onClick={() => setErrorDteModal({ visible: false, mensaje: '' })}>
+          Cerrar
+        </CButton>
+      </CModalFooter>
+    </CModal>
+    </>
   )
 }
 export default Layout
