@@ -45,7 +45,8 @@ const Layout = () => {
     descripcionProducto: '',
     unidadDeMedida: '',
     estado: '',
-
+    precioCompra: '',
+    precioVenta: '',
   });
   const [modalMsgVisible, setModalMsgVisible] = useState(false);
   const [modalMsgTitle, setModalMsgTitle] = useState('');
@@ -123,6 +124,13 @@ const Layout = () => {
       nuevosErrores.unidadDeMedida = 'Seleccione una unidad de medida'
     }
 
+    const regexDecimal = /^\d+(\.\d{1,2})?$/
+    if (form.precioCompra !== '' && !regexDecimal.test(form.precioCompra)) {
+      nuevosErrores.precioCompra = 'Ingrese un número válido (ej: 10.50)'
+    }
+    if (form.precioVenta !== '' && !regexDecimal.test(form.precioVenta)) {
+      nuevosErrores.precioVenta = 'Ingrese un número válido (ej: 15.00)'
+    }
 
     setErrors(nuevosErrores)
 
@@ -149,6 +157,8 @@ const Layout = () => {
       codigoProductoProveedor: producto.codigoProductoProveedor,
       descripcionProducto: producto.descripcionProducto,
       unidadDeMedida: valorUnidad,
+      precioCompra: producto.precioCompra != null ? String(producto.precioCompra) : '',
+      precioVenta: producto.precioVenta != null ? String(producto.precioVenta) : '',
     })
 
     setModoEdicion(true)
@@ -304,7 +314,9 @@ const Layout = () => {
         codigoProductoProveedor: '',
         descripcionProducto: '',
         unidadDeMedida: '',
-        estado: ''
+        estado: '',
+        precioCompra: '',
+        precioVenta: '',
       })
 
 
@@ -315,39 +327,83 @@ const Layout = () => {
       setModalMsgVisible(true)
     }
   }
-  const [filtros, setFiltros] = useState({
-    codigoProducto: '',
-    codigoProductoProveedor: '',
-    descripcionProducto: '',
-  })
+  const [busqueda, setBusqueda] = useState('')
+  const [todosProductos, setTodosProductos] = useState([])
 
   const pageSize = 20
 
-  const cargarProductos = async (pagina = 0, filtrosActuales = filtros) => {
-    const params = new URLSearchParams({
-      ...filtrosActuales,
-      page: pagina,
-    })
-    const response = await fetch(`/api/productos?${params.toString()}`)
-    const data = await response.json()
-    setProductos(data.content)
-    setPage(data.number)
-    setTotalPages(data.totalPages)
+  const cargarProductos = async (pagina = 0, busquedaActual = busqueda) => {
+    const termino = (busquedaActual || '').trim()
+
+    if (!termino) {
+      const params = new URLSearchParams({ page: pagina })
+      const response = await fetch(`/api/productos?${params.toString()}`)
+      const data = await response.json()
+      setProductos(data.content)
+      setTodosProductos([])
+      setPage(data.number)
+      setTotalPages(data.totalPages)
+      return
+    }
+
+    const SIZE_BUSQUEDA = 500
+    const palabras = termino.split(/\s+/).filter(Boolean)
+
+    // Para codigoProducto y codigoProductoProveedor: búsqueda con el término completo
+    // Para descripcionProducto: si hay varias palabras, buscar cada una y hacer intersección
+    const fetchDesc = (palabra) =>
+      fetch(`/api/productos?descripcionProducto=${encodeURIComponent(palabra)}&page=0&size=${SIZE_BUSQUEDA}`)
+        .then(r => r.json()).then(d => d.content || [])
+
+    const [rCodigo, rProveedor, ...rDescPalabras] = await Promise.all([
+      fetch(`/api/productos?codigoProducto=${encodeURIComponent(termino)}&page=0&size=${SIZE_BUSQUEDA}`).then(r => r.json()),
+      fetch(`/api/productos?codigoProductoProveedor=${encodeURIComponent(termino)}&page=0&size=${SIZE_BUSQUEDA}`).then(r => r.json()),
+      ...palabras.map(fetchDesc),
+    ])
+
+    // Intersección de resultados por descripcion (producto debe aparecer en TODAS las palabras)
+    let porDescripcion = rDescPalabras[0] || []
+    for (let i = 1; i < rDescPalabras.length; i++) {
+      const ids = new Set(rDescPalabras[i].map(p => p.idProducto))
+      porDescripcion = porDescripcion.filter(p => ids.has(p.idProducto))
+    }
+
+    const combinados = [...(rCodigo.content || []), ...(rProveedor.content || []), ...porDescripcion]
+    const unicos = combinados.filter((p, idx, arr) =>
+      arr.findIndex(x => x.idProducto === p.idProducto) === idx
+    )
+    const inicio = pagina * pageSize
+    setTodosProductos(unicos)
+    setProductos(unicos.slice(inicio, inicio + pageSize))
+    setPage(pagina)
+    setTotalPages(Math.ceil(unicos.length / pageSize))
   }
 
   // Función para exportar productos a Excel
   const exportarAExcel = async () => {
     try {
       // Obtener TODOS los productos sin paginación
-      const params = new URLSearchParams({
-        ...filtros,
-        page: 0,
-        size: 10000,
-      })
-      const response = await fetch(`/api/productos?${params.toString()}`)
-      if (!response.ok) throw new Error('Error al obtener los productos')
-      const data = await response.json()
-      const todosLosProductos = data.content
+      let todosLosProductos = []
+      const termino = busqueda.trim()
+      if (termino) {
+        const SIZE_BUSQUEDA = 10000
+        const [r1, r2, r3] = await Promise.all([
+          fetch(`/api/productos?codigoProducto=${encodeURIComponent(termino)}&page=0&size=${SIZE_BUSQUEDA}`),
+          fetch(`/api/productos?codigoProductoProveedor=${encodeURIComponent(termino)}&page=0&size=${SIZE_BUSQUEDA}`),
+          fetch(`/api/productos?descripcionProducto=${encodeURIComponent(termino)}&page=0&size=${SIZE_BUSQUEDA}`),
+        ])
+        const [d1, d2, d3] = await Promise.all([r1.json(), r2.json(), r3.json()])
+        const combinados = [...(d1.content || []), ...(d2.content || []), ...(d3.content || [])]
+        todosLosProductos = combinados.filter((p, idx, arr) =>
+          arr.findIndex(x => x.idProducto === p.idProducto) === idx
+        )
+      } else {
+        const params = new URLSearchParams({ page: 0, size: 10000 })
+        const response = await fetch(`/api/productos?${params.toString()}`)
+        if (!response.ok) throw new Error('Error al obtener los productos')
+        const data = await response.json()
+        todosLosProductos = data.content
+      }
 
       if (!todosLosProductos || todosLosProductos.length === 0) {
         setModalMsgTitle('Información')
@@ -363,6 +419,8 @@ const Layout = () => {
         'Código Producto': producto.codigoProducto || '',
         'Código Producto Proveedor': producto.codigoProductoProveedor || '',
         'Descripción': producto.descripcionProducto || '',
+        'Precio Compra': producto.precioCompra != null ? Number(producto.precioCompra).toFixed(2) : '',
+        'Precio Venta': producto.precioVenta != null ? Number(producto.precioVenta).toFixed(2) : '',
         'Unidad de Medida': obtenerNombreUnidad(producto.unidadDeMedida),
         'Estado': obtenerNombreEstado(producto.estado)
       }))
@@ -376,6 +434,8 @@ const Layout = () => {
         { wch: 20 }, // Código Producto
         { wch: 25 }, // Código Producto Proveedor
         { wch: 50 }, // Descripción
+        { wch: 15 }, // Precio Compra
+        { wch: 15 }, // Precio Venta
         { wch: 20 }, // Unidad de Medida
         { wch: 15 }, // Estado
       ]
@@ -406,17 +466,12 @@ const Layout = () => {
     }
   }
 
-  const handleFiltroChange = (e) => {
-    const { name, value } = e.target
-    setFiltros((prev) => ({ ...prev, [name]: value }))
-  }
-
   useEffect(() => {
     const delayDebounce = setTimeout(() => {
-      cargarProductos(0, filtros)
+      cargarProductos(0, busqueda)
     }, 500)
     return () => clearTimeout(delayDebounce)
-  }, [filtros])
+  }, [busqueda])
 
   // Cargar diccionario para unidades de medida y Estado
   useEffect(() => {
@@ -451,35 +506,16 @@ const Layout = () => {
 
             <CForm>
               <CRow className="gy-3">
-                <CCol md={4}>
-                  <CFormLabel>Código Producto:</CFormLabel>
+                <CCol md={6}>
+                  <CFormLabel className="text-dark fw-bold" htmlFor="Buscar">Busqueda por:</CFormLabel>
                   <CFormInput
-                    name="codigoProducto"
-                    placeholder="Código producto"
-                    value={filtros.codigoProducto}
-                    onChange={handleFiltroChange}
-                  />
-                </CCol>
-                <CCol md={4}>
-                  <CFormLabel>Código Producto Proveedor:</CFormLabel>
-                  <CFormInput
-                    name="codigoProductoProveedor"
-                    placeholder="Código proveedor"
-                    value={filtros.codigoProductoProveedor}
-                    onChange={handleFiltroChange}
-                  />
-                </CCol>
-                <CCol md={4}>
-                  <CFormLabel>Descripción Producto:</CFormLabel>
-                  <CFormInput
-                    name="descripcionProducto"
-                    placeholder="Buscar por descripción"
-                    value={filtros.descripcionProducto}
-                    onChange={handleFiltroChange}
+                    placeholder="Buscar por código, código proveedor o descripción..."
+                    value={busqueda}
+                    onChange={(e) => setBusqueda(e.target.value)}
                   />
                 </CCol>
               </CRow>
-            </CForm >
+            </CForm>
 
             <CModal visible={visible} onClose={() => { quitarFoco(); setVisible(false) }} size="lg" backdrop="static">
               <CModalHeader className="bg-light">
@@ -530,6 +566,38 @@ const Layout = () => {
                         <div className="invalid-feedback d-block">
                           {errors.descripcionProducto}
                         </div>
+                      )}
+                    </CCol>
+                  </CRow>
+                  <CRow className="mb-3">
+                    <CCol xs={8}>
+                      <CFormLabel className="text-dark fw-bold" htmlFor="precioCompra">Precio de Compra</CFormLabel>
+                      <CFormInput
+                        id="precioCompra"
+                        name="precioCompra"
+                        value={form.precioCompra}
+                        onChange={handleChange}
+                        placeholder="0.00"
+                        inputMode="decimal"
+                        invalid={!!errors.precioCompra} />
+                      {errors.precioCompra && (
+                        <div className="invalid-feedback d-block">{errors.precioCompra}</div>
+                      )}
+                    </CCol>
+                  </CRow>
+                    <CRow className="mb-3">
+                    <CCol xs={8}>
+                      <CFormLabel className="text-dark fw-bold" htmlFor="precioVenta">Precio de Venta</CFormLabel>
+                      <CFormInput
+                        id="precioVenta"
+                        name="precioVenta"
+                        value={form.precioVenta}
+                        onChange={handleChange}
+                        placeholder="0.00"
+                        inputMode="decimal"
+                        invalid={!!errors.precioVenta} />
+                      {errors.precioVenta && (
+                        <div className="invalid-feedback d-block">{errors.precioVenta}</div>
                       )}
                     </CCol>
                   </CRow>
@@ -617,6 +685,8 @@ const Layout = () => {
                   <CTableHeaderCell className="py-2 text-nowrap">Código Producto</CTableHeaderCell>
                   <CTableHeaderCell className="py-2 text-nowrap">Código Producto Proveedor</CTableHeaderCell>
                   <CTableHeaderCell className="py-2 text-nowrap">Descripción</CTableHeaderCell>
+                  <CTableHeaderCell className="py-2 text-nowrap">Precio Compra</CTableHeaderCell>
+                  <CTableHeaderCell className="py-2 text-nowrap">Precio Venta</CTableHeaderCell>
                   <CTableHeaderCell className="py-2 text-nowrap">Unidad de Medida</CTableHeaderCell>
                   <CTableHeaderCell className="py-2 text-nowrap">Estado</CTableHeaderCell>
                   <CTableHeaderCell className="py-2 text-nowrap">Acciones</CTableHeaderCell>
@@ -629,6 +699,8 @@ const Layout = () => {
                     <CTableDataCell>{producto.codigoProducto}</CTableDataCell>
                     <CTableDataCell>{producto.codigoProductoProveedor}</CTableDataCell>
                     <CTableDataCell>{producto.descripcionProducto}</CTableDataCell>
+                    <CTableDataCell className="text-end">{producto.precioCompra != null ? Number(producto.precioCompra).toFixed(2) : '—'}</CTableDataCell>
+                    <CTableDataCell className="text-end">{producto.precioVenta != null ? Number(producto.precioVenta).toFixed(2) : '—'}</CTableDataCell>
                     <CTableDataCell>{obtenerNombreUnidad(producto.unidadDeMedida)}</CTableDataCell>
                     <CTableDataCell>
                       <span style={{ color: '#000' }}>

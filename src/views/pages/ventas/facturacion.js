@@ -184,16 +184,51 @@ const Layout = () => {
     }
   };
 
-  const cargarInventario = async () => {
+  const cargarInventario = async () => {};
+
+  const buscarEnInventario = async (termino) => {
+    if (!termino || termino.trim().length < 2) {
+      setSugerenciasProductos([]);
+      setMostrarSugerenciasProductos(false);
+      return;
+    }
     setCargandoProductos(true);
     try {
-      const response = await fetch('/api/inventario?size=1000');
-      const data = await response.json();
-      const lista = Array.isArray(data) ? data : (data?.content || []);
-      setProductos(lista);
+      const t = termino.trim();
+      const palabras = t.split(/\s+/).filter(Boolean);
+      const SIZE = 200;
+
+      const fetchPorCampo = (campo, valor) =>
+        fetch(`/api/inventario?${campo}=${encodeURIComponent(valor)}&page=0&size=${SIZE}`)
+          .then(r => r.json()).then(d => d.content || []);
+
+      // descripcionProducto: intersección de palabras para soporte de espacios
+      const fetchDesc = (palabrasArr) =>
+        Promise.all(palabrasArr.map(p => fetchPorCampo('descripcionProducto', p)))
+          .then(resultados => {
+            let base = resultados[0] || [];
+            for (let i = 1; i < resultados.length; i++) {
+              const ids = new Set(resultados[i].map(x => x.idInventario));
+              base = base.filter(x => ids.has(x.idInventario));
+            }
+            return base;
+          });
+
+      const [porCodigo, porProveedor, porDescripcion] = await Promise.all([
+        fetchPorCampo('codigoProducto', t),
+        fetchPorCampo('codigoProductoProveedor', t),
+        fetchDesc(palabras),
+      ]);
+
+      const combinados = [...porCodigo, ...porProveedor, ...porDescripcion];
+      const unicos = combinados.filter((p, idx, arr) =>
+        arr.findIndex(x => x.idInventario === p.idInventario) === idx
+      );
+      setSugerenciasProductos(unicos.slice(0, 15));
+      setMostrarSugerenciasProductos(unicos.length > 0);
     } catch (e) {
-      console.error('Error al cargar inventario:', e);
-      setProductos([]);
+      console.error('Error al buscar inventario:', e);
+      setSugerenciasProductos([]);
     } finally {
       setCargandoProductos(false);
     }
@@ -202,27 +237,13 @@ const Layout = () => {
   const handleBusquedaProducto = (e) => {
     const value = e.target.value;
     setBusquedaProducto(value);
-
-    const valorLimpio = value.trim();
-    if (valorLimpio.length >= 2) {
-      const valorLower = valorLimpio.toLowerCase();
-      const encontrados = productos.filter((p) => {
-        const codigoProducto = (p.idProducto?.codigoProducto || p.codigoProducto || '').toString().toLowerCase();
-        const codigoProveedor = (p.idProducto?.codigoProductoProveedor || p.codigoProductoProveedor || '').toString().toLowerCase();
-        const descripcion = (p.idProducto?.descripcionProducto || p.descripcionProducto || p.descripcion || '').toString().toLowerCase();
-        return codigoProducto.includes(valorLower) || codigoProveedor.includes(valorLower) || descripcion.includes(valorLower);
-      });
-      setSugerenciasProductos(encontrados.slice(0, 10));
-      setMostrarSugerenciasProductos(encontrados.length > 0);
-    } else {
-      setSugerenciasProductos([]);
-      setMostrarSugerenciasProductos(false);
-    }
+    buscarEnInventario(value);
   };
 
   const agregarProductoDetalle = (producto) => {
-    const idRef = producto.idProductoInventario ?? producto.idProducto?.idProducto ?? producto.idProducto ?? producto.id;
-    const existe = detalleFactura.find((item) => item.idProductoInventario === idRef || item.idProducto === idRef);
+    const idInventario = producto.idInventario ?? producto.idProductoInventario;
+    const idProducto = producto.idProducto?.idProducto ?? producto.idProducto ?? producto.id;
+    const existe = detalleFactura.find((item) => item.idProductoInventario === idInventario || item.idProducto === idProducto);
 
     if (existe) {
       setAlertProductoDuplicado(true);
@@ -231,15 +252,15 @@ const Layout = () => {
 
     const codigo = producto.idProducto?.codigoProducto || producto.codigoProducto || '';
     const descripcion = producto.idProducto?.descripcionProducto || producto.descripcionProducto || producto.descripcion || '';
-    const precioVenta = producto.precioVenta || 0;
+    const precioVenta = producto.idProducto?.precioVenta ?? producto.precioVenta ?? 0;
     const cantidad = 1;
     const precio = precioVenta * cantidad;
     const descuento = 0;
     const total = precio - descuento;
 
     const nuevoItem = {
-      idProductoInventario: producto.idProductoInventario,
-      idProducto: producto.idProducto?.idProducto ?? producto.idProducto,
+      idProductoInventario: idInventario,
+      idProducto,
       idUnidadMedida: producto.idProducto?.unidadDeMedida ?? producto.unidadDeMedida ?? null,
       codigo,
       descripcion,
@@ -523,6 +544,35 @@ const Layout = () => {
     }
   };
 
+  const numeroALetras = (num) => {
+    const unidades = ['', 'UN', 'DOS', 'TRES', 'CUATRO', 'CINCO', 'SEIS', 'SIETE', 'OCHO', 'NUEVE',
+      'DIEZ', 'ONCE', 'DOCE', 'TRECE', 'CATORCE', 'QUINCE', 'DIECISÉIS', 'DIECISIETE', 'DIECIOCHO', 'DIECINUEVE']
+    const decenas = ['', '', 'VEINTE', 'TREINTA', 'CUARENTA', 'CINCUENTA', 'SESENTA', 'SETENTA', 'OCHENTA', 'NOVENTA']
+    const centenas = ['', 'CIEN', 'DOSCIENTOS', 'TRESCIENTOS', 'CUATROCIENTOS', 'QUINIENTOS',
+      'SEISCIENTOS', 'SETECIENTOS', 'OCHOCIENTOS', 'NOVECIENTOS']
+    const grupo = (n) => {
+      if (n === 0) return ''
+      if (n === 100) return 'CIEN'
+      let s = ''
+      if (n >= 100) { s += centenas[Math.floor(n / 100)] + ' '; n %= 100 }
+      if (n >= 20) { s += decenas[Math.floor(n / 10)]; if (n % 10) s += ' Y ' + unidades[n % 10]; }
+      else if (n > 0) s += unidades[n]
+      return s.trim()
+    }
+    const entero = Math.floor(num)
+    const centavos = Math.round((num - entero) * 100)
+    let resultado = ''
+    if (entero >= 1000000) {
+      const mill = Math.floor(entero / 1000000)
+      resultado += (mill === 1 ? 'UN MILLÓN' : grupo(mill) + ' MILLONES') + ' '
+    }
+    const miles = Math.floor((entero % 1000000) / 1000)
+    if (miles > 0) resultado += (miles === 1 ? 'MIL' : grupo(miles) + ' MIL') + ' '
+    const resto = entero % 1000
+    if (resto > 0) resultado += grupo(resto)
+    return (resultado.trim() || 'CERO') + ' QUETZALES CON ' + String(centavos).padStart(2, '0') + '/100'
+  }
+
   const imprimirFactura = async ({ cliente, detalle, iva, total, totalDescuento, numeroAutorizacion, serieRes, referenciaRes }) => {
     const moneda = cliente.moneda === '1' ? 'Q' : '$';
 
@@ -690,26 +740,36 @@ const Layout = () => {
           } 
 
           /* ── Totales ── */
-          .totales-wrap { display: flex; justify-content: flex-end; margin-bottom: 12px; }
+          .totales-wrap { margin-bottom: 12px; }
           .totales-tabla {
-            border: 1px solid #555;
+            width: 100%;
             border-collapse: separate;
             border-spacing: 0;
             font-size: 12px;
-            min-width: 240px;
-            border-radius: 6px;
+            font-weight: normal;
+            border: 1px solid #000;
+            border-radius: 0;
             overflow: hidden;
           }
           .totales-tabla td {
             padding: 5px 12px;
-            border-bottom: 1px solid #555;
+            border: none;
+            border-bottom: 1px solid #000;
+            font-weight: normal;
           }
           .totales-tabla tr:last-child td { border-bottom: none; }
+          .totales-tabla td + td { border-left: 1px solid #000; }
           .totales-tabla td:last-child { text-align: right; }
-          .totales-tabla .fila-total {
-            font-weight: bold;
-            font-size: 13px;
-            border-top: 1px solid #555;
+          .totales-tabla .fila-total { font-weight: bold; font-size: 13px; }
+          .totales-tabla tr:first-child td:first-child { border-top-left-radius: 0; }
+          .totales-tabla tr:first-child td:last-child  { border-top-right-radius: 0; }
+          .totales-tabla tr:last-child  td:first-child { border-bottom-left-radius: 0; }
+          .totales-tabla tr:last-child  td:last-child  { border-bottom-right-radius: 0; }
+          .td-son {
+            font-size: 10px;
+            color: #444;
+            vertical-align: middle;
+            width: 55%;
           }
 
           /* ── Pie ── */
@@ -746,7 +806,7 @@ const Layout = () => {
               ${numeroAutorizacion && numeroAutorizacion.length > 26 ? `<div class="factura-linea" style="font-size:10px;line-height:1.4;">${numeroAutorizacion.slice(26)}</div>` : ''}
               <div class="factura-linea"><strong>Serie:</strong> ${serieRes || '—'}</div>
               <div class="factura-linea"><strong>No. Referencia:</strong> ${referenciaRes || '—'}</div>
-              <div class="factura-linea" style="margin-top:5px;"><strong>Fecha Factura:</strong> ${formatearFechaFactura(cliente.fecha)}</div>
+              <div class="factura-linea" style="margin-top:5px;"><strong>Fecha de Emisión:</strong> ${formatearFechaFactura(cliente.fecha)}</div>
             </div>
           </div>
 
@@ -777,16 +837,30 @@ const Layout = () => {
             <tbody>
               ${filas}
             </tbody>
+            <tfoot>
+              <tr>
+                <td colspan="2" rowspan="2" style="font-size:10px;color:#000;vertical-align:middle;padding:6px 8px;border-top:1px solid #000;">
+                  <strong>TOTAL EN QUETZALES:</strong> ${numeroALetras(total.toFixed(2))}
+                </td>
+                <td style="text-align:left;padding:5px 8px;border-left:1px solid #000;border-top:1px solid #000;">IVA:</td>
+                <td style="text-align:right;padding:5px 8px;border-top:1px solid #000;">${moneda}${iva.toFixed(2)}</td>
+              </tr>
+              <tr>
+                <td style="text-align:left;padding:5px 8px;font-weight:bold;font-size:13px;border-left:1px solid #000;border-top:1px solid #000;">TOTAL:</td>
+                <td style="text-align:right;padding:5px 8px;font-weight:bold;font-size:13px;border-top:1px solid #000;">${moneda}${total.toFixed(2)}</td>
+              </tr>
+            </tfoot>
           </table>
 
-          <!-- Totales -->
-          <div class="totales-wrap">
-            <table class="totales-tabla">
-              <tr><td>IVA:</td><td>${moneda}${iva.toFixed(2)}</td></tr>
-              <tr class="fila-total"><td>TOTAL:</td><td>${moneda}${total.toFixed(2)}</td></tr>
-            </table>
+           <div style="margin-top:10px;padding:6px 10px;border:1px solid #000;border-radius:4px;font-size:10px;text-align:center;">
+            <div><strong>Sujeto a pagos trimestrales ISR</strong></div>
+            <div><strong>Agente de Retención de IVA</strong></div>
           </div>
-
+          <div style="margin-top:10px;padding:6px 10px;border:1px solid #000;border-radius:4px;font-size:10px;text-align:left;">
+            <div style="font-weight:bold;margin-bottom:4px;">DATOS DEL CERTIFICADOR</div>
+            <div><strong>NIT del contribuyente:</strong> 5640773-4</div>
+            <div><strong>Nombre, razón o denominación social:</strong> AINNOVA, SOCIEDAD ANÓNIMA</div>
+          </div>
           <div class="footer">Gracias por su compra — Ferretería y Blockera Agmner</div>
         </div>
         <script>
@@ -1086,8 +1160,9 @@ const Layout = () => {
                     checked={enviarCorreo}
                     onChange={(e) => {
                       const checked = e.target.checked;
-                      if (checked && !esConsumidorFinal && !formFactura.correoElectronico?.trim()) {
+                      if (checked && !formFactura.correoElectronico?.trim()) {
                         setAlertaSinCorreo(true);
+                        setEnviarCorreo(false);
                         return;
                       }
                       setAlertaSinCorreo(false);
@@ -1113,7 +1188,7 @@ const Layout = () => {
                 <CRow className="mb-2">
                   <CCol xs={12}>
                     <div className="alert alert-warning d-flex align-items-center justify-content-between mb-0" role="alert">
-                      <span>El cliente no tiene un correo electrónico registrado. No se puede activar el envío de correo.</span>
+                      <span>El cliente no tiene un correo electrónico agregado. No se puede activar el envío de correo.</span>
                       <button type="button" className="btn-close ms-2" aria-label="Cerrar" onClick={() => setAlertaSinCorreo(false)} />
                     </div>
                   </CCol>
@@ -1521,7 +1596,8 @@ const Layout = () => {
                             {sugerenciasProductos.map((prod) => {
                               const codigo = prod.idProducto?.codigoProducto || prod.codigoProducto || '';
                               const descripcion = prod.idProducto?.descripcionProducto || prod.descripcionProducto || prod.descripcion || '';
-                              const key = prod.idProductoInventario ?? prod.idProducto?.idProducto ?? prod.id;
+                              const key = prod.idInventario ?? prod.idProductoInventario ?? prod.idProducto?.idProducto ?? prod.id;
+                              const precio = prod.idProducto?.precioVenta ?? prod.precioVenta ?? 0;
                               return (
                                 <button
                                   key={key}
@@ -1536,7 +1612,7 @@ const Layout = () => {
                                     </div>
                                     <div>
                                       <span className="badge bg-success">
-                                        {formFactura.moneda === '1' ? 'Q' : '$'} {prod.precioVenta?.toFixed(2) || '0.00'}
+                                        {formFactura.moneda === '1' ? 'Q' : '$'} {Number(precio).toFixed(2)}
                                       </span>
                                     </div>
                                   </div>
