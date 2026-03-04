@@ -879,10 +879,11 @@ const Layout = () => {
             <div><strong>Sujeto a pagos trimestrales ISR</strong></div>
             <div><strong>Agente de Retención de IVA</strong></div>
           </div>
-          <div style="margin-top:10px;padding:6px 10px;border:1px solid #000;border-radius:4px;font-size:10px;text-align:left;">
+          <div style="margin-top:10px;padding:6px 10px;border:1px solid #000;border-radius:4px;font-size:10px;text-align:center;">
             <div style="font-weight:bold;margin-bottom:4px;">DATOS DEL CERTIFICADOR</div>
-            <div style="display:flex;gap:24px;">
+            <div style="text-align:center;">
               <span><strong>NIT del contribuyente:</strong> 5640773-4</span>
+              &nbsp;&nbsp;
               <span><strong>Nombre, razón o denominación social:</strong> AINNOVA, SOCIEDAD ANÓNIMA</span>
             </div>
           </div>
@@ -929,12 +930,29 @@ const Layout = () => {
 
     setGuardandoFactura(true);
     try {
-      const totalBruto = detalleFactura.reduce((sum, item) => sum + (Number(item.cantidad) || 0) * item.precioUnitario, 0);
-      const cantidadDescuento = calcularTotalDescuentoProductos();
-      const baseImponible = calcularBaseImponible();
-      const totalNeto = calcularSubtotal() / 1.12; // precio con descuento, sin IVA
-      const iva = calcularIVA();
-      const total = calcularTotal();
+      // Calcular valores por línea (redondeados a 2 decimales) y acumular totales del encabezado
+      const r2 = (n) => parseFloat(n.toFixed(2))
+      const lineasDetalle = detalleFactura.map((item) => {
+        const cantItem     = Number(item.cantidad) || 0
+        const descItem     = r2(item.descuento || 0)
+        const precioItem   = r2(item.precioUnitario || 0)
+        const impBruto     = r2(cantItem * precioItem)
+        const totalConDesc = r2(impBruto - descItem)   // ImpTotal por línea
+        const impNeto      = r2(totalConDesc / 1.12)
+        const impIva       = r2(totalConDesc - impNeto)
+        return { item, cantItem, descItem, precioItem, impBruto, totalConDesc, impNeto, impIva }
+      })
+
+      const totalesDetalle = lineasDetalle.reduce((acc, l) => ({
+        totalBruto:          r2(acc.totalBruto          + l.impBruto),
+        cantidadDeDescuento: r2(acc.cantidadDeDescuento + l.descItem),
+        totalNeto:           r2(acc.totalNeto           + l.impNeto),
+        iva:                 r2(acc.iva                 + l.impIva),
+        total:               r2(acc.total               + l.totalConDesc),
+      }), { totalBruto: 0.00, cantidadDeDescuento: 0.00, totalNeto: 0.00, iva: 0.00, total: 0.00 })
+
+      console.log('[lineasDetalle]', lineasDetalle)
+      console.log('[totalesDetalle]', totalesDetalle)
 
       const body = {
         tipoDocumento: formFactura.tipoDocumento,
@@ -948,15 +966,15 @@ const Layout = () => {
         numeroAcceso: '0',
         serieAdmin: '',
         numeroAdmin: '0',
-        totalBruto: totalBruto.toFixed(2),
-        cantidadDeDescuento: cantidadDescuento.toFixed(2),
+        totalBruto:          totalesDetalle.totalBruto.toFixed(2),
+        cantidadDeDescuento: totalesDetalle.cantidadDeDescuento.toFixed(2),
         porcentajeDeDescuento: 0,
         exento: '0.00',
         otro: '0.00',
-        totalNeto: totalNeto.toFixed(2),
+        totalNeto: totalesDetalle.totalNeto,
         isr: '0.00',
-        iva: iva.toFixed(2),
-        total: total.toFixed(2),
+        iva: totalesDetalle.iva.toFixed(2),
+        total: totalesDetalle.total.toFixed(2),
         facturaProcesada: '',
         direccionEntrega: formFactura.direccionEntrega || '',
         enviarCorreo: enviarCorreo ? 'S' : 'N',
@@ -977,16 +995,8 @@ const Layout = () => {
 
       const idEncabezadoFactura = await response.text();
 
-      // Guardar el detalle de la factura
-      const detallePromises = detalleFactura.map((item) => {
-        const cantItem = Number(item.cantidad) || 0;
-        const descItem = Number(item.descuento) || 0;
-        const precioItem = item.precioUnitario || 0;
-        const totalItem = cantItem * precioItem;
-        const totalConDescuento = totalItem - descItem; // total con descuento (incluye IVA)
-        const ivaItem = (totalConDescuento * 0.12) / 1.12; // IVA sobre precio con descuento
-        const netoItem = totalConDescuento / 1.12; // base imponible con descuento, sin IVA
-
+      // Guardar el detalle de la factura usando los valores ya calculados en lineasDetalle
+      const detallePromises = lineasDetalle.map(({ item, cantItem, descItem, precioItem, impBruto, totalConDesc, impNeto, impIva }) => {
         const bodyDetalle = {
           idEncabezadoFactura: String(idEncabezadoFactura),
           idProducto: String(item.idProducto),
@@ -995,13 +1005,13 @@ const Layout = () => {
           precioVenta: precioItem.toFixed(2),
           cantidadDeDescuento: descItem.toFixed(2),
           porcentajeDeDescuento: '0.00',
-          ImpBruto: totalItem.toFixed(2),
+          ImpBruto: impBruto.toFixed(2),
           ImpExento: '0.00',
           ImpOtros: '0.00',
-          ImpNeto: netoItem.toFixed(2),
-          iva: ivaItem.toFixed(2),
+          ImpNeto: impNeto.toFixed(2),
+          iva: impIva.toFixed(2),
           isr: '0.00',
-          ImpTotal: item.total.toFixed(2),
+          ImpTotal: totalConDesc.toFixed(2),
           idUsuarioModificacion: String(idUsuarioActual),
         };
 
@@ -1041,15 +1051,7 @@ const Layout = () => {
           return f
         })()
 
-        const itemsDte = detalleFactura.map((item) => {
-          const cantItem = Number(item.cantidad) || 0
-          const descItem = Number(item.descuento) || 0
-          const precioItem = Number(item.precioUnitario) || 0
-          const impBruto = cantItem * precioItem
-          const totalConDescuento = impBruto - descItem
-          const impNeto = totalConDescuento / 1.12
-          const impIva = totalConDescuento - impNeto
-          return {
+        const itemsDte = lineasDetalle.map(({ item, cantItem, descItem, precioItem, impBruto, totalConDesc, impNeto, impIva }) => ({
             producto: item.codigo || String(item.idProducto || ''),
             descripcion: item.descripcion || '',
             medida: 1,
@@ -1063,10 +1065,9 @@ const Layout = () => {
             impNeto: parseFloat(impNeto.toFixed(2)),
             impIsr: 0.00,
             impIva: parseFloat(impIva.toFixed(2)),
-            impTotal: parseFloat(totalConDescuento.toFixed(2)),
+          impTotal: parseFloat(totalConDesc.toFixed(2)),
             TipoVentaDet: 'B',
-          }
-        })
+        }))
 
         const bodyDte = {
           tipoDoc: Number(formFactura.tipoDocumento),
@@ -1083,14 +1084,14 @@ const Layout = () => {
             direccion: formFactura.direccion || formFactura.direccionEntrega || 'Ciudad',
           },
           totales: {
-            bruto: parseFloat(totalBruto.toFixed(2)),
-            descuento: parseFloat(cantidadDescuento.toFixed(2)),
+            bruto:     parseFloat(totalesDetalle.totalBruto.toFixed(2)),
+            descuento: parseFloat(totalesDetalle.cantidadDeDescuento.toFixed(2)),
             exento: 0.00,
             otros: 0.00,
-            neto: parseFloat(totalNeto.toFixed(2)),
+            neto:      parseFloat(totalesDetalle.totalNeto.toFixed(2)),
             isr: 0.00,
-            iva: parseFloat(iva.toFixed(2)),
-            total: parseFloat(total.toFixed(2)),
+            iva:       parseFloat(totalesDetalle.iva.toFixed(2)),
+            total:     parseFloat(totalesDetalle.total.toFixed(2)),
           },
           datosAdicionales: {
             tipoReceptor: '1',
