@@ -353,7 +353,7 @@ const Layout = () => {
 
             <CForm>
               <CRow className="gy-3">
-                <CCol md={4}>
+                <CCol md={3}>
                   <CFormLabel>Nombre Cliente:</CFormLabel>
                   <CFormInput
                     name="nombreCliente"
