@@ -45,6 +45,7 @@ const Layout = () => {
 
   // Estados para productos
   const [productos, setProductos] = useState([]);
+  const [todosProductosCache, setTodosProductosCache] = useState([]); // caché completo de inventario
   const [busquedaProducto, setBusquedaProducto] = useState('');
   const [sugerenciasProductos, setSugerenciasProductos] = useState([]);
   const [mostrarSugerenciasProductos, setMostrarSugerenciasProductos] = useState(false);
@@ -57,6 +58,7 @@ const Layout = () => {
   const [alertaSinCorreo, setAlertaSinCorreo] = useState(false);
   const [documentoOpts, setDocumentoOpts] = useState([]);
   const [documento, setDocumento] = useState('');
+  const [ubicaciones, setUbicaciones] = useState([]);
   const [errorDteModal, setErrorDteModal] = useState({ visible: false, mensaje: '' });
   const [clienteGuardadoModal, setClienteGuardadoModal] = useState(false);
 
@@ -184,54 +186,51 @@ const Layout = () => {
     }
   };
 
-  const cargarInventario = async () => {};
+  const cargarUbicaciones = async () => {
+    try {
+      const res = await fetch('/api/ubicaciones')
+      const data = await res.json()
+      setUbicaciones(Array.isArray(data) ? data : data?.content || [])
+    } catch { /* silencioso */ }
+  }
 
-  const buscarEnInventario = async (termino) => {
+  const obtenerNombreUbicacion = (id) => {
+    const u = ubicaciones.find((u) => Number(u.idUbicacion) === Number(id))
+    return u ? (u.nombreUbicacion || `Ubic. ${id}`) : (id ? `Ubic. ${id}` : '—')
+  }
+
+  // Carga todo el inventario una vez y lo guarda en caché
+  const cargarInventario = async () => {
+    if (todosProductosCache.length > 0) return; // ya cargado
+    try {
+      setCargandoProductos(true);
+      const res = await fetch('/api/inventario?page=0&size=10000');
+      const data = await res.json();
+      const items = Array.isArray(data) ? data : data.content || [];
+      setTodosProductosCache(items);
+    } catch (e) {
+      console.error('Error al cargar inventario:', e);
+    } finally {
+      setCargandoProductos(false);
+    }
+  };
+
+  // Filtra desde la caché client-side (igual que reporteInventario.js)
+  const buscarEnInventario = (termino) => {
     if (!termino || termino.trim().length < 2) {
       setSugerenciasProductos([]);
       setMostrarSugerenciasProductos(false);
       return;
     }
-    setCargandoProductos(true);
-    try {
-      const t = termino.trim();
-      const palabras = t.split(/\s+/).filter(Boolean);
-      const SIZE = 200;
-
-      const fetchPorCampo = (campo, valor) =>
-        fetch(`/api/inventario?${campo}=${encodeURIComponent(valor)}&page=0&size=${SIZE}`)
-          .then(r => r.json()).then(d => d.content || []);
-
-      // descripcionProducto: intersección de palabras para soporte de espacios
-      const fetchDesc = (palabrasArr) =>
-        Promise.all(palabrasArr.map(p => fetchPorCampo('descripcionProducto', p)))
-          .then(resultados => {
-            let base = resultados[0] || [];
-            for (let i = 1; i < resultados.length; i++) {
-              const ids = new Set(resultados[i].map(x => x.idInventario));
-              base = base.filter(x => ids.has(x.idInventario));
-            }
-            return base;
-          });
-
-      const [porCodigo, porProveedor, porDescripcion] = await Promise.all([
-        fetchPorCampo('codigoProducto', t),
-        fetchPorCampo('codigoProductoProveedor', t),
-        fetchDesc(palabras),
-      ]);
-
-      const combinados = [...porCodigo, ...porProveedor, ...porDescripcion];
-      const unicos = combinados.filter((p, idx, arr) =>
-        arr.findIndex(x => x.idInventario === p.idInventario) === idx
-      );
-      setSugerenciasProductos(unicos.slice(0, 15));
-      setMostrarSugerenciasProductos(unicos.length > 0);
-    } catch (e) {
-      console.error('Error al buscar inventario:', e);
-      setSugerenciasProductos([]);
-    } finally {
-      setCargandoProductos(false);
-    }
+    const tl = termino.trim().toLowerCase();
+    const filtrados = todosProductosCache.filter((prod) => {
+      const cod  = (prod.idProducto?.codigoProducto          || '').toLowerCase();
+      const prov = (prod.idProducto?.codigoProductoProveedor || '').toLowerCase();
+      const desc = (prod.idProducto?.descripcionProducto     || '').toLowerCase();
+      return cod.includes(tl) || prov.includes(tl) || desc.includes(tl);
+    });
+    setSugerenciasProductos(filtrados.slice(0, 15));
+    setMostrarSugerenciasProductos(filtrados.length > 0);
   };
 
   const handleBusquedaProducto = (e) => {
@@ -415,13 +414,9 @@ const Layout = () => {
   useEffect(() => {
     cargarClientes();
     cargarDocumentos();
+    cargarUbicaciones();
+    cargarInventario();
   }, []);
-
-  useEffect(() => {
-    if (visible) {
-      cargarInventario();
-    }
-  }, [visible]);
 
   const handleClienteChange = (e) => {
     const { name, value } = e.target;
@@ -573,7 +568,7 @@ const Layout = () => {
     return (resultado.trim() || 'CERO') + ' QUETZALES CON ' + String(centavos).padStart(2, '0') + '/100'
   }
 
-  const imprimirFactura = async ({ cliente, detalle, iva, total, totalDescuento, numeroAutorizacion, serieRes, referenciaRes }) => {
+  const imprimirFactura = async ({ cliente, detalle, iva, total, totalDescuento, numeroAutorizacion, serieRes, referenciaRes, preimpresoRes }) => {
     const moneda = cliente.moneda === '1' ? 'Q' : '$';
 
     // Convertir logo a base64 para que funcione en la ventana de impresión
@@ -591,23 +586,42 @@ const Layout = () => {
     }
 
     const FILAS_MINIMAS = 25;
-    const filasProducto = detalle.map((item) => `
+
+    // Calcular valores por ítem para columnas condicionales
+    const detalleConCalculo = detalle.map((item) => {
+      const cantItem = Number(item.cantidad) || 0;
+      const descItem = Number(item.descuento) || 0;
+      const precioItem = Number(item.precioUnitario) || 0;
+      const totalItem = cantItem * precioItem;
+      const totalConDescuento = totalItem - descItem;
+      const impExento = 0;   // Actualmente siempre 0
+      const impOtros  = 0;   // Actualmente siempre 0
+      return { ...item, cantidadDeDescuento: descItem, ImpExento: impExento, ImpOtros: impOtros, totalConDescuento };
+    });
+
+    // Flags: mostrar columna solo si al menos un ítem tiene valor distinto de 0
+    const hayDescuento = detalleConCalculo.some((i) => i.cantidadDeDescuento !== 0);
+    const hayExento    = detalleConCalculo.some((i) => i.ImpExento !== 0);
+    const hayOtros     = detalleConCalculo.some((i) => i.ImpOtros !== 0);
+
+    // Total de columnas dinámico
+    const totalCols = 4 + (hayDescuento ? 1 : 0) + (hayExento ? 1 : 0) + (hayOtros ? 1 : 0);
+
+    const filasProducto = detalleConCalculo.map((item) => `
       <tr>
         <td style="text-align:center;">${item.cantidad}</td>
         <td>${item.descripcion || item.nombre || ''}</td>
         <td style="text-align:right;">${moneda}${Number(item.precioUnitario || 0).toFixed(2)}</td>
+        ${hayDescuento ? `<td style="text-align:right;">${moneda}${item.cantidadDeDescuento.toFixed(2)}</td>` : ''}
+        ${hayExento    ? `<td style="text-align:right;">${moneda}${item.ImpExento.toFixed(2)}</td>` : ''}
+        ${hayOtros     ? `<td style="text-align:right;">${moneda}${item.ImpOtros.toFixed(2)}</td>` : ''}
         <td style="text-align:right;">${moneda}${Number(item.total || 0).toFixed(2)}</td>
       </tr>
     `).join('');
 
     const filasVacias = Math.max(0, FILAS_MINIMAS - detalle.length);
     const filasRelleno = Array.from({ length: filasVacias }, () => `
-      <tr>
-        <td>&nbsp;</td>
-        <td>&nbsp;</td>
-        <td>&nbsp;</td>
-        <td>&nbsp;</td>
-      </tr>
+      <tr>${Array(totalCols).fill('<td>&nbsp;</td>').join('')}</tr>
     `).join('');
 
     const filas = filasProducto + filasRelleno;
@@ -793,7 +807,8 @@ const Layout = () => {
               <div class="telefonos">📞 7888-9138 / 5203-0726</div>
             </div>
             <div class="empresa-info">
-              <div class="empresa-nombre">Ferretería y Blockera Agmner</div>
+              <div style="font-size:13px;font-weight:bold;margin-bottom:3px;letter-spacing:0.5px;">DOCUMENTO TRIBUTARIO ELECTRÓNICO</div>
+              <div class="empresa-nombre">Blockera Agmner</div>
               <div class="empresa-linea">JUAN ALBERTO, ARREDONDO GARCIA</div>
               <div class="empresa-linea">CALLE PRINCIPAL SECTOR PALIN NUEVA SANTA ROSA</div>
               <div class="empresa-linea">SANTA ROSA</div>
@@ -805,7 +820,7 @@ const Layout = () => {
               <div class="factura-linea" style="font-size:10px;line-height:1.4;">${numeroAutorizacion ? numeroAutorizacion.slice(0, 26) : '—'}</div>
               ${numeroAutorizacion && numeroAutorizacion.length > 26 ? `<div class="factura-linea" style="font-size:10px;line-height:1.4;">${numeroAutorizacion.slice(26)}</div>` : ''}
               <div class="factura-linea"><strong>Serie:</strong> ${serieRes || '—'}</div>
-              <div class="factura-linea"><strong>No. Referencia:</strong> ${referenciaRes || '—'}</div>
+              <div class="factura-linea"><strong>Número:</strong> ${preimpresoRes || '—'}</div>
               <div class="factura-linea" style="margin-top:5px;"><strong>Fecha de Emisión:</strong> ${formatearFechaFactura(cliente.fecha)}</div>
             </div>
           </div>
@@ -824,6 +839,9 @@ const Layout = () => {
               <col class="col-cant" />
               <col class="col-desc" />
               <col class="col-precio" />
+              ${hayDescuento ? '<col class="col-precio" />' : ''}
+              ${hayExento    ? '<col class="col-precio" />' : ''}
+              ${hayOtros     ? '<col class="col-precio" />' : ''}
               <col class="col-total" />
             </colgroup>
             <thead>
@@ -831,6 +849,9 @@ const Layout = () => {
                 <th>Cantidad</th>
                 <th>Descripción</th>
                 <th>Precio Unitario</th>
+                ${hayDescuento ? '<th>Descuento</th>' : ''}
+                ${hayExento    ? '<th>Valor Exento</th>' : ''}
+                ${hayOtros     ? '<th>Otros Impuestos</th>' : ''}
                 <th>Total</th>
               </tr>
             </thead>
@@ -842,11 +863,11 @@ const Layout = () => {
                 <td colspan="2" rowspan="2" style="font-size:10px;color:#000;vertical-align:middle;padding:6px 8px;border-top:1px solid #000;">
                   <strong>TOTAL EN QUETZALES:</strong> ${numeroALetras(total.toFixed(2))}
                 </td>
-                <td style="text-align:left;padding:5px 8px;border-left:1px solid #000;border-top:1px solid #000;">IVA:</td>
+                <td colspan="${totalCols - 3}" style="text-align:left;padding:5px 8px;border-left:1px solid #000;border-top:1px solid #000;">IVA:</td>
                 <td style="text-align:right;padding:5px 8px;border-top:1px solid #000;">${moneda}${iva.toFixed(2)}</td>
               </tr>
               <tr>
-                <td style="text-align:left;padding:5px 8px;font-weight:bold;font-size:13px;border-left:1px solid #000;border-top:1px solid #000;">TOTAL:</td>
+                <td colspan="${totalCols - 3}" style="text-align:left;padding:5px 8px;font-weight:bold;font-size:13px;border-left:1px solid #000;border-top:1px solid #000;">TOTAL:</td>
                 <td style="text-align:right;padding:5px 8px;font-weight:bold;font-size:13px;border-top:1px solid #000;">${moneda}${total.toFixed(2)}</td>
               </tr>
             </tfoot>
@@ -858,8 +879,10 @@ const Layout = () => {
           </div>
           <div style="margin-top:10px;padding:6px 10px;border:1px solid #000;border-radius:4px;font-size:10px;text-align:left;">
             <div style="font-weight:bold;margin-bottom:4px;">DATOS DEL CERTIFICADOR</div>
-            <div><strong>NIT del contribuyente:</strong> 5640773-4</div>
-            <div><strong>Nombre, razón o denominación social:</strong> AINNOVA, SOCIEDAD ANÓNIMA</div>
+            <div style="display:flex;gap:24px;">
+              <span><strong>NIT del contribuyente:</strong> 5640773-4</span>
+              <span><strong>Nombre, razón o denominación social:</strong> AINNOVA, SOCIEDAD ANÓNIMA</span>
+            </div>
           </div>
           <div class="footer">Gracias por su compra — Ferretería y Blockera Agmner</div>
         </div>
@@ -1002,6 +1025,8 @@ const Layout = () => {
       let numeroAutorizacion = '';
       let serieRes = '';
       let referenciaRes = referenciaCalculada;
+      let preimpresoRes = '';
+      let nombreDte = '';
 
       // Enviar DTE al API /dtes
       try {
@@ -1045,7 +1070,7 @@ const Layout = () => {
           tipoDoc: Number(formFactura.tipoDocumento),
           tipoVenta: 'B',
           destinoVenta: 1,
-          fecha: '28/02/2026',
+          fecha: fechaDte,
           moneda: Number(formFactura.moneda),
           tasa: formFactura.moneda === '1' ? 1.0 : 2.0,
           referencia: referenciaCalculada,
@@ -1094,14 +1119,16 @@ const Layout = () => {
           if (fel?.referencia) referenciaRes = fel.referencia
           if (fel?.numeroAutorizacion) numeroAutorizacion = fel.numeroAutorizacion
           if (fel?.serie) serieRes = fel.serie
-          console.log('[DTE] DTE exitoso. Referencia:', referenciaRes, '| Autorización:', numeroAutorizacion, '| Serie:', serieRes)
+          if (fel?.Preimpreso) preimpresoRes = fel.Preimpreso
+          if (fel?.nombre) nombreDte = fel.nombre
+          console.log('[DTE] DTE exitoso. Referencia:', referenciaRes, '| Autorización:', numeroAutorizacion, '| Serie:', serieRes, '| Preimpreso:', preimpresoRes, '| Nombre:', nombreDte)
         }
       } catch (eDte) {
         console.warn('[DTE] Error al enviar DTE:', eDte)
       }
 
       await imprimirFactura({
-        cliente: { ...formFactura },
+        cliente: { ...formFactura, nombre: nombreDte || formFactura.nombre },
         detalle: [...detalleFactura],
         iva: calcularIVA(),
         total: calcularTotal(),
@@ -1109,6 +1136,7 @@ const Layout = () => {
         numeroAutorizacion,
         serieRes,
         referenciaRes,
+        preimpresoRes,
       });
 
       limpiarFormulario();
@@ -1549,7 +1577,7 @@ const Layout = () => {
               </CRow>
             </CForm>
 
-            <CModal visible={visible} onClose={() => setVisible(false)} size="xl">
+            <CModal visible={visible} onClose={() => setVisible(false)} size="xl" backdrop="static" keyboard={false}>
               <CModalHeader className="bg-primary text-white">
                 <CModalTitle className="d-flex align-items-center gap-2">
                   <span>🛒</span> Agregar Productos a la Factura
@@ -1616,7 +1644,11 @@ const Layout = () => {
                                       </span>
                                     </div>
                                   </div>
-                                  <small className="text-muted">Stock: {prod.cantidadExistencias ?? prod.stock ?? 0}</small>
+                                  <small className="text-muted">
+                                    Stock: {prod.cantidadExistencias ?? prod.stock ?? 0}
+                                    {' · '}
+                                    Ubicación: {obtenerNombreUbicacion(prod.idUbicacion)}
+                                  </small>
                                 </button>
                               );
                             })}
