@@ -420,7 +420,9 @@ const Layout = () => {
 
   const handleClienteChange = (e) => {
     const { name, value } = e.target;
-    setFormCliente((prev) => ({ ...prev, [name]: value }));
+    const camposNumericos = ['nit', 'dpiPasaporte'];
+    const valorFinal = camposNumericos.includes(name) ? value.replace(/\D/g, '') : value;
+    setFormCliente((prev) => ({ ...prev, [name]: valorFinal }));
   };
 
   const abrirModalCliente = () => {
@@ -1842,6 +1844,7 @@ const Layout = () => {
                           value={formCliente.nit}
                           onChange={handleClienteChange}
                           placeholder="NIT"
+                          inputMode="numeric"
                         />
                       </CCol>
                       <CCol xs={6}>
@@ -1851,6 +1854,7 @@ const Layout = () => {
                           value={formCliente.dpiPasaporte}
                           onChange={handleClienteChange}
                           placeholder="DPI o Pasaporte"
+                          inputMode="numeric"
                         />
                       </CCol>
                     </CRow>

@@ -9,6 +9,7 @@ import {
   CForm,
   CFormInput,
   CFormLabel,
+  CFormSelect,
   CFormTextarea,
   CRow,
   CTable,
@@ -22,16 +23,22 @@ import {
   CModalTitle,
   CModalBody,
   CModalFooter,
+  CPagination,
+  CPaginationItem,
 } from '@coreui/react'
 import * as XLSX from 'xlsx'
 
 const Layout = () => {
   const { usuario } = useAuth()
   const idUsuarioActual = Number(usuario?.idUsuario ?? usuario?.id_Usuario ?? 0)
+  const PAGE_SIZE = 20
   const [clientes, setClientes] = useState([])
+  const [todosClientes, setTodosClientes] = useState([])  // caché completo
+  const [page, setPage] = useState(0)
   const [filtros, setFiltros] = useState({
     nombreCliente: '',
-    nit: '',
+    tipoDocumento: 'nit',
+    numeroDocumento: '',
   })
   const [modalAgregarVisible, setModalAgregarVisible] = useState(false)
   const [guardando, setGuardando] = useState(false)
@@ -61,24 +68,55 @@ const Layout = () => {
 
   const handleFiltroChange = (e) => {
     const { name, value } = e.target
-    setFiltros((prev) => ({ ...prev, [name]: value }))
+    if (name === 'tipoDocumento') {
+      setFiltros((prev) => ({ ...prev, tipoDocumento: value, numeroDocumento: '' }))
+    } else if (name === 'numeroDocumento') {
+      const soloNumeros = value.replace(/\D/g, '')
+      setFiltros((prev) => ({ ...prev, numeroDocumento: soloNumeros }))
+    } else {
+      setFiltros((prev) => ({ ...prev, [name]: value }))
+    }
   }
 
-  const cargarClientes = async (filtrosActuales = filtros) => {
+  // Carga todos los clientes una vez y los guarda en caché (igual que facturacion.js)
+  const cargarClientes = async () => {
     try {
-      const params = new URLSearchParams()
-      if (filtrosActuales.nombreCliente?.trim()) params.set('nombreCliente', filtrosActuales.nombreCliente.trim())
-      if (filtrosActuales.nit?.trim()) params.set('nitCliente', filtrosActuales.nit.trim())
-
-      const url = params.toString() ? `/api/clientes?${params.toString()}` : '/api/clientes'
-      const response = await fetch(url)
+      const response = await fetch('/api/clientes?size=10000')
       const data = await response.json()
       const lista = Array.isArray(data) ? data : (data?.content || [])
-      setClientes(lista)
+      setTodosClientes(lista)
+      return lista
     } catch (e) {
       console.error('Error al cargar clientes:', e)
-      setClientes([])
+      setTodosClientes([])
+      return []
     }
+  }
+
+  // Filtra desde la caché client-side (igual que handleNitChange en facturacion.js)
+  const filtrarClientes = (todos = todosClientes, filtrosActuales = filtros) => {
+    let resultado = [...todos]
+    const nombre = (filtrosActuales.nombreCliente || '').trim().toLowerCase()
+    const numero = (filtrosActuales.numeroDocumento || '').trim().toLowerCase()
+
+    if (nombre) {
+      resultado = resultado.filter((c) =>
+        (c.nombreCliente || '').toLowerCase().includes(nombre) ||
+        (c.nombreFacturacion || '').toLowerCase().includes(nombre)
+      )
+    }
+    if (numero) {
+      if (filtrosActuales.tipoDocumento === 'nit') {
+        resultado = resultado.filter((c) =>
+          (c.nit || '').toString().toLowerCase().includes(numero)
+        )
+      } else {
+        resultado = resultado.filter((c) =>
+          (c.documentoIdentificacion || '').toString().toLowerCase().includes(numero)
+        )
+      }
+    }
+    setClientes(resultado)
   }
 
   const quitarFocoDelModal = () => {
@@ -90,7 +128,9 @@ const Layout = () => {
 
   const handleFormClienteChange = (e) => {
     const { name, value } = e.target
-    setFormCliente((prev) => ({ ...prev, [name]: value }))
+    const camposNumericos = ['nit', 'dpiPasaporte']
+    const valorFinal = camposNumericos.includes(name) ? value.replace(/\D/g, '') : value
+    setFormCliente((prev) => ({ ...prev, [name]: valorFinal }))
   }
 
   const abrirModalAgregar = () => {
@@ -153,19 +193,10 @@ const Layout = () => {
     }
   }
 
-  const exportarAExcel = async () => {
+  const exportarAExcel = () => {
     try {
-      const params = new URLSearchParams()
-      params.set('size', '10000')
-      if (filtros.nombreCliente?.trim()) params.set('nombreCliente', filtros.nombreCliente.trim())
-      if (filtros.nit?.trim()) params.set('nitCliente', filtros.nit.trim())
-
-      const url = params.toString() ? `/api/clientes?${params.toString()}` : '/api/clientes'
-      const response = await fetch(url)
-      if (!response.ok) throw new Error('Error al obtener los clientes')
-
-      const data = await response.json()
-      const lista = Array.isArray(data) ? data : (data?.content || [])
+      // Usa la lista ya filtrada (clientes) — sin llamada a API
+      const lista = clientes
 
       if (!lista || lista.length === 0) {
         alert('No hay clientes para exportar')
@@ -229,7 +260,7 @@ const Layout = () => {
       setClienteAEliminar(null)
       setMensajeExito('El cliente fue eliminado correctamente.')
       setModalExitoVisible(true)
-      cargarClientes(filtros)
+      cargarClientes()
     } catch (err) {
       console.error('Error al eliminar cliente:', err)
       alert(err.message || 'No se pudo eliminar el cliente')
@@ -283,7 +314,7 @@ const Layout = () => {
       cerrarModalAgregar()
       setMensajeExito(modoEdicionCliente ? 'El cliente fue actualizado exitosamente.' : 'El cliente fue guardado exitosamente.')
       setModalExitoVisible(true)
-      cargarClientes(filtros)
+      cargarClientes()
     } catch (err) {
       console.error('Error grabar cliente:', err)
       setErrorGrabar(err.message || 'No se pudo guardar el cliente')
@@ -292,12 +323,16 @@ const Layout = () => {
     }
   }
 
+  // Carga inicial de todos los clientes
   useEffect(() => {
-    const delayDebounce = setTimeout(() => {
-      cargarClientes(filtros)
-    }, 500)
-    return () => clearTimeout(delayDebounce)
-  }, [filtros])
+    cargarClientes().then((lista) => filtrarClientes(lista, filtros))
+  }, [])
+
+  // Filtrado instantáneo al cambiar filtros (client-side, sin API)
+  useEffect(() => {
+    setPage(0)
+    filtrarClientes(todosClientes, filtros)
+  }, [filtros.nombreCliente, filtros.tipoDocumento, filtros.numeroDocumento, todosClientes])
 
   return (
     <CRow>
@@ -327,20 +362,38 @@ const Layout = () => {
                     onChange={handleFiltroChange}
                   />
                 </CCol>
-                <CCol md={4}>
-                  <CFormLabel>NIT del cliente:</CFormLabel>
-                  <CFormInput
-                    name="nit"
-                    placeholder="Teclee el número de NIT para buscar"
-                    value={filtros.nit}
+                <CCol md={2}>
+                  <CFormLabel>Tipo Documento:</CFormLabel>
+                  <CFormSelect
+                    name="tipoDocumento"
+                    value={filtros.tipoDocumento}
                     onChange={handleFiltroChange}
+                  >
+                    <option value="nit">NIT</option>
+                    <option value="dpi">DPI / Pasaporte</option>
+                  </CFormSelect>
+                </CCol>
+                <CCol md={3}>
+                  <CFormLabel>&nbsp;</CFormLabel>
+                  <CFormInput
+                    name="numeroDocumento"
+                    placeholder={filtros.tipoDocumento === 'nit' ? 'Buscar por NIT' : 'Buscar por DPI / Pasaporte'}
+                    value={filtros.numeroDocumento}
+                    onChange={handleFiltroChange}
+                    inputMode="numeric"
                     autoComplete="off"
                   />
                 </CCol>
               </CRow>
             </CForm>
 
-            <div className="table-responsive mt-4" style={{ minHeight: 0 }}>
+            {clientes.length > 0 && (
+              <small className="text-muted d-block mt-3">
+                Mostrando {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, clientes.length)} de {clientes.length} clientes
+              </small>
+            )}
+
+            <div className="table-responsive mt-2" style={{ minHeight: 0 }}>
               <CTable bordered hover responsive className="mb-0">
                 <CTableHead className="bg-light text-dark border-bottom">
                   <CTableRow>
@@ -356,9 +409,9 @@ const Layout = () => {
                   </CTableRow>
                 </CTableHead>
                 <CTableBody>
-                  {clientes.map((cliente, index) => (
+                  {clientes.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE).map((cliente, index) => (
                     <CTableRow key={`cli-${cliente.idCliente ?? cliente.id ?? index}`}>
-                      <CTableDataCell>{index + 1}</CTableDataCell>
+                      <CTableDataCell>{page * PAGE_SIZE + index + 1}</CTableDataCell>
                       <CTableDataCell>{cliente.nombreCliente ?? ''}</CTableDataCell>
                       <CTableDataCell>{cliente.direccionFisica ?? ''}</CTableDataCell>
                       <CTableDataCell>{cliente.correoElectronico ?? ''}</CTableDataCell>
@@ -382,6 +435,33 @@ const Layout = () => {
                 </CTableBody>
               </CTable>
             </div>
+
+            {/* Paginación */}
+            {Math.ceil(clientes.length / PAGE_SIZE) > 1 && (() => {
+              const totalPages = Math.ceil(clientes.length / PAGE_SIZE)
+              const items = []
+              const inicio = Math.max(0, page - 2)
+              const fin    = Math.min(totalPages - 1, page + 2)
+              if (page > 2) {
+                items.push(<CPaginationItem key={0} onClick={() => setPage(0)}>1</CPaginationItem>)
+                if (page > 3) items.push(<CPaginationItem key="e1" disabled>…</CPaginationItem>)
+              }
+              for (let i = inicio; i <= fin; i++)
+                items.push(<CPaginationItem key={i} active={i === page} onClick={() => setPage(i)}>{i + 1}</CPaginationItem>)
+              if (page < totalPages - 3) {
+                if (page < totalPages - 4) items.push(<CPaginationItem key="e2" disabled>…</CPaginationItem>)
+                items.push(<CPaginationItem key={totalPages - 1} onClick={() => setPage(totalPages - 1)}>{totalPages}</CPaginationItem>)
+              }
+              return (
+                <CPagination className="justify-content-end mt-3 flex-wrap">
+                  <CPaginationItem disabled={page === 0} onClick={() => setPage(0)} title="Primera">«</CPaginationItem>
+                  <CPaginationItem disabled={page === 0} onClick={() => setPage(page - 1)}>Anterior</CPaginationItem>
+                  {items}
+                  <CPaginationItem disabled={page === totalPages - 1} onClick={() => setPage(page + 1)}>Siguiente</CPaginationItem>
+                  <CPaginationItem disabled={page === totalPages - 1} onClick={() => setPage(totalPages - 1)} title="Última">»</CPaginationItem>
+                </CPagination>
+              )
+            })()}
 
             <CModal visible={modalAgregarVisible} onClose={cerrarModalAgregar} backdrop="static" size="lg">
               <CModalHeader className="bg-light">
@@ -430,6 +510,7 @@ const Layout = () => {
                             value={formCliente.nit}
                             onChange={handleFormClienteChange}
                             placeholder="NIT"
+                            inputMode="numeric"
                             invalid={!!errorsCliente.nit}
                           />
                           {errorsCliente.nit && (
@@ -443,6 +524,7 @@ const Layout = () => {
                             value={formCliente.dpiPasaporte}
                             onChange={handleFormClienteChange}
                             placeholder="DPI o Pasaporte"
+                            inputMode="numeric"
                           />
                         </CCol>
                       </CRow>
@@ -689,7 +771,7 @@ const Layout = () => {
                 <p className="mb-0">{mensajeExito || 'El cliente fue guardado exitosamente.'}</p>
               </CModalBody>
               <CModalFooter>
-                <CButton color="success" onClick={() => { setModalExitoVisible(false); cargarClientes(filtros) }}>
+                <CButton color="success" onClick={() => { setModalExitoVisible(false) }}>
                   Aceptar
                 </CButton>
               </CModalFooter>
