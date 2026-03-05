@@ -27,6 +27,7 @@ import {
   CSpinner,
 } from '@coreui/react'
 import { useNavigate } from 'react-router-dom'
+import * as XLSX from 'xlsx'
 
 const Layout = () => {
   const { usuario } = useAuth()
@@ -389,6 +390,51 @@ const Layout = () => {
   }
 
   // Limpiar filtros
+  const exportarAExcel = async () => {
+    try {
+      // Obtener todos los registros aplicando los filtros actuales
+      const params = new URLSearchParams()
+      params.set('page', '0')
+      params.set('size', '10000')
+      if (filtros.numeroDocumento?.trim()) params.set('numeroDeDocumento', filtros.numeroDocumento.trim())
+      if (filtros.tipoMovimiento !== undefined && filtros.tipoMovimiento !== '') params.set('tipoDeMovimiento', String(filtros.tipoMovimiento))
+      if (filtros.fechaInicio?.trim()) params.set('fechaInicio', filtros.fechaInicio.trim())
+      if (filtros.fechaFin?.trim()) params.set('fechaFin', filtros.fechaFin.trim())
+
+      const res = await fetch(`/api/ordenProductos?${params.toString()}`)
+      if (!res.ok) throw new Error(`Error ${res.status}`)
+      const data = await res.json()
+      const lista = Array.isArray(data) ? data : (data?.content || [])
+
+      // Mapear al mismo formato que la tabla
+      const filas = lista.map((orden, index) => ({
+        'No.':              index + 1,
+        'Documento':        orden.numeroDeDocumento || '',
+        'Fecha Orden':      orden.fechaOrden || '',
+        'Proveedor':        obtenerNombreProveedor(orden.idProveedor),
+        'Tipo Movimiento':  obtenerNombreTipoMovimiento(orden.tipoDeMovimiento),
+        'Tipo Orden':       obtenerNombreTipoOrden(orden.tipoDeOrden),
+        'Estado Factura':   obtenerNombreTipoEstadoFactura(orden.estadoFactura),
+        'Total Orden':      orden.precioTotalOrden != null ? Number(orden.precioTotalOrden).toFixed(2) : '0.00',
+        'Valor Cancelado':  orden.valorCancelado != null ? Number(orden.valorCancelado).toFixed(2) : '0.00',
+      }))
+
+      const hoja = XLSX.utils.json_to_sheet(filas)
+      const libro = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(libro, hoja, 'Movimientos')
+
+      // Ajustar ancho de columnas automáticamente
+      const anchos = Object.keys(filas[0] || {}).map(col => ({
+        wch: Math.max(col.length, ...filas.map(f => String(f[col] || '').length)) + 2
+      }))
+      hoja['!cols'] = anchos
+
+      XLSX.writeFile(libro, `Movimientos_${new Date().toISOString().slice(0, 10)}.xlsx`)
+    } catch (error) {
+      console.error('Error al exportar:', error)
+    }
+  }
+
   const limpiarFiltros = () => {
     const nuevosFiltros = {
       numeroDocumento: '',
@@ -503,7 +549,7 @@ const Layout = () => {
                     onClick={() => navigate('/pages/productos/agregar-movimiento')}>
                     + Agregar
                   </CButton>
-                  <CButton color="info" className="text-light">
+                  <CButton color="info" className="text-light" onClick={exportarAExcel}>
                     Exportar
                   </CButton>
                 </CCol>

@@ -94,6 +94,7 @@ const ReporteInventario = () => {
       codigoProductoProveedor: item.idProducto?.codigoProductoProveedor || 'N/A',
       descripcionProducto:     item.idProducto?.descripcionProducto     || 'N/A',
       precioCompra:            item.idProducto?.precioCompra            || 0,
+      estado:                  item.idProducto?.estado                  ?? item.estado,
       idUbicacion:             item.idUbicacion                         ?? '—',
       cantidadExistencias:     item.cantidadExistencias                 || 0,
       cantidadDanados:         item.cantidadDanados                     || 0,
@@ -235,41 +236,76 @@ const ReporteInventario = () => {
     else cargarInventario(0, '')
   }
 
-  // ── Exportar a Excel (página actual) ──
-  const exportarAExcel = () => {
+  // ── Exportar a Excel (todos los registros según filtros activos) ──
+  const exportarAExcel = async () => {
+    const t = busqueda.trim()
+
     if (tipoReporte === '1') {
-      const datosExcel = inventarioAgrupado.map((item, i) => ({
-        '#': pageAgrupado * PAGE_SIZE + i + 1,
-        'Código Producto':   item.producto?.codigoProducto || '',
+      // Obtener todos los datos filtrados
+      let todos = []
+      if (t && todosAgrupado.length > 0) {
+        // Ya están en caché desde la búsqueda activa
+        todos = todosAgrupado
+      } else {
+        // Sin búsqueda o caché vacía: fetch completo y filtrar
+        try {
+          const res = await fetch(`/api/inventarioAgrupado?page=0&size=${SIZE_TODOS}`)
+          if (!res.ok) throw new Error(`Error ${res.status}`)
+          const data = await res.json()
+          const arr = Array.isArray(data) ? data : data.content || []
+          todos = t ? filtrarAgrupado(arr, t) : arr
+        } catch { return }
+      }
+
+      const datosExcel = todos.map((item, i) => ({
+        'No.':                 i + 1,
+        'Código Producto':   item.producto?.codigoProducto          || '',
         'Código Proveedor':  item.producto?.codigoProductoProveedor || '',
-        'Descripción':       item.producto?.descripcionProducto || '',
+        'Descripción':       item.producto?.descripcionProducto     || '',
         'Precio Compra':     item.producto?.precioCompra != null ? Number(item.producto.precioCompra).toFixed(2) : '',
-        'Unidad de Medida':  obtenerNombreUnidad(item.producto?.unidadDeMedida),
         'Total Existencias': item.totalExistencias ?? 0,
-        'Total Dañados':     item.totalDanados ?? 0,
+        'Total Dañados':     item.totalDanados     ?? 0,
+        'Unidad de Medida':  obtenerNombreUnidad(item.producto?.unidadDeMedida),
         'Estado':            obtenerNombreEstado(item.producto?.estado),
       }))
       const ws = XLSX.utils.json_to_sheet(datosExcel)
-      ws['!cols'] = [{ wch:5 },{ wch:20 },{ wch:20 },{ wch:45 },{ wch:15 },{ wch:20 },{ wch:18 },{ wch:15 },{ wch:15 }]
+      ws['!cols'] = [{ wch:5 },{ wch:20 },{ wch:20 },{ wch:50 },{ wch:15 },{ wch:18 },{ wch:15 },{ wch:20 },{ wch:15 }]
       const wb = XLSX.utils.book_new()
       XLSX.utils.book_append_sheet(wb, ws, 'Reporte General')
-      XLSX.writeFile(wb, 'ReporteGeneral.xlsx')
+      XLSX.writeFile(wb, `ReporteGeneral_${new Date().toISOString().slice(0,10)}.xlsx`)
+
     } else {
-      const datosExcel = inventario.map((item, i) => ({
-        '#': pageInv * PAGE_SIZE + i + 1,
-        'Código Producto':  item.codigoProducto,
-        'Código Proveedor': item.codigoProductoProveedor,
-        'Descripción':      item.descripcionProducto,
-        'Precio Compra':    Number(item.precioCompra).toFixed(2),
+      // Reporte por Ubicación
+      let todos = []
+      if (t && todosInventario.length > 0) {
+        todos = todosInventario
+      } else {
+        try {
+          const res = await fetch(`/api/inventario?page=0&size=${SIZE_TODOS}`)
+          if (!res.ok) throw new Error(`Error ${res.status}`)
+          const data = await res.json()
+          const arr = Array.isArray(data) ? data : data.content || []
+          const formateados = formatearInventario(arr)
+          todos = t ? filtrarInventario(formateados, t) : formateados
+        } catch { return }
+      }
+
+      const datosExcel = todos.map((item, i) => ({
+        'No.':                i + 1,
+        'Código Producto':  item.codigoProducto          || '',
+        'Código Proveedor': item.codigoProductoProveedor || '',
+        'Descripción':      item.descripcionProducto     || '',
+        'Precio Compra':    Number(item.precioCompra || 0).toFixed(2),
         'Existencias':      item.cantidadExistencias,
         'Dañados':          item.cantidadDanados,
         'Ubicación':        obtenerNombreUbicacion(item.idUbicacion),
+        'Estado':           obtenerNombreEstado(item.estado),
       }))
       const ws = XLSX.utils.json_to_sheet(datosExcel)
-      ws['!cols'] = [{ wch:5 },{ wch:20 },{ wch:20 },{ wch:45 },{ wch:15 },{ wch:12 },{ wch:12 },{ wch:12 }]
+      ws['!cols'] = [{ wch:5 },{ wch:20 },{ wch:20 },{ wch:50 },{ wch:15 },{ wch:12 },{ wch:12 },{ wch:20 },{ wch:15 }]
       const wb = XLSX.utils.book_new()
       XLSX.utils.book_append_sheet(wb, ws, 'Reporte por Ubicación')
-      XLSX.writeFile(wb, 'ReporteInventario.xlsx')
+      XLSX.writeFile(wb, `ReporteUbicacion_${new Date().toISOString().slice(0,10)}.xlsx`)
     }
   }
 
@@ -380,7 +416,7 @@ const ReporteInventario = () => {
                     <CTable striped hover bordered responsive>
                       <CTableHead>
                         <CTableRow>
-                          <CTableHeaderCell className="text-center">#</CTableHeaderCell>
+                          <CTableHeaderCell className="text-center">No.</CTableHeaderCell>
                           <CTableHeaderCell>Código Producto</CTableHeaderCell>
                           <CTableHeaderCell>Código Proveedor</CTableHeaderCell>
                           <CTableHeaderCell>Descripción</CTableHeaderCell>
@@ -421,7 +457,7 @@ const ReporteInventario = () => {
                     <CTable striped hover bordered responsive>
                       <CTableHead>
                         <CTableRow>
-                          <CTableHeaderCell className="text-center">#</CTableHeaderCell>
+                          <CTableHeaderCell className="text-center">No.</CTableHeaderCell>
                           <CTableHeaderCell>Código Producto</CTableHeaderCell>
                           <CTableHeaderCell>Código Proveedor</CTableHeaderCell>
                           <CTableHeaderCell>Descripción</CTableHeaderCell>
@@ -429,6 +465,7 @@ const ReporteInventario = () => {
                           <CTableHeaderCell className="text-center">Existencias</CTableHeaderCell>
                           <CTableHeaderCell className="text-center">Dañados</CTableHeaderCell>
                           <CTableHeaderCell className="text-center">Ubicación</CTableHeaderCell>
+                          <CTableHeaderCell className="text-center">Estado</CTableHeaderCell>
                         </CTableRow>
                       </CTableHead>
                       <CTableBody>
@@ -442,6 +479,7 @@ const ReporteInventario = () => {
                             <CTableDataCell className="text-center">{item.cantidadExistencias}</CTableDataCell>
                             <CTableDataCell className="text-center">{item.cantidadDanados}</CTableDataCell>
                             <CTableDataCell className="text-center">{obtenerNombreUbicacion(item.idUbicacion)}</CTableDataCell>
+                            <CTableDataCell className="text-center">{obtenerNombreEstado(item.estado)}</CTableDataCell>
                           </CTableRow>
                         ))}
                       </CTableBody>
