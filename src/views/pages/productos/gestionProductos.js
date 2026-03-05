@@ -25,6 +25,7 @@ import {
   CTableDataCell,
   CPagination,
   CPaginationItem,
+  CSpinner,
 } from '@coreui/react'
 import "react-datepicker/dist/react-datepicker.css";
 import * as XLSX from 'xlsx';
@@ -57,6 +58,11 @@ const Layout = () => {
   const [totalPages, setTotalPages] = useState(0)
   const [modoEdicion, setModoEdicion] = useState(false)
   const [idEliminar, setIdEliminar] = useState(null)
+
+  // Edición masiva de Precio Venta
+  const [modoEditarPrecio, setModoEditarPrecio] = useState(false)
+  const [preciosEditados, setPreciosEditados] = useState({})  // { idProducto: 'valor' }
+  const [guardandoPrecios, setGuardandoPrecios] = useState(false)
 
   // Función para obtener el nombre de la unidad de medida por su ID
   const obtenerNombreUnidad = (idUnidad) => {
@@ -466,6 +472,73 @@ const Layout = () => {
     }
   }
 
+  const activarModoEditarPrecio = () => {
+    const inicial = {}
+    productos.forEach(p => {
+      inicial[p.idProducto] = p.precioVenta != null ? String(p.precioVenta) : ''
+    })
+    setPreciosEditados(inicial)
+    setModoEditarPrecio(true)
+  }
+
+  const cancelarEditarPrecio = () => {
+    setModoEditarPrecio(false)
+    setPreciosEditados({})
+  }
+
+  const guardarPrecios = async () => {
+    const regexDecimal = /^\d+(\.\d{1,2})?$/
+    const cambios = productos.filter(p => {
+      const nuevo = preciosEditados[p.idProducto]
+      if (!nuevo?.trim() || !regexDecimal.test(nuevo.trim())) return false
+      return Number(nuevo) !== Number(p.precioVenta)
+    })
+
+    if (cambios.length === 0) {
+      setModalMsgTitle('Sin cambios')
+      setModalMsgBody('No se detectaron cambios en los precios.')
+      setModalMsgColor('info')
+      setModalMsgVisible(true)
+      cancelarEditarPrecio()
+      return
+    }
+
+    setGuardandoPrecios(true)
+    try {
+      await Promise.all(
+        cambios.map(p =>
+          fetch(`/api/editarProducto/${p.idProducto}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              idProducto:                p.idProducto,
+              codigoProducto:            p.codigoProducto,
+              codigoProductoProveedor:   p.codigoProductoProveedor,
+              descripcionProducto:       p.descripcionProducto,
+              unidadDeMedida:            p.unidadDeMedida,
+              precioCompra:              p.precioCompra,
+              precioVenta:               Number(preciosEditados[p.idProducto]),
+              idUsuarioModificacion:     idUsuarioActual,
+            }),
+          }).then(r => { if (!r.ok) throw new Error(`Error al actualizar ${p.codigoProducto}`) })
+        )
+      )
+      await cargarProductos(page)
+      cancelarEditarPrecio()
+      setModalMsgTitle('Éxito')
+      setModalMsgBody(`${cambios.length} precio(s) actualizado(s) correctamente.`)
+      setModalMsgColor('success')
+      setModalMsgVisible(true)
+    } catch (err) {
+      setModalMsgTitle('Error')
+      setModalMsgBody(err.message)
+      setModalMsgColor('danger')
+      setModalMsgVisible(true)
+    } finally {
+      setGuardandoPrecios(false)
+    }
+  }
+
   useEffect(() => {
     const delayDebounce = setTimeout(() => {
       cargarProductos(0, busqueda)
@@ -487,20 +560,40 @@ const Layout = () => {
           </CCardHeader>
           <CCardBody className="p-4">
 
-            <div className="mt-2 ms-auto me-2"  >
-              <CCol className="d-flex justify-content-end gap-2" >
-                <CButton color="success" className="text-light" onClick={() => {
-                  setModoEdicion(false)
-                  setForm({
-                    codigoProducto: '',
-                    codigoProductoProveedor: '',
-                    descripcionProducto: '',
-                    unidadDeMedida: '',
-                  })
-                  setErrors({})
-                  setVisible(true)
-                }}> + Agregar</CButton>
-                <CButton color="info" className="text-light" onClick={exportarAExcel}>Exportar</CButton>
+            <div className="mt-2 ms-auto me-2">
+              <CCol className="d-flex justify-content-end gap-2 flex-wrap">
+                {!modoEditarPrecio ? (
+                  <>
+                    <CButton color="success" className="text-light" onClick={() => {
+                      setModoEdicion(false)
+                      setForm({
+                        codigoProducto: '',
+                        codigoProductoProveedor: '',
+                        descripcionProducto: '',
+                        unidadDeMedida: '',
+                      })
+                      setErrors({})
+                      setVisible(true)
+                    }}>+ Agregar</CButton>
+                    <CButton color="primary" className="text-light" onClick={activarModoEditarPrecio}>
+                      $ Editar Precio Venta
+                    </CButton>
+                    <CButton color="info" className="text-light" onClick={exportarAExcel}>Exportar</CButton>
+                  </>
+                ) : (
+                  <>
+                    <small className="text-muted align-self-center">
+                      Editando precios de los productos visibles
+                    </small>
+                    <CButton color="success" className="text-light" onClick={guardarPrecios} disabled={guardandoPrecios}>
+                      {guardandoPrecios && <CSpinner size="sm" className="me-1" />}
+                      Guardar Precios
+                    </CButton>
+                    <CButton color="secondary" onClick={cancelarEditarPrecio} disabled={guardandoPrecios}>
+                      Cancelar
+                    </CButton>
+                  </>
+                )}
               </CCol>
             </div>
 
@@ -700,7 +793,23 @@ const Layout = () => {
                     <CTableDataCell>{producto.codigoProductoProveedor}</CTableDataCell>
                     <CTableDataCell>{producto.descripcionProducto}</CTableDataCell>
                     <CTableDataCell className="text-end">{producto.precioCompra != null ? Number(producto.precioCompra).toFixed(2) : '—'}</CTableDataCell>
-                    <CTableDataCell className="text-end">{producto.precioVenta != null ? Number(producto.precioVenta).toFixed(2) : '—'}</CTableDataCell>
+                    <CTableDataCell className="text-end">
+                      {modoEditarPrecio ? (
+                        <CFormInput
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          size="sm"
+                          style={{ minWidth: '90px' }}
+                          value={preciosEditados[producto.idProducto] ?? ''}
+                          onChange={(e) =>
+                            setPreciosEditados(prev => ({ ...prev, [producto.idProducto]: e.target.value }))
+                          }
+                        />
+                      ) : (
+                        producto.precioVenta != null ? Number(producto.precioVenta).toFixed(2) : '—'
+                      )}
+                    </CTableDataCell>
                     <CTableDataCell>{obtenerNombreUnidad(producto.unidadDeMedida)}</CTableDataCell>
                     <CTableDataCell>
                       <span style={{ color: '#000' }}>
