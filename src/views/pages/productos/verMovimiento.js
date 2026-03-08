@@ -31,7 +31,6 @@ const VerMovimiento = () => {
   const [tipoOrden, setTipoOrden] = useState([])
   const [estadoFactura, setEstadoFactura] = useState([])
   const [proveedores, setProveedores] = useState([])
-  const [productos, setProductos] = useState([])
   const [ubicaciones, setUbicaciones] = useState([])
 
   // Funciones helper para obtener nombres
@@ -59,14 +58,6 @@ const VerMovimiento = () => {
     return proveedor ? (proveedor.nombre || proveedor.nombreProveedor) : `ID: ${idProveedor} (No encontrado)`
   }
 
-  const obtenerProducto = (idProducto) => {
-    if (!idProducto) {
-      return { codigoProducto: 'N/A', codigoProductoProveedor: 'N/A', descripcionProducto: 'N/A' }
-    }
-    const producto = productos.find(p => p.idProducto === idProducto)
-    return producto || { codigoProducto: 'N/A', codigoProductoProveedor: 'N/A', descripcionProducto: `Producto ID: ${idProducto} (No encontrado)` }
-  }
-
   const obtenerNombreUbicacion = (idUbicacion) => {
     if (!idUbicacion) return 'N/A'
     const ubic = ubicaciones.find(u => (u.idUbicacion ?? u.id) == idUbicacion)
@@ -82,11 +73,11 @@ const VerMovimiento = () => {
   // Cargar diccionarios
   const cargarDiccionario = async () => {
     try {
-      const response = await fetch('/api/diccionarios')
+      const response = await fetch('/api/diccionarios?estado=1')
 
-      const responseTipoMovimiento = await fetch('/api/diccionarios?diccionario=TIPODEMOVIMIENTO')
-      const responseTipoOrden = await fetch('/api/diccionarios?diccionario=TIPODEORDEN')
-      const responseEstadoFactura = await fetch('/api/diccionarios?diccionario=ESTADOFATURAORDEN')
+      const responseTipoMovimiento = await fetch('/api/diccionarios?diccionario=TIPODEMOVIMIENTO&estado=1')
+      const responseTipoOrden = await fetch('/api/diccionarios?diccionario=TIPODEORDEN&estado=1')
+      const responseEstadoFactura = await fetch('/api/diccionarios?diccionario=ESTADOFATURAORDEN&estado=1')
       if (!response.ok) throw new Error('Error al cargar diccionarios')
       
      
@@ -152,22 +143,6 @@ const tipoEstadoFactura = Array.isArray(dataEstadoFactura)
     }
   }
 
-  // Cargar productos
-  const cargarProductos = async () => {
-    try {
-      const url = '/api/productos?size=1000'
-      const response = await fetch(url)
-      if (!response.ok) throw new Error('Error al cargar productos')
-      
-      const data = await response.json()
-      const productosArray = Array.isArray(data) ? data : Array.isArray(data?.content) ? data.content : []
-      setProductos(productosArray)
-    } catch (error) {
-      console.error('❌ Error al cargar productos:', error)
-      setProductos([])
-    }
-  }
-
   // Cargar la orden específica
   const cargarOrden = async () => {
     try {
@@ -221,7 +196,6 @@ const tipoEstadoFactura = Array.isArray(dataEstadoFactura)
     cargarDiccionario()
     cargarProveedores()
     cargarUbicaciones()
-    cargarProductos()
   }, [])
 
   useEffect(() => {
@@ -357,13 +331,13 @@ const tipoEstadoFactura = Array.isArray(dataEstadoFactura)
                   </CTableRow>
                 ) : (
                   detalles.map((detalle, index) => {
-                    const producto = obtenerProducto(detalle.idProducto)
+                    const producto = detalle.idProducto || {}
                     return (
                       <CTableRow key={detalle.idMovimientoProducto || index}>
                         <CTableDataCell className="text-center">{index + 1}</CTableDataCell>
-                        <CTableDataCell>{producto.codigoProducto}</CTableDataCell>
+                        <CTableDataCell>{producto.codigoProducto ?? 'N/A'}</CTableDataCell>
                         <CTableDataCell>{producto.codigoProductoProveedor ?? 'N/A'}</CTableDataCell>
-                        <CTableDataCell>{producto.descripcionProducto}</CTableDataCell>
+                        <CTableDataCell>{producto.descripcionProducto ?? 'N/A'}</CTableDataCell>
                         <CTableDataCell>{obtenerNombreUbicacion(detalle.idUbicacion)}</CTableDataCell>
                         <CTableDataCell className="text-center">{detalle.cantidad}</CTableDataCell>
                         <CTableDataCell className="text-end">Q{detalle.precioCompra?.toFixed(2)}</CTableDataCell>
