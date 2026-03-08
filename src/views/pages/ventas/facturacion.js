@@ -60,6 +60,7 @@ const Layout = () => {
   const [documento, setDocumento] = useState('');
   const [ubicaciones, setUbicaciones] = useState([]);
   const [errorDteModal, setErrorDteModal] = useState({ visible: false, mensaje: '' });
+  const [errorValidacionModal, setErrorValidacionModal] = useState({ visible: false, mensaje: '' });
   const [clienteGuardadoModal, setClienteGuardadoModal] = useState(false);
 
   // Estados para totales de factura
@@ -917,18 +918,27 @@ const Layout = () => {
     e.preventDefault();
     setErrorFactura('');
 
+    const mostrarErrorValidacion = (mensaje) => {
+      setErrorValidacionModal({ visible: true, mensaje });
+    };
+
+    if (!esConsumidorFinal && !documento) {
+      mostrarErrorValidacion('Debe seleccionar un tipo de documento (Consumidor Final, NIT, DPI o Pasaporte) antes de generar la factura.');
+      return;
+    }
+
     if (!formFactura.nombre?.trim()) {
-      setErrorFactura('Debe seleccionar o agregar un cliente');
+      mostrarErrorValidacion('Debe seleccionar o agregar un cliente.');
       return;
     }
 
     if (detalleFactura.length === 0) {
-      setErrorFactura('Debe agregar al menos un producto');
+      mostrarErrorValidacion('Debe agregar al menos un producto.');
       return;
     }
 
     if (!formFactura.idCliente) {
-      setErrorFactura('El cliente no tiene un ID válido. Por favor seleccione o guarde el cliente nuevamente.');
+      mostrarErrorValidacion('El cliente no tiene un ID válido. Por favor seleccione o guarde el cliente nuevamente.');
       return;
     }
 
@@ -1159,7 +1169,7 @@ const Layout = () => {
       }
     } catch (err) {
       console.error('Error al guardar factura:', err);
-      setErrorFactura(err.message || 'No se pudo guardar la factura');
+      setErrorValidacionModal({ visible: true, mensaje: err.message || 'No se pudo guardar la factura.' });
     } finally {
       setGuardandoFactura(false);
     }
@@ -1184,11 +1194,6 @@ const Layout = () => {
             </CCardHeader>
 
             <CForm className="mt-4" onSubmit={guardarFactura}>
-              {errorFactura && (
-                <div className="alert alert-danger mb-3" role="alert">
-                  {errorFactura}
-                </div>
-              )}
               <CRow className="mb-2 align-items-center">
                 <CCol xs={12} md={6} className="d-flex gap-4">
                   <CFormCheck
@@ -1927,6 +1932,25 @@ const Layout = () => {
       <CModalFooter>
         <CButton color="success" className="text-white" onClick={() => setClienteGuardadoModal(false)}>
           Aceptar
+        </CButton>
+      </CModalFooter>
+    </CModal>
+
+    {/* Modal error validación */}
+    <CModal
+      visible={errorValidacionModal.visible}
+      onClose={() => setErrorValidacionModal({ visible: false, mensaje: '' })}
+      alignment="center"
+    >
+      <CModalHeader className="bg-warning text-dark">
+        <CModalTitle>⚠️ Atención</CModalTitle>
+      </CModalHeader>
+      <CModalBody>
+        <p className="mb-0">{errorValidacionModal.mensaje}</p>
+      </CModalBody>
+      <CModalFooter>
+        <CButton color="warning" className="text-dark" onClick={() => setErrorValidacionModal({ visible: false, mensaje: '' })}>
+          Entendido
         </CButton>
       </CModalFooter>
     </CModal>
