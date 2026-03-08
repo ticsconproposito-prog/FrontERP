@@ -41,7 +41,7 @@ const EditarMovimiento = () => {
   const [tipoOrden, setTipoOrden] = useState([])
   const [estadoFactura, setEstadoFactura] = useState([])
   const [proveedores, setProveedores] = useState([])
-  const [productos, setProductos] = useState([])
+  const [productosDisponibles, setProductosDisponibles] = useState([])
   const [ubicaciones, setUbicaciones] = useState([])
 
   const [formData, setFormData] = useState({
@@ -82,12 +82,6 @@ const EditarMovimiento = () => {
   const [ubicacionModalMostrar, setUbicacionModalMostrar] = useState({})
   // Filas con cantidad y precio habilitados para editar (por índice)
   const [filasEditables, setFilasEditables] = useState(new Set())
-
-  const obtenerProducto = (idProducto) => {
-    if (!idProducto) return { codigoProducto: 'N/A', codigoProductoProveedor: 'N/A', descripcionProducto: 'N/A' }
-    const p = productos.find(x => x.idProducto === idProducto)
-    return p || { codigoProducto: 'N/A', codigoProductoProveedor: 'N/A', descripcionProducto: 'N/A' }
-  }
 
   const obtenerNombreUbicacion = (idUbicacion) => {
     if (!idUbicacion) return 'N/A'
@@ -171,7 +165,7 @@ const EditarMovimiento = () => {
     setBusquedaProducto(value)
     const v = value.trim().toLowerCase()
     if (v.length >= 2) {
-      const filtrados = productos.filter(p => {
+      const filtrados = productosDisponibles.filter(p => {
         const cod = (p.codigoProducto || '').toString().toLowerCase()
         const prov = (p.codigoProductoProveedor || '').toString().toLowerCase()
         const desc = (p.descripcionProducto || '').toString().toLowerCase()
@@ -356,10 +350,36 @@ const EditarMovimiento = () => {
   }
 
   const confirmarProductosModal = () => {
+    const sinUbicacion = productosModal.find((p) => !p.idUbicacion)
+    if (sinUbicacion) {
+      setMensajeError(`El producto "${sinUbicacion.descripcion || sinUbicacion.codigoProducto}" no tiene una ubicación seleccionada.`)
+      setModalError(true)
+      return
+    }
+
+    const cantidadInvalida = productosModal.find((p) => parseFloat(p.cantidad) < 0 || isNaN(parseFloat(p.cantidad)))
+    if (cantidadInvalida) {
+      setMensajeError(`El producto "${cantidadInvalida.descripcion || cantidadInvalida.codigoProducto}" tiene una cantidad negativa o inválida.`)
+      setModalError(true)
+      return
+    }
+
+    const precioInvalido = productosModal.find((p) => parseFloat(p.precio) <= 0 || isNaN(parseFloat(p.precio)))
+    if (precioInvalido) {
+      setMensajeError(`El producto "${precioInvalido.descripcion || precioInvalido.codigoProducto}" debe tener un precio de compra mayor a 0.`)
+      setModalError(true)
+      return
+    }
+
     const nuevosDetalles = productosModal.map((prod) => ({
       idMovimientoProducto: null,
       idOrdenProducto: parseInt(id, 10),
-      idProducto: prod.idProducto,
+      idProducto: {
+        idProducto: prod.idProducto,
+        codigoProducto: prod.codigoProducto ?? '',
+        codigoProductoProveedor: prod.codigoProductoProveedor ?? '',
+        descripcionProducto: prod.descripcion ?? '',
+      },
       cantidad: Number(prod.cantidad) || 0,
       precioCompra: Number(prod.precio) || 0,
       idUbicacion: prod.idUbicacion ? parseInt(prod.idUbicacion, 10) : 1,
@@ -405,13 +425,19 @@ const EditarMovimiento = () => {
     }
   }
 
-  const cargarProductos = async () => {
+  const cargarProductosDisponibles = async () => {
     try {
-      const r = await fetch('/api/productos?size=1000')
+      const r = await fetch('/api/inventario?page=0&size=10000')
       const data = await r.json()
-      setProductos(Array.isArray(data) ? data : (data?.content || []))
+      const items = Array.isArray(data) ? data : (data?.content || [])
+      setProductosDisponibles(items.map(item => ({
+        idProducto: item.idProducto?.idProducto ?? item.idProducto,
+        codigoProducto: item.idProducto?.codigoProducto ?? item.codigoProducto ?? '',
+        codigoProductoProveedor: item.idProducto?.codigoProductoProveedor ?? item.codigoProductoProveedor ?? '',
+        descripcionProducto: item.idProducto?.descripcionProducto ?? item.descripcionProducto ?? '',
+      })))
     } catch (e) {
-      console.error(e)
+      console.error('Error al cargar productos para búsqueda:', e)
     }
   }
 
@@ -460,7 +486,11 @@ const EditarMovimiento = () => {
       if (!r.ok) throw new Error('Error al cargar detalles')
       const data = await r.json()
       const arr = Array.isArray(data) ? data : (data?.content || [])
-      setDetalles(arr)
+      setDetalles(arr.map(det => ({
+        ...det,
+        idProducto: det.idProducto,
+        precioCompra: det.precioCompra ?? 0,
+      })))
     } catch (e) {
       console.error(e)
       setDetalles([])
@@ -470,7 +500,7 @@ const EditarMovimiento = () => {
   useEffect(() => {
     cargarDiccionario()
     cargarProveedores()
-    cargarProductos()
+    cargarProductosDisponibles()
     cargarUbicaciones()
   }, [])
 
@@ -560,11 +590,15 @@ const EditarMovimiento = () => {
         }
       }
       for (const det of detalles) {
+        const idProd = (typeof det.idProducto === 'object' && det.idProducto !== null)
+          ? det.idProducto.idProducto
+          : parseInt(det.idProducto, 10)
+
         if (det.idMovimientoProducto) {
           const body = {
             idMovimientoProducto: det.idMovimientoProducto,
             idOrdenProducto: parseInt(id, 10),
-            idProducto: det.idProducto,
+            idProducto: { idProducto: idProd },
             cantidad: parseInt(det.cantidad, 10) || 0,
             precioCompra: parseFloat(det.precioCompra) || 0,
             idUbicacion: det.idUbicacion || 1,
@@ -579,13 +613,14 @@ const EditarMovimiento = () => {
         } else {
           const body = {
             idOrdenProducto: parseInt(id, 10),
-            idProducto: parseInt(det.idProducto, 10),
+            idProducto: { idProducto: idProd },
             cantidad: parseInt(det.cantidad, 10) || 0,
             precioCompra: parseFloat(det.precioCompra) || 0,
             idUbicacion: det.idUbicacion || 1,
             idUsuarioModificacion: idUsuarioActual
           }
-          const resNew = await fetch('/api/grabarMovimientosProductos', {
+          console.log('[grabarMovimientosProductos] Enviando:', JSON.stringify(body, null, 2))
+          const resNew = await fetch(`/api/grabarMovimientosProductos?tipoDeMovimiento=${parseInt(formData.tipoMovimiento, 10)}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body)
@@ -762,7 +797,7 @@ const EditarMovimiento = () => {
                 <CTable striped hover bordered responsive>
                   <CTableHead>
                     <CTableRow>
-                      <CTableHeaderCell>#</CTableHeaderCell>
+                      <CTableHeaderCell>No.</CTableHeaderCell>
                       <CTableHeaderCell>Código</CTableHeaderCell>
                       <CTableHeaderCell>Cód. Proveedor</CTableHeaderCell>
                       <CTableHeaderCell>Descripción</CTableHeaderCell>
@@ -775,15 +810,17 @@ const EditarMovimiento = () => {
                   </CTableHead>
                   <CTableBody>
                     {detalles.map((det, index) => {
-                      const prod = obtenerProducto(det.idProducto)
+                      const prod = (typeof det.idProducto === 'object' && det.idProducto !== null)
+                        ? det.idProducto
+                        : { codigoProducto: 'N/A', codigoProductoProveedor: 'N/A', descripcionProducto: 'N/A' }
                       const subtotal = (det.cantidad || 0) * (det.precioCompra || 0)
                       const editable = filasEditables.has(index)
                       return (
                         <CTableRow key={det.idMovimientoProducto != null ? det.idMovimientoProducto : 'n-' + index}>
                           <CTableDataCell>{index + 1}</CTableDataCell>
-                          <CTableDataCell>{prod.codigoProducto}</CTableDataCell>
-                          <CTableDataCell>{prod.codigoProductoProveedor}</CTableDataCell>
-                          <CTableDataCell>{prod.descripcionProducto}</CTableDataCell>
+                          <CTableDataCell>{prod.codigoProducto ?? 'N/A'}</CTableDataCell>
+                          <CTableDataCell>{prod.codigoProductoProveedor ?? 'N/A'}</CTableDataCell>
+                          <CTableDataCell>{prod.descripcionProducto ?? 'N/A'}</CTableDataCell>
                           <CTableDataCell>{obtenerNombreUbicacion(det.idUbicacion)}</CTableDataCell>
                           <CTableDataCell className="text-center">
                             {editable ? (

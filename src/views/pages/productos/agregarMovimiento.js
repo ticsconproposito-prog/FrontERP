@@ -120,7 +120,10 @@ const AgregarMovimiento = () => {
       (p) => p.idProducto === (producto.idProducto ?? null) &&
              p.codigoProducto === (producto.codigoProducto ?? '')
     )
-    if (existe) return
+    if (existe) {
+      mostrarAdvertencia(`El producto "${producto.descripcionProducto || producto.codigoProducto}" ya se encuentra agregado en el detalle.`)
+      return
+    }
 
     const nuevoProducto = {
       id: Date.now(),
@@ -472,9 +475,10 @@ const AgregarMovimiento = () => {
   const confirmarGuardado = async () => {
     setModalConfirmacion(false)
 
-    const totalOrden = productos.reduce((total, producto) => {
-      return total + (producto.cantidad * producto.precio)
-    }, 0)
+    let totalPrecioCompra = 0
+    for (const producto of productos) {
+      totalPrecioCompra += producto.cantidad * producto.precio
+    }
 
     const datosOrden = {
       idSucursal: 1,
@@ -484,7 +488,7 @@ const AgregarMovimiento = () => {
       tipoMovimiento: parseInt(formData.tipoMovimiento, 10),
       tipoOrden: parseInt(formData.tipoOrden, 10),
       estadoFactura: parseInt(formData.estadoFactura, 10),
-      precioTotalOrden: totalOrden,
+      precioTotalOrden: totalPrecioCompra,
       valorCancelado: formData.valorCancelado ? parseFloat(formData.valorCancelado) : 0,
       comentario: formData.comentarios || '',
       idUsuario: idUsuarioActual,

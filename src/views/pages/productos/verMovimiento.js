@@ -312,7 +312,7 @@ const tipoEstadoFactura = Array.isArray(dataEstadoFactura)
             <CTable striped hover bordered>
               <CTableHead>
                 <CTableRow>
-                  <CTableHeaderCell className="text-center">#</CTableHeaderCell>
+                  <CTableHeaderCell className="text-center">No.</CTableHeaderCell>
                   <CTableHeaderCell>Código Producto</CTableHeaderCell>
                   <CTableHeaderCell>Código Proveedor Producto</CTableHeaderCell>
                   <CTableHeaderCell>Descripción</CTableHeaderCell>
