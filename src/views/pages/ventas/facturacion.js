@@ -157,7 +157,10 @@ const Layout = () => {
     setClienteSeleccionado(false);
     setEnviarCorreo(false);
     setAlertaSinCorreo(false);
-    setDocumento('');
+    const nit = documentoOpts.find((d) => (d.valor || '').toUpperCase().includes('NIT'));
+    setDocumento(nit ? String(nit.indice) : '');
+    setSugerenciasClientes([]);
+    setMostrarSugerenciasClientes(false);
     setImpuestoIVA(12);
     setErrorFactura('');
   };
@@ -168,6 +171,8 @@ const Layout = () => {
       const data = await response.json();
       const lista = Array.isArray(data) ? data : (data?.content || []);
       setDocumentoOpts(lista);
+      const nit = lista.find((d) => (d.valor || '').toUpperCase().includes('NIT'));
+      if (nit) setDocumento(String(nit.indice));
     } catch (e) {
       console.error('Error al cargar tipos de documento:', e);
       setDocumentoOpts([]);
@@ -1039,6 +1044,7 @@ const Layout = () => {
       let referenciaRes = referenciaCalculada;
       let preimpresoRes = '';
       let nombreDte = '';
+      let hayErrorDte = false;
 
       // Enviar DTE al API /dtes
       try {
@@ -1117,6 +1123,7 @@ const Layout = () => {
         if (fel?.ok === false) {
           const mensajeError = fel.error || 'Error desconocido al emitir el DTE'
           console.warn('[DTE] Error FEL:', mensajeError)
+          hayErrorDte = true
           setErrorDteModal({ visible: true, mensaje: mensajeError })
         } else {
           if (fel?.referencia) referenciaRes = fel.referencia
@@ -1128,23 +1135,27 @@ const Layout = () => {
         }
       } catch (eDte) {
         console.warn('[DTE] Error al enviar DTE:', eDte)
+        hayErrorDte = true
+        setErrorDteModal({ visible: true, mensaje: eDte.message || 'Error al conectar con el servicio DTE' })
       }
 
-      await imprimirFactura({
-        cliente: { ...formFactura, nombre: nombreDte || formFactura.nombre },
-        detalle: [...detalleFactura],
-        iva: calcularIVA(),
-        total: calcularTotal(),
-        totalDescuento: calcularTotalDescuentoProductos(),
-        numeroAutorizacion,
-        serieRes,
-        referenciaRes,
-        preimpresoRes,
-      });
+      if (!hayErrorDte) {
+        await imprimirFactura({
+          cliente: { ...formFactura, nombre: nombreDte || formFactura.nombre },
+          detalle: [...detalleFactura],
+          iva: totalesDetalle.iva,
+          total: totalesDetalle.total,
+          totalDescuento: calcularTotalDescuentoProductos(),
+          numeroAutorizacion,
+          serieRes,
+          referenciaRes,
+          preimpresoRes,
+        });
 
-      limpiarFormulario();
-      setDetalleFactura([]);
-      setErrorFactura('');
+        limpiarFormulario();
+        setDetalleFactura([]);
+        setErrorFactura('');
+      }
     } catch (err) {
       console.error('Error al guardar factura:', err);
       setErrorFactura(err.message || 'No se pudo guardar la factura');
@@ -1226,28 +1237,51 @@ const Layout = () => {
                 </CRow>
               )}
               <CRow className="mb-3">
-                <CCol md={6}>
-                  <CFormLabel htmlFor="documento">Documento</CFormLabel>
-                  <CFormSelect
-                    id="documento"
-                    value={documento}
-                    disabled={clienteSeleccionado || esConsumidorFinal}
-                    onChange={(e) => {
-                      setDocumento(e.target.value);
-                      setFormFactura((prev) => ({ ...prev, nit: '' }));
-                      setSugerenciasClientes([]);
-                      setMostrarSugerenciasClientes(false);
-                    }}
-                  >
-                    <option value="">Seleccione documento</option>
-                    {documentoOpts.map((d) => (
-                      <option key={d.indice} value={d.indice}>
-                        {d.valor}
-                      </option>
-                    ))}
-                  </CFormSelect>
-                </CCol>
-                <CCol md={6}>
+              <CCol md={6}>
+  <div className="col-5 mb-2">
+    <CFormSelect
+      id="documento"
+      value={documento}
+      disabled={clienteSeleccionado || esConsumidorFinal}
+      onChange={(e) => {
+        setDocumento(e.target.value);
+        setFormFactura((prev) => ({ ...prev, nit: '' }));
+        setSugerenciasClientes([]);
+        setMostrarSugerenciasClientes(false);
+      }}
+    >
+      <option value="">Seleccione documento</option>
+      {documentoOpts.map((d) => (
+        <option key={d.indice} value={d.indice}>
+          {d.valor}
+        </option>
+      ))}
+    </CFormSelect>
+  </div>
+
+  <div style={{ position: 'relative' }}>
+    <CFormInput
+      type="text"
+      id="nit"
+      name="nit"
+      placeholder={
+        !documento && !esConsumidorFinal
+          ? 'Seleccione un documento primero'
+          : tipoBusqueda() === 'dpi'
+          ? 'Ingrese el DPI para buscar'
+          : tipoBusqueda() === 'pasaporte'
+          ? 'Ingrese el Pasaporte para buscar'
+          : 'Ingrese el NIT para buscar cliente'
+      }
+      value={formFactura.nit}
+      onChange={handleNitChange}
+      disabled={esConsumidorFinal || clienteSeleccionado || !documento}
+      autoComplete="off"
+    />
+  </div>
+</CCol>
+               
+                <CCol md={6} className="mt-3">
                   <CFormLabel htmlFor="nombre">Nombre</CFormLabel>
                   <div style={{ position: 'relative' }}>
                     <CFormInput
@@ -1302,58 +1336,19 @@ const Layout = () => {
 
               <CRow className="mb-3">
                 <CCol md={6}>
-                  <CFormLabel htmlFor="nit">
-                    {tipoBusqueda() === 'dpi' ? 'DPI' : tipoBusqueda() === 'pasaporte' ? 'Pasaporte' : 'NIT'}
-                  </CFormLabel>
-                  <div style={{ position: 'relative' }}>
-                    <CFormInput
-                      type="text"
-                      id="nit"
-                      name="nit"
-                      placeholder={!documento && !esConsumidorFinal ? 'Seleccione un documento primero' : tipoBusqueda() === 'dpi' ? 'Ingrese el DPI para buscar' : tipoBusqueda() === 'pasaporte' ? 'Ingrese el Pasaporte para buscar' : 'Ingrese el NIT para buscar cliente'}
-                      value={formFactura.nit}
-                      onChange={handleNitChange}
-                      disabled={esConsumidorFinal || clienteSeleccionado || !documento}
-                      autoComplete="off"
-                    />
-                    {mostrarSugerenciasClientes && sugerenciasClientes.length > 0 && (
-                      <div
-                        style={{
-                          position: 'absolute',
-                          top: '100%',
-                          left: 0,
-                          right: 0,
-                          zIndex: 1050,
-                          maxHeight: '220px',
-                          overflowY: 'auto',
-                          border: '1px solid #dee2e6',
-                          borderRadius: '4px',
-                          backgroundColor: '#fff',
-                          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                        }}
-                        className="list-group"
-                      >
-                        <div className="list-group-item list-group-item-secondary py-2">
-                          <small><strong>Clientes encontrados:</strong> haga clic para seleccionar</small>
-                        </div>
-                        {sugerenciasClientes.map((cli) => (
-                          <button
-                            key={cli.idCliente ?? cli.id}
-                            type="button"
-                            className="list-group-item list-group-item-action text-start"
-                            onClick={() => seleccionarClienteSugerencia(cli)}
-                            style={{ cursor: 'pointer' }}
-                          >
-                            <div>
-                              <strong>{(tipoBusqueda() === 'dpi' || tipoBusqueda() === 'pasaporte') ? (cli.documentoIdentificacion || '—') : cli.nit}</strong> - {cli.nombreCliente || cli.nombreFacturacion}
-                            </div>
-                            <small className="text-muted">{cli.telefono1}</small>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                <CFormLabel htmlFor="direccion">Dirección</CFormLabel>
+                  <CFormInput
+                    type="text"
+                    id="direccion"
+                    name="direccion"
+                    placeholder="Ingrese la dirección"
+                    value={formFactura.direccion}
+                    onChange={handleChange}
+                    disabled={esConsumidorFinal || clienteSeleccionado}
+                  />
+                 
                 </CCol>
+             
                 <CCol md={6}>
                   <CFormLabel htmlFor="telefono">Teléfono</CFormLabel>
                   <CFormInput
@@ -1369,15 +1364,14 @@ const Layout = () => {
               </CRow>
               <CRow className="mb-3">
                 <CCol md={6}>
-                  <CFormLabel htmlFor="direccion">Dirección</CFormLabel>
-                  <CFormInput
-                    type="text"
-                    id="direccion"
-                    name="direccion"
-                    placeholder="Ingrese la dirección"
-                    value={formFactura.direccion}
+                <CFormLabel htmlFor="direccionEntrega">Dirección de entrega</CFormLabel>
+                  <CFormTextarea
+                    id="direccionEntrega"
+                    name="direccionEntrega"
+                    placeholder="Ingrese la dirección de entrega"
+                    value={formFactura.direccionEntrega}
                     onChange={handleChange}
-                    disabled={esConsumidorFinal || clienteSeleccionado}
+                    rows={2}
                   />
                 </CCol>
 
@@ -1412,15 +1406,7 @@ const Layout = () => {
               </CRow >
               <CRow className="g-1">
                 <CCol xs={6}>
-                  <CFormLabel htmlFor="direccionEntrega">Dirección de entrega</CFormLabel>
-                  <CFormTextarea
-                    id="direccionEntrega"
-                    name="direccionEntrega"
-                    placeholder="Ingrese la dirección de entrega"
-                    value={formFactura.direccionEntrega}
-                    onChange={handleChange}
-                    rows={2}
-                  />
+                 
                 </CCol>
               </CRow>
               {/* Sección: Detalle de Productos en el Formulario Principal */}
