@@ -198,6 +198,18 @@ const AgregarMovimiento = () => {
   }
 
   const confirmarProductosModal = () => {
+    const sinUbicacion = productosModal.find((p) => !p.idUbicacion)
+    if (sinUbicacion) {
+      mostrarAdvertencia(`El producto "${sinUbicacion.descripcion || sinUbicacion.codigoProducto}" no tiene una ubicación seleccionada.`)
+      return
+    }
+
+    const cantidadInvalida = productosModal.find((p) => parseFloat(p.cantidad) < 0 || isNaN(parseFloat(p.cantidad)))
+    if (cantidadInvalida) {
+      mostrarAdvertencia(`El producto "${cantidadInvalida.descripcion || cantidadInvalida.codigoProducto}" tiene una cantidad inválida. La cantidad no puede ser negativa.`)
+      return
+    }
+
     setProductos(productosModal.map((p) => ({
       ...p,
       cantidad: parseFloat(p.cantidad) || 0,
@@ -486,7 +498,7 @@ const AgregarMovimiento = () => {
         mostrarAdvertencia('No se obtuvo el ID de la orden. No se pueden guardar los productos.')
         return
       }
-      await grabarMovimientosProductos(idOrdenNum, productos)
+      await grabarMovimientosProductos(idOrdenNum, productos, parseInt(formData.tipoMovimiento, 10))
       setNumeroOrdenGuardada(idOrdenNum)
       setModalExito(true)
     } catch (error) {
@@ -511,11 +523,7 @@ const AgregarMovimiento = () => {
   // Función para grabar la orden de productos
   const grabarOrdenProducto = async (datosOrden) => {
     try {
-      console.log('========== INICIO GRABAR ORDEN ==========')
-      console.log('Datos completos a enviar:', JSON.stringify(datosOrden, null, 2))
-      console.log('numeroDocumento específico:', datosOrden.numeroDocumento)
-      console.log('Tipo de numeroDocumento:', typeof datosOrden.numeroDocumento)
-      
+      console.log('[grabarOrdenProducto] Enviando:', JSON.stringify(datosOrden, null, 2))
       const response = await fetch('/api/grabarOrdenProducto', {
         method: 'POST',
         headers: {
@@ -557,7 +565,7 @@ const AgregarMovimiento = () => {
   }
 
   // Función para grabar los movimientos de productos
-  const grabarMovimientosProductos = async (idOrdenProducto, productosLista) => {
+  const grabarMovimientosProductos = async (idOrdenProducto, productosLista, tipoMovimiento) => {
     try {
       const idOrden = parseInt(idOrdenProducto, 10)
       if (Number.isNaN(idOrden) || idOrden <= 0) {
@@ -568,7 +576,7 @@ const AgregarMovimiento = () => {
         const idUbic = producto.idUbicacion ? parseInt(producto.idUbicacion, 10) : 1
         return {
           idOrdenProducto: idOrden,
-          idProducto: parseInt(producto.idProducto, 10),
+          idProducto: { idProducto: parseInt(producto.idProducto, 10) },
           cantidad: parseInt(producto.cantidad, 10),
           precioCompra: parseFloat(producto.precio),
           idUbicacion: Number.isNaN(idUbic) ? 1 : idUbic,
@@ -579,7 +587,8 @@ const AgregarMovimiento = () => {
       // La API guarda un movimiento por request
       const resultados = []
       for (const movimiento of movimientos) {
-        const response = await fetch('/api/grabarMovimientosProductos', {
+        console.log('[grabarMovimientosProductos] Enviando:', JSON.stringify(movimiento, null, 2))
+        const response = await fetch(`/api/grabarMovimientosProductos?tipoDeMovimiento=${tipoMovimiento}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(movimiento)
