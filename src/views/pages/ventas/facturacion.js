@@ -61,6 +61,8 @@ const Layout = () => {
   const [ubicaciones, setUbicaciones] = useState([]);
   const [errorDteModal, setErrorDteModal] = useState({ visible: false, mensaje: '' });
   const [errorValidacionModal, setErrorValidacionModal] = useState({ visible: false, mensaje: '' });
+  const [alertaCantidadModal, setAlertaCantidadModal] = useState(false);
+  const [referenciaParaComprobante, setReferenciaParaComprobante] = useState('');
   const [clienteGuardadoModal, setClienteGuardadoModal] = useState(false);
 
   // Estados para totales de factura
@@ -287,8 +289,13 @@ const Layout = () => {
   };
 
   const actualizarCantidadDetalle = (index, cantidad) => {
+    const valor = Number(cantidad);
+    if (cantidad !== '' && (valor <= 0 || isNaN(valor))) {
+      setAlertaCantidadModal(true);
+      return;
+    }
     const nuevoDetalle = [...detalleFactura];
-    nuevoDetalle[index].cantidad = cantidad === '' ? '' : (Number(cantidad) || 0);
+    nuevoDetalle[index].cantidad = cantidad === '' ? '' : valor;
     const cant = Number(nuevoDetalle[index].cantidad) || 0;
     const desc = Number(nuevoDetalle[index].descuento) || 0;
     nuevoDetalle[index].precio = cant * nuevoDetalle[index].precioUnitario;
@@ -307,8 +314,13 @@ const Layout = () => {
   };
 
   const actualizarDescuentoDetalle = (index, descuento) => {
+    const valorDesc = Number(descuento);
+    if (descuento !== '' && (valorDesc < 0 || isNaN(valorDesc))) {
+      setAlertaCantidadModal(true);
+      return;
+    }
     const nuevoDetalle = [...detalleFactura];
-    nuevoDetalle[index].descuento = descuento === '' ? '' : (Number(descuento) || 0);
+    nuevoDetalle[index].descuento = descuento === '' ? '' : valorDesc;
     const cant = Number(nuevoDetalle[index].cantidad) || 0;
     const desc = Number(nuevoDetalle[index].descuento) || 0;
     nuevoDetalle[index].precio = cant * nuevoDetalle[index].precioUnitario;
@@ -575,7 +587,7 @@ const Layout = () => {
     return (resultado.trim() || 'CERO') + ' QUETZALES CON ' + String(centavos).padStart(2, '0') + '/100'
   }
 
-  const imprimirFactura = async ({ cliente, detalle, iva, total, totalDescuento, numeroAutorizacion, serieRes, referenciaRes, preimpresoRes }) => {
+  const imprimirFactura = async ({ cliente, detalle, iva, total, totalDescuento, numeroAutorizacion, serieRes, referenciaRes, preimpresoRes, error = false }) => {
     const moneda = cliente.moneda === '1' ? 'Q' : '$';
 
     // Convertir logo a base64 para que funcione en la ventana de impresión
@@ -814,7 +826,7 @@ const Layout = () => {
               <div class="telefonos">📞 7888-9138 / 5203-0726</div>
             </div>
             <div class="empresa-info">
-              <div style="font-size:13px;font-weight:bold;margin-bottom:3px;letter-spacing:0.5px;">DOCUMENTO TRIBUTARIO ELECTRÓNICO</div>
+              <div style="font-size:13px;font-weight:bold;margin-bottom:3px;letter-spacing:0.5px;">${error ? 'COMPROBANTE DE PAGO' : 'DOCUMENTO TRIBUTARIO ELECTRÓNICO'}</div>
               <div class="empresa-nombre">Blockera Agmner</div>
               <div class="empresa-linea">JUAN ALBERTO, ARREDONDO GARCIA</div>
               <div class="empresa-linea">CALLE PRINCIPAL SECTOR PALIN NUEVA SANTA ROSA</div>
@@ -822,6 +834,10 @@ const Layout = () => {
               <div class="empresa-linea">NIT: 16949447</div>
             </div>
             <div class="factura-id">
+              ${error ? `
+              <div class="factura-linea"><strong>Referencia:</strong> ${referenciaRes || '—'}</div>
+              <div class="factura-linea" style="margin-top:5px;"><strong>Fecha de Emisión:</strong> ${formatearFechaFactura(cliente.fecha)}</div>
+              ` : `
               <div class="factura-titulo">FACTURA</div>
               <div class="factura-linea"><strong>NÚMERO DE AUTORIZACIÓN</strong></div>
               <div class="factura-linea" style="font-size:10px;line-height:1.4;">${numeroAutorizacion ? numeroAutorizacion.slice(0, 26) : '—'}</div>
@@ -829,6 +845,7 @@ const Layout = () => {
               <div class="factura-linea"><strong>Serie:</strong> ${serieRes || '—'}</div>
               <div class="factura-linea"><strong>Número:</strong> ${preimpresoRes || '—'}</div>
               <div class="factura-linea" style="margin-top:5px;"><strong>Fecha de Emisión:</strong> ${formatearFechaFactura(cliente.fecha)}</div>
+              `}
             </div>
           </div>
 
@@ -880,6 +897,7 @@ const Layout = () => {
             </tfoot>
           </table>
 
+          ${!error ? `
            <div style="margin-top:10px;padding:6px 10px;border:1px solid #000;border-radius:4px;font-size:10px;text-align:center;">
             <div><strong>Sujeto a pagos trimestrales ISR</strong></div>
             <div><strong>Agente de Retención de IVA</strong></div>
@@ -892,6 +910,7 @@ const Layout = () => {
               <span><strong>Nombre, razón o denominación social:</strong> AINNOVA, SOCIEDAD ANÓNIMA</span>
             </div>
           </div>
+          ` : ''}
           <div class="footer">Gracias por su compra — Ferretería y Blockera Agmner</div>
         </div>
         <script>
@@ -1047,6 +1066,7 @@ const Layout = () => {
       const tipoDoc = String(formFactura.tipoDocumento)
       const prefijoRef = tipoDoc === '1' ? 'FACT' : tipoDoc === '2' ? 'NCRE' : tipoDoc === '3' ? 'NDEB' : ''
       const referenciaCalculada = prefijoRef ? `${prefijoRef}${idFacturaTrimmed}` : idFacturaTrimmed
+      setReferenciaParaComprobante(referenciaCalculada)
 
       let numeroAutorizacion = '';
       let serieRes = '';
@@ -1936,6 +1956,25 @@ const Layout = () => {
       </CModalFooter>
     </CModal>
 
+    {/* Modal alerta cantidad inválida */}
+    <CModal
+      visible={alertaCantidadModal}
+      onClose={() => setAlertaCantidadModal(false)}
+      alignment="center"
+    >
+      <CModalHeader className="bg-warning text-dark">
+        <CModalTitle>⚠️ Valor inválido</CModalTitle>
+      </CModalHeader>
+      <CModalBody>
+        <p className="mb-0">No se permiten valores negativos. La cantidad debe ser mayor a <strong>0</strong> y el descuento debe ser mayor o igual a <strong>0</strong>.</p>
+      </CModalBody>
+      <CModalFooter>
+        <CButton color="warning" className="text-dark" onClick={() => setAlertaCantidadModal(false)}>
+          Entendido
+        </CButton>
+      </CModalFooter>
+    </CModal>
+
     {/* Modal error validación */}
     <CModal
       visible={errorValidacionModal.visible}
@@ -1974,6 +2013,41 @@ const Layout = () => {
         <CButton color="secondary" onClick={() => setErrorDteModal({ visible: false, mensaje: '' })}>
           Cerrar
         </CButton>
+        {!errorDteModal.mensaje?.includes('NO EXISTE EL NIT') && (
+        <CButton color="success" className="text-white" onClick={async () => {
+          const r2 = (n) => parseFloat(n.toFixed(2))
+          const totales = detalleFactura.reduce((acc, item) => {
+            const cantItem     = Number(item.cantidad) || 0
+            const descItem     = r2(item.descuento || 0)
+            const precioItem   = r2(item.precioUnitario || 0)
+            const impBruto     = r2(cantItem * precioItem)
+            const totalConDesc = r2(impBruto - descItem)
+            const impNeto      = r2(totalConDesc / 1.12)
+            const impIva       = r2(totalConDesc - impNeto)
+            return { iva: r2(acc.iva + impIva), total: r2(acc.total + totalConDesc) }
+          }, { iva: 0, total: 0 })
+          setErrorDteModal({ visible: false, mensaje: '' })
+          await imprimirFactura({
+            cliente: { ...formFactura },
+            detalle: [...detalleFactura],
+            iva: totales.iva,
+            total: totales.total,
+            totalDescuento: calcularTotalDescuentoProductos(),
+            numeroAutorizacion: '',
+            serieRes: '',
+            referenciaRes: referenciaParaComprobante,
+            preimpresoRes: '',
+            error: true,
+          })
+          limpiarFormulario()
+          setDetalleFactura([])
+          setErrorFactura('')
+          setTodosProductosCache([])
+          cargarInventario()
+        }}>
+          Generar comprobante de pago
+        </CButton>
+        )}
       </CModalFooter>
     </CModal>
     </>
