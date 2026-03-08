@@ -206,7 +206,6 @@ const Layout = () => {
 
   // Carga todo el inventario una vez y lo guarda en caché
   const cargarInventario = async () => {
-    if (todosProductosCache.length > 0) return; // ya cargado
     try {
       setCargandoProductos(true);
       const res = await fetch('/api/inventario?page=0&size=10000');
@@ -1155,6 +1154,8 @@ const Layout = () => {
         limpiarFormulario();
         setDetalleFactura([]);
         setErrorFactura('');
+        setTodosProductosCache([]);
+        cargarInventario();
       }
     } catch (err) {
       console.error('Error al guardar factura:', err);
