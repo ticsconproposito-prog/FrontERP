@@ -29,7 +29,7 @@ const Dashboard = () => {
       icon: cilList,
       color: '#198754',
       bg: '#e6f4ec',
-      route: '/pages/ventas/facturacion',
+      route: '/pages/ventas/consultaFacturas',
     },
   ]
 
