@@ -36,7 +36,7 @@ const ReporteInventario = React.lazy(() => import('./views/pages/productos/repor
 const Proveedores = React.lazy(() => import('./views/pages/productos/proveedores'))
 const Facturacion = React.lazy(() => import('./views/pages/ventas/facturacion'))
 const Clientes = React.lazy(() => import('./views/pages/ventas/clientes'))
-const ConsultaFacturas = React.lazy(() => import('./views/pages/ventas/consultaFacturas'))
+const ReporteVentas = React.lazy(() => import('./views/pages/reportes/reporteVentas'))
 const Empleados = React.lazy(() => import('./views/pages/seguridad/empleados'))
 const Usuarios = React.lazy(() => import('./views/pages/seguridad/usuarios'))
 const Paginas = React.lazy(() => import('./views/pages/seguridad/paginas'))
@@ -105,7 +105,7 @@ const routes = [
   { path: '/pages/productos/proveedores', name: 'Proveedores', element: Proveedores },
   { path: '/pages/ventas/facturacion', name: 'Facturacion', element: Facturacion },
   { path: '/pages/ventas/clientes', name: 'Clientes', element: Clientes },
-  { path: '/pages/ventas/consultaFacturas', name: 'Consulta Facturas', element: ConsultaFacturas },
+  { path: '/pages/reportes/reporteVentas', name: 'Reporte de Ventas', element: ReporteVentas },
   { path: '/pages/seguridad/empleados', name: 'Empleados', element: Empleados },
   { path: '/pages/seguridad/usuarios', name: 'Usuarios', element: Usuarios },
   { path: '/pages/seguridad/paginas', name: 'Paginas', element: Paginas },

@@ -247,18 +247,7 @@ const AgregarMovimiento = () => {
 
     // Buscar producto cuando se escribe (mínimo 2 caracteres) en código, código proveedor o descripción
     if ((name === 'codigoProducto' || name === 'codigoProductoProveedor' || name === 'descripcion') && valorLimpio.length >= 2) {
-      const valorLower = valorLimpio.toLowerCase()
-
-      // Buscar en los tres campos: cualquier coincidencia muestra el producto
-      const productosEncontrados = productosDisponibles.filter((producto) => {
-        const codigo = (producto.codigoProducto || '').toString().toLowerCase()
-        const codigoProv = (producto.codigoProductoProveedor || '').toString().toLowerCase()
-        const desc = (producto.descripcionProducto || '').toString().toLowerCase()
-        return codigo.includes(valorLower) || codigoProv.includes(valorLower) || desc.includes(valorLower)
-      })
-
-      setSugerenciasProductos(productosEncontrados.slice(0, 15))
-      setMostrarSugerencias(productosEncontrados.length > 0)
+      buscarProductos(valorLimpio)
     } else {
       setSugerenciasProductos([])
       setMostrarSugerencias(false)
@@ -628,9 +617,9 @@ const AgregarMovimiento = () => {
   // Función para cargar los diccionarios
   const cargarDiccionario = async () => {
     try {
-      const responseTipoMovimiento = await fetch('/api/diccionarios?diccionario=TIPODEMOVIMIENTO')
-      const responseTipoOrden = await fetch('/api/diccionarios?diccionario=TIPODEORDEN')
-      const responseEstadoFactura = await fetch('/api/diccionarios?diccionario=ESTADOFATURAORDEN')
+      const responseTipoMovimiento = await fetch('/api/diccionarios?diccionario=TIPODEMOVIMIENTO&estado=1')
+      const responseTipoOrden = await fetch('/api/diccionarios?diccionario=TIPODEORDEN&estado=1')
+      const responseEstadoFactura = await fetch('/api/diccionarios?diccionario=ESTADOFATURAORDEN&estado=1')
       if (!responseTipoMovimiento.ok || !responseTipoOrden.ok || !responseEstadoFactura.ok) {
         throw new Error('Error al cargar diccionarios')
       }
@@ -714,37 +703,60 @@ const AgregarMovimiento = () => {
     }
   }
 
-  // Función para cargar productos disponibles (todos para búsqueda local)
-  const cargarProductosDisponibles = async () => {
+  // Búsqueda server-side paralela por campo (igual que gestionProductos.js)
+  const buscarProductos = async (termino) => {
+    const t = (termino || '').trim()
+    if (t.length < 2) {
+      setSugerenciasProductos([])
+      setMostrarSugerencias(false)
+      return
+    }
     try {
-      const response = await fetch('/api/productos?size=1000')
+      const SIZE_BUSQUEDA = 500
+      const palabras = t.split(/\s+/).filter(Boolean)
 
-      if (!response.ok) {
-        throw new Error('Error al cargar productos')
+      const fetchDesc = (palabra) =>
+        fetch(`/api/productos?descripcionProducto=${encodeURIComponent(palabra)}&page=0&size=${SIZE_BUSQUEDA}`)
+          .then(r => r.json()).then(d => d.content || [])
+
+      const [rCodigo, rProveedor, ...rDescPalabras] = await Promise.all([
+        fetch(`/api/productos?codigoProducto=${encodeURIComponent(t)}&page=0&size=${SIZE_BUSQUEDA}`).then(r => r.json()),
+        fetch(`/api/productos?codigoProductoProveedor=${encodeURIComponent(t)}&page=0&size=${SIZE_BUSQUEDA}`).then(r => r.json()),
+        ...palabras.map(fetchDesc),
+      ])
+
+      // Intersección por descripción (el producto debe aparecer en TODAS las palabras)
+      let porDescripcion = rDescPalabras[0] || []
+      for (let i = 1; i < rDescPalabras.length; i++) {
+        const ids = new Set(rDescPalabras[i].map(p => p.idProducto))
+        porDescripcion = porDescripcion.filter(p => ids.has(p.idProducto))
       }
 
-      const data = await response.json()
+      const combinados = [
+        ...(rCodigo.content || []),
+        ...(rProveedor.content || []),
+        ...porDescripcion,
+      ]
+      const unicos = combinados.filter((p, idx, arr) =>
+        arr.findIndex(x => x.idProducto === p.idProducto) === idx
+      )
 
-      // Extraer array de productos (puede venir como array directo o en content)
-      const productosArray = Array.isArray(data)
-        ? data
-        : Array.isArray(data?.content)
-          ? data.content
-          : []
-
-      setProductosDisponibles(productosArray)
+      // Actualizar caché local para el filtro por ubicación
+      setProductosDisponibles(unicos)
+      setSugerenciasProductos(unicos.slice(0, 15))
+      setMostrarSugerencias(unicos.length > 0)
     } catch (error) {
-      console.error('Error al cargar productos:', error)
-      setProductosDisponibles([])
+      console.error('Error al buscar productos:', error)
+      setSugerenciasProductos([])
+      setMostrarSugerencias(false)
     }
   }
 
-  // Cargar diccionarios, proveedores, ubicaciones y productos al montar el componente
+  // Cargar diccionarios, proveedores y ubicaciones al montar el componente
   useEffect(() => {
     cargarDiccionario()
     cargarProveedores()
     cargarUbicaciones()
-    cargarProductosDisponibles()
   }, [])
 
   return (

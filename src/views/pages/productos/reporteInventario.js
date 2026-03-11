@@ -23,7 +23,7 @@ import {
 import * as XLSX from 'xlsx'
 
 const PAGE_SIZE  = 20
-const SIZE_TODOS = 10000  // tamaño para cargar todos los datos al buscar
+const SIZE_TODOS = 10000
 
 const ReporteInventario = () => {
   const navigate = useNavigate()
@@ -100,33 +100,8 @@ const ReporteInventario = () => {
       cantidadDanados:         item.cantidadDanados                     || 0,
     }))
 
-  // Aplica filtro client-side sobre un array de items del Reporte General
-  const filtrarAgrupado = (items, t) => {
-    if (!t.trim()) return items
-    const tl = t.trim().toLowerCase()
-    return items.filter((item) => {
-      const cod  = (item.producto?.codigoProducto          || '').toLowerCase()
-      const prov = (item.producto?.codigoProductoProveedor || '').toLowerCase()
-      const desc = (item.producto?.descripcionProducto     || '').toLowerCase()
-      return cod.includes(tl) || prov.includes(tl) || desc.includes(tl)
-    })
-  }
-
-  // Aplica filtro client-side sobre un array de items del Reporte por Ubicación
-  const filtrarInventario = (items, t) => {
-    if (!t.trim()) return items
-    const tl = t.trim().toLowerCase()
-    return items.filter((item) => {
-      const cod  = (item.codigoProducto          || '').toLowerCase()
-      const prov = (item.codigoProductoProveedor  || '').toLowerCase()
-      const desc = (item.descripcionProducto      || '').toLowerCase()
-      return cod.includes(tl) || prov.includes(tl) || desc.includes(tl)
-    })
-  }
-
   // ── Reporte General ──
-  // Carga la página de API cuando no hay búsqueda.
-  // Cuando hay búsqueda: carga TODOS los datos y filtra client-side.
+  // Con búsqueda: llamadas paralelas por campo server-side (descripcion, codigoProducto, codigoProductoProveedor)
   const cargarInventarioAgrupado = async (pagina = 0, termino = busqueda) => {
     try {
       setLoadingAgrupado(true)
@@ -134,7 +109,6 @@ const ReporteInventario = () => {
       const t = (termino || '').trim()
 
       if (!t) {
-        // Sin búsqueda → paginación de API
         const params = new URLSearchParams({ page: pagina, size: PAGE_SIZE })
         const res = await fetch(`/api/inventarioAgrupado?${params}`)
         if (!res.ok) throw new Error(`Error ${res.status}`)
@@ -145,18 +119,40 @@ const ReporteInventario = () => {
         setTotalPagesAgrupado(data.totalPages ?? 0)
         setTotalElemsAgrupado(data.totalElements ?? 0)
       } else {
-        // Con búsqueda → cargar TODO y filtrar client-side
-        const res = await fetch(`/api/inventarioAgrupado?page=0&size=${SIZE_TODOS}`)
-        if (!res.ok) throw new Error(`Error ${res.status}`)
-        const data = await res.json()
-        const todos = Array.isArray(data) ? data : data.content || []
-        const filtrados = filtrarAgrupado(todos, t)
+        const SIZE_BUSQUEDA = 500
+        const palabras = t.split(/\s+/).filter(Boolean)
+
+        const fetchDescripcion = (palabra) =>
+          fetch(`/api/inventarioAgrupado?descripcion=${encodeURIComponent(palabra)}&page=0&size=${SIZE_BUSQUEDA}`)
+            .then(r => r.json()).then(d => (Array.isArray(d) ? d : d.content || []))
+
+        const [rCodigo, rProveedor, ...rDescPalabras] = await Promise.all([
+          fetch(`/api/inventarioAgrupado?codigoProducto=${encodeURIComponent(t)}&page=0&size=${SIZE_BUSQUEDA}`).then(r => r.json()),
+          fetch(`/api/inventarioAgrupado?codigoProductoProveedor=${encodeURIComponent(t)}&page=0&size=${SIZE_BUSQUEDA}`).then(r => r.json()),
+          ...palabras.map(fetchDescripcion),
+        ])
+
+        // Intersección por descripción (el producto debe aparecer en TODAS las palabras)
+        let porDescripcion = rDescPalabras[0] || []
+        for (let i = 1; i < rDescPalabras.length; i++) {
+          const ids = new Set(rDescPalabras[i].map(p => p.producto?.idProducto))
+          porDescripcion = porDescripcion.filter(p => ids.has(p.producto?.idProducto))
+        }
+
+        const combinados = [
+          ...(Array.isArray(rCodigo) ? rCodigo : rCodigo.content || []),
+          ...(Array.isArray(rProveedor) ? rProveedor : rProveedor.content || []),
+          ...porDescripcion,
+        ]
+        const unicos = combinados.filter((p, idx, arr) =>
+          arr.findIndex(x => x.producto?.idProducto === p.producto?.idProducto) === idx
+        )
         const inicio = pagina * PAGE_SIZE
-        setTodosAgrupado(filtrados)
-        setInventarioAgrupado(filtrados.slice(inicio, inicio + PAGE_SIZE))
+        setTodosAgrupado(unicos)
+        setInventarioAgrupado(unicos.slice(inicio, inicio + PAGE_SIZE))
         setPageAgrupado(pagina)
-        setTotalPagesAgrupado(Math.ceil(filtrados.length / PAGE_SIZE))
-        setTotalElemsAgrupado(filtrados.length)
+        setTotalPagesAgrupado(Math.ceil(unicos.length / PAGE_SIZE))
+        setTotalElemsAgrupado(unicos.length)
       }
     } catch (err) {
       setErrorAgrupado(err.message)
@@ -167,6 +163,7 @@ const ReporteInventario = () => {
   }
 
   // ── Reporte por Ubicación ──
+  // Con búsqueda: llamadas paralelas por campo server-side (descripcion, codigoProducto, codigoProductoProveedor)
   const cargarInventario = async (pagina = 0, termino = busqueda) => {
     try {
       setLoading(true)
@@ -174,7 +171,6 @@ const ReporteInventario = () => {
       const t = (termino || '').trim()
 
       if (!t) {
-        // Sin búsqueda → paginación de API
         const params = new URLSearchParams({ page: pagina, size: PAGE_SIZE })
         const res = await fetch(`/api/inventario?${params}`)
         if (!res.ok) throw new Error(`Error ${res.status}`)
@@ -186,19 +182,41 @@ const ReporteInventario = () => {
         setTotalPagesInv(data.totalPages ?? 0)
         setTotalElemsInv(data.totalElements ?? 0)
       } else {
-        // Con búsqueda → cargar TODO y filtrar client-side
-        const res = await fetch(`/api/inventario?page=0&size=${SIZE_TODOS}`)
-        if (!res.ok) throw new Error(`Error ${res.status}`)
-        const data = await res.json()
-        const arr = Array.isArray(data) ? data : data.content || []
-        const todos = formatearInventario(arr)
-        const filtrados = filtrarInventario(todos, t)
+        const SIZE_BUSQUEDA = 500
+        const palabras = t.split(/\s+/).filter(Boolean)
+
+        const fetchDescripcion = (palabra) =>
+          fetch(`/api/inventario?descripcion=${encodeURIComponent(palabra)}&page=0&size=${SIZE_BUSQUEDA}`)
+            .then(r => r.json()).then(d => (Array.isArray(d) ? d : d.content || []))
+
+        const [rCodigo, rProveedor, ...rDescPalabras] = await Promise.all([
+          fetch(`/api/inventario?codigoProducto=${encodeURIComponent(t)}&page=0&size=${SIZE_BUSQUEDA}`).then(r => r.json()),
+          fetch(`/api/inventario?codigoProductoProveedor=${encodeURIComponent(t)}&page=0&size=${SIZE_BUSQUEDA}`).then(r => r.json()),
+          ...palabras.map(fetchDescripcion),
+        ])
+
+        // Intersección por descripción (el producto debe aparecer en TODAS las palabras)
+        let porDescripcion = rDescPalabras[0] || []
+        for (let i = 1; i < rDescPalabras.length; i++) {
+          const ids = new Set(rDescPalabras[i].map(p => p.idInventario))
+          porDescripcion = porDescripcion.filter(p => ids.has(p.idInventario))
+        }
+
+        const combinados = [
+          ...(Array.isArray(rCodigo) ? rCodigo : rCodigo.content || []),
+          ...(Array.isArray(rProveedor) ? rProveedor : rProveedor.content || []),
+          ...porDescripcion,
+        ]
+        const unicos = combinados.filter((p, idx, arr) =>
+          arr.findIndex(x => x.idInventario === p.idInventario) === idx
+        )
+        const formateados = formatearInventario(unicos)
         const inicio = pagina * PAGE_SIZE
-        setTodosInventario(filtrados)
-        setInventario(filtrados.slice(inicio, inicio + PAGE_SIZE))
+        setTodosInventario(formateados)
+        setInventario(formateados.slice(inicio, inicio + PAGE_SIZE))
         setPageInv(pagina)
-        setTotalPagesInv(Math.ceil(filtrados.length / PAGE_SIZE))
-        setTotalElemsInv(filtrados.length)
+        setTotalPagesInv(Math.ceil(formateados.length / PAGE_SIZE))
+        setTotalElemsInv(formateados.length)
       }
     } catch (err) {
       setError(err.message)
@@ -241,19 +259,41 @@ const ReporteInventario = () => {
     const t = busqueda.trim()
 
     if (tipoReporte === '1') {
-      // Obtener todos los datos filtrados
       let todos = []
       if (t && todosAgrupado.length > 0) {
-        // Ya están en caché desde la búsqueda activa
         todos = todosAgrupado
+      } else if (t) {
+        try {
+          const SIZE_BUSQUEDA = 500
+          const palabras = t.split(/\s+/).filter(Boolean)
+          const fetchDescripcion = (palabra) =>
+            fetch(`/api/inventarioAgrupado?descripcion=${encodeURIComponent(palabra)}&page=0&size=${SIZE_BUSQUEDA}`)
+              .then(r => r.json()).then(d => (Array.isArray(d) ? d : d.content || []))
+          const [rCodigo, rProveedor, ...rDescPalabras] = await Promise.all([
+            fetch(`/api/inventarioAgrupado?codigoProducto=${encodeURIComponent(t)}&page=0&size=${SIZE_BUSQUEDA}`).then(r => r.json()),
+            fetch(`/api/inventarioAgrupado?codigoProductoProveedor=${encodeURIComponent(t)}&page=0&size=${SIZE_BUSQUEDA}`).then(r => r.json()),
+            ...palabras.map(fetchDescripcion),
+          ])
+          let porDescripcion = rDescPalabras[0] || []
+          for (let i = 1; i < rDescPalabras.length; i++) {
+            const ids = new Set(rDescPalabras[i].map(p => p.producto?.idProducto))
+            porDescripcion = porDescripcion.filter(p => ids.has(p.producto?.idProducto))
+          }
+          const combinados = [
+            ...(Array.isArray(rCodigo) ? rCodigo : rCodigo.content || []),
+            ...(Array.isArray(rProveedor) ? rProveedor : rProveedor.content || []),
+            ...porDescripcion,
+          ]
+          todos = combinados.filter((p, idx, arr) =>
+            arr.findIndex(x => x.producto?.idProducto === p.producto?.idProducto) === idx
+          )
+        } catch { return }
       } else {
-        // Sin búsqueda o caché vacía: fetch completo y filtrar
         try {
           const res = await fetch(`/api/inventarioAgrupado?page=0&size=${SIZE_TODOS}`)
           if (!res.ok) throw new Error(`Error ${res.status}`)
           const data = await res.json()
-          const arr = Array.isArray(data) ? data : data.content || []
-          todos = t ? filtrarAgrupado(arr, t) : arr
+          todos = Array.isArray(data) ? data : data.content || []
         } catch { return }
       }
 
@@ -275,18 +315,43 @@ const ReporteInventario = () => {
       XLSX.writeFile(wb, `ReporteGeneral_${new Date().toISOString().slice(0,10)}.xlsx`)
 
     } else {
-      // Reporte por Ubicación
       let todos = []
       if (t && todosInventario.length > 0) {
         todos = todosInventario
+      } else if (t) {
+        try {
+          const SIZE_BUSQUEDA = 500
+          const palabras = t.split(/\s+/).filter(Boolean)
+          const fetchDescripcion = (palabra) =>
+            fetch(`/api/inventario?descripcion=${encodeURIComponent(palabra)}&page=0&size=${SIZE_BUSQUEDA}`)
+              .then(r => r.json()).then(d => (Array.isArray(d) ? d : d.content || []))
+          const [rCodigo, rProveedor, ...rDescPalabras] = await Promise.all([
+            fetch(`/api/inventario?codigoProducto=${encodeURIComponent(t)}&page=0&size=${SIZE_BUSQUEDA}`).then(r => r.json()),
+            fetch(`/api/inventario?codigoProductoProveedor=${encodeURIComponent(t)}&page=0&size=${SIZE_BUSQUEDA}`).then(r => r.json()),
+            ...palabras.map(fetchDescripcion),
+          ])
+          let porDescripcion = rDescPalabras[0] || []
+          for (let i = 1; i < rDescPalabras.length; i++) {
+            const ids = new Set(rDescPalabras[i].map(p => p.idInventario))
+            porDescripcion = porDescripcion.filter(p => ids.has(p.idInventario))
+          }
+          const combinados = [
+            ...(Array.isArray(rCodigo) ? rCodigo : rCodigo.content || []),
+            ...(Array.isArray(rProveedor) ? rProveedor : rProveedor.content || []),
+            ...porDescripcion,
+          ]
+          const unicos = combinados.filter((p, idx, arr) =>
+            arr.findIndex(x => x.idInventario === p.idInventario) === idx
+          )
+          todos = formatearInventario(unicos)
+        } catch { return }
       } else {
         try {
           const res = await fetch(`/api/inventario?page=0&size=${SIZE_TODOS}`)
           if (!res.ok) throw new Error(`Error ${res.status}`)
           const data = await res.json()
           const arr = Array.isArray(data) ? data : data.content || []
-          const formateados = formatearInventario(arr)
-          todos = t ? filtrarInventario(formateados, t) : formateados
+          todos = formatearInventario(arr)
         } catch { return }
       }
 

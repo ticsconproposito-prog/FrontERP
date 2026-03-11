@@ -163,20 +163,7 @@ const EditarMovimiento = () => {
   const handleBusquedaProducto = (e) => {
     const value = e.target.value
     setBusquedaProducto(value)
-    const v = value.trim().toLowerCase()
-    if (v.length >= 2) {
-      const filtrados = productosDisponibles.filter(p => {
-        const cod = (p.codigoProducto || '').toString().toLowerCase()
-        const prov = (p.codigoProductoProveedor || '').toString().toLowerCase()
-        const desc = (p.descripcionProducto || '').toString().toLowerCase()
-        return cod.includes(v) || prov.includes(v) || desc.includes(v)
-      })
-      setSugerenciasProductos(filtrados.slice(0, 15))
-      setMostrarSugerencias(filtrados.length > 0)
-    } else {
-      setSugerenciasProductos([])
-      setMostrarSugerencias(false)
-    }
+    buscarProductos(value)
   }
 
   const seleccionarProductoAgregar = (producto) => {
@@ -399,9 +386,9 @@ const EditarMovimiento = () => {
   const cargarDiccionario = async () => {
     try {
       const [r1, r2, r3] = await Promise.all([
-        fetch('/api/diccionarios?diccionario=TIPODEMOVIMIENTO'),
-        fetch('/api/diccionarios?diccionario=TIPODEORDEN'),
-        fetch('/api/diccionarios?diccionario=ESTADOFATURAORDEN')
+        fetch('/api/diccionarios?diccionario=TIPODEMOVIMIENTO&estado=1'),
+        fetch('/api/diccionarios?diccionario=TIPODEORDEN&estado=1'),
+        fetch('/api/diccionarios?diccionario=ESTADOFATURAORDEN&estado=1')
       ])
       const data1 = await r1.json()
       const data2 = await r2.json()
@@ -425,19 +412,51 @@ const EditarMovimiento = () => {
     }
   }
 
-  const cargarProductosDisponibles = async () => {
+  // Búsqueda server-side paralela por campo en /api/productos (igual que agregarMovimiento.js)
+  const buscarProductos = async (termino) => {
+    const t = (termino || '').trim()
+    if (t.length < 2) {
+      setSugerenciasProductos([])
+      setMostrarSugerencias(false)
+      return
+    }
     try {
-      const r = await fetch('/api/inventario?page=0&size=10000')
-      const data = await r.json()
-      const items = Array.isArray(data) ? data : (data?.content || [])
-      setProductosDisponibles(items.map(item => ({
-        idProducto: item.idProducto?.idProducto ?? item.idProducto,
-        codigoProducto: item.idProducto?.codigoProducto ?? item.codigoProducto ?? '',
-        codigoProductoProveedor: item.idProducto?.codigoProductoProveedor ?? item.codigoProductoProveedor ?? '',
-        descripcionProducto: item.idProducto?.descripcionProducto ?? item.descripcionProducto ?? '',
-      })))
+      const SIZE_BUSQUEDA = 500
+      const palabras = t.split(/\s+/).filter(Boolean)
+
+      const fetchDesc = (palabra) =>
+        fetch(`/api/productos?descripcionProducto=${encodeURIComponent(palabra)}&page=0&size=${SIZE_BUSQUEDA}`)
+          .then(r => r.json()).then(d => d.content || [])
+
+      const [rCodigo, rProveedor, ...rDescPalabras] = await Promise.all([
+        fetch(`/api/productos?codigoProducto=${encodeURIComponent(t)}&page=0&size=${SIZE_BUSQUEDA}`).then(r => r.json()),
+        fetch(`/api/productos?codigoProductoProveedor=${encodeURIComponent(t)}&page=0&size=${SIZE_BUSQUEDA}`).then(r => r.json()),
+        ...palabras.map(fetchDesc),
+      ])
+
+      // Intersección por descripción (el producto debe aparecer en TODAS las palabras)
+      let porDescripcion = rDescPalabras[0] || []
+      for (let i = 1; i < rDescPalabras.length; i++) {
+        const ids = new Set(rDescPalabras[i].map(p => p.idProducto))
+        porDescripcion = porDescripcion.filter(p => ids.has(p.idProducto))
+      }
+
+      const combinados = [
+        ...(rCodigo.content || []),
+        ...(rProveedor.content || []),
+        ...porDescripcion,
+      ]
+      const unicos = combinados.filter((p, idx, arr) =>
+        arr.findIndex(x => x.idProducto === p.idProducto) === idx
+      )
+
+      setProductosDisponibles(unicos)
+      setSugerenciasProductos(unicos.slice(0, 15))
+      setMostrarSugerencias(unicos.length > 0)
     } catch (e) {
-      console.error('Error al cargar productos para búsqueda:', e)
+      console.error('Error al buscar productos:', e)
+      setSugerenciasProductos([])
+      setMostrarSugerencias(false)
     }
   }
 
@@ -500,7 +519,6 @@ const EditarMovimiento = () => {
   useEffect(() => {
     cargarDiccionario()
     cargarProveedores()
-    cargarProductosDisponibles()
     cargarUbicaciones()
   }, [])
 

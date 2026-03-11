@@ -32,11 +32,6 @@ const _nav = [
       },
       {
         component: CNavItem,
-        name: 'Consulta Facturas',
-        to: '/pages/ventas/consultaFacturas',
-      },
-      {
-        component: CNavItem,
         name: 'Clientes',
         to: '/pages/ventas/clientes',
       }
@@ -77,8 +72,8 @@ const _nav = [
     items: [
       {
         component: CNavItem,
-        name: 'Resumen de Ventas',
-        to: '/forms/checks-radios',
+        name: 'Reporte de Ventas',
+        to: '/pages/reportes/reporteVentas',
       },
       {
         component: CNavItem,

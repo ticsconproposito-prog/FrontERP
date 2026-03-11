@@ -57,6 +57,7 @@ const Layout = () => {
   const [enviarCorreo, setEnviarCorreo] = useState(false);
   const [alertaSinCorreo, setAlertaSinCorreo] = useState(false);
   const [documentoOpts, setDocumentoOpts] = useState([]);
+  const [tiposReceptor, setTiposReceptor] = useState({});
   const [documento, setDocumento] = useState('');
   const [ubicaciones, setUbicaciones] = useState([]);
   const [errorDteModal, setErrorDteModal] = useState({ visible: false, mensaje: '' });
@@ -160,8 +161,8 @@ const Layout = () => {
     setClienteSeleccionado(false);
     setEnviarCorreo(false);
     setAlertaSinCorreo(false);
-    const nit = documentoOpts.find((d) => (d.valor || '').toUpperCase().includes('NIT'));
-    setDocumento(nit ? String(nit.indice) : '');
+    const nitEntry = Object.entries(tiposReceptor).find(([, v]) => v.toUpperCase().includes('NIT'));
+    setDocumento(nitEntry ? nitEntry[0] : '');
     setSugerenciasClientes([]);
     setMostrarSugerenciasClientes(false);
     setImpuestoIVA(12);
@@ -174,11 +175,27 @@ const Layout = () => {
       const data = await response.json();
       const lista = Array.isArray(data) ? data : (data?.content || []);
       setDocumentoOpts(lista);
-      const nit = lista.find((d) => (d.valor || '').toUpperCase().includes('NIT'));
-      if (nit) setDocumento(String(nit.indice));
+      if (lista.length > 0) {
+        setFormFactura((prev) => ({ ...prev, tipoDocumento: String(lista[0].indice) }));
+      }
     } catch (e) {
       console.error('Error al cargar tipos de documento:', e);
       setDocumentoOpts([]);
+    }
+  };
+
+  const cargarTiposReceptor = async () => {
+    try {
+      const response = await fetch('/api/diccionarios?diccionario=TIPORECEPTOR&estado=1');
+      const data = await response.json();
+      const lista = Array.isArray(data) ? data : (data?.content || []);
+      const mapa = {};
+      lista.forEach((item) => { mapa[String(item.indice)] = item.valor; });
+      setTiposReceptor(mapa);
+      const nitEntry = lista.find((item) => (item.valor || '').toUpperCase().includes('NIT'));
+      if (nitEntry) setDocumento(String(nitEntry.indice));
+    } catch (e) {
+      console.error('Error al cargar tipos de receptor:', e);
     }
   };
 
@@ -207,37 +224,57 @@ const Layout = () => {
     return u ? (u.nombreUbicacion || `Ubic. ${id}`) : (id ? `Ubic. ${id}` : '—')
   }
 
-  // Carga todo el inventario una vez y lo guarda en caché
+  // Búsqueda server-side paralela por campo (igual que reporteInventario.js)
   const cargarInventario = async () => {
-    try {
-      setCargandoProductos(true);
-      const res = await fetch('/api/inventario?page=0&size=10000');
-      const data = await res.json();
-      const items = Array.isArray(data) ? data : data.content || [];
-      setTodosProductosCache(items);
-    } catch (e) {
-      console.error('Error al cargar inventario:', e);
-    } finally {
-      setCargandoProductos(false);
-    }
+    // ya no pre-carga masiva; la búsqueda se hace en buscarEnInventario
   };
 
-  // Filtra desde la caché client-side (igual que reporteInventario.js)
-  const buscarEnInventario = (termino) => {
-    if (!termino || termino.trim().length < 2) {
+  const buscarEnInventario = async (termino) => {
+    const t = (termino || '').trim();
+    if (t.length < 2) {
       setSugerenciasProductos([]);
       setMostrarSugerenciasProductos(false);
       return;
     }
-    const tl = termino.trim().toLowerCase();
-    const filtrados = todosProductosCache.filter((prod) => {
-      const cod  = (prod.idProducto?.codigoProducto          || '').toLowerCase();
-      const prov = (prod.idProducto?.codigoProductoProveedor || '').toLowerCase();
-      const desc = (prod.idProducto?.descripcionProducto     || '').toLowerCase();
-      return cod.includes(tl) || prov.includes(tl) || desc.includes(tl);
-    });
-    setSugerenciasProductos(filtrados.slice(0, 15));
-    setMostrarSugerenciasProductos(filtrados.length > 0);
+    try {
+      setCargandoProductos(true);
+      const SIZE_BUSQUEDA = 100;
+      const palabras = t.split(/\s+/).filter(Boolean);
+
+      const fetchDescripcion = (palabra) =>
+        fetch(`/api/inventario?descripcion=${encodeURIComponent(palabra)}&page=0&size=${SIZE_BUSQUEDA}`)
+          .then(r => r.json()).then(d => (Array.isArray(d) ? d : d.content || []));
+
+      const [rCodigo, rProveedor, ...rDescPalabras] = await Promise.all([
+        fetch(`/api/inventario?codigoProducto=${encodeURIComponent(t)}&page=0&size=${SIZE_BUSQUEDA}`).then(r => r.json()),
+        fetch(`/api/inventario?codigoProductoProveedor=${encodeURIComponent(t)}&page=0&size=${SIZE_BUSQUEDA}`).then(r => r.json()),
+        ...palabras.map(fetchDescripcion),
+      ]);
+
+      // Intersección por descripción (el producto debe aparecer en TODAS las palabras)
+      let porDescripcion = rDescPalabras[0] || [];
+      for (let i = 1; i < rDescPalabras.length; i++) {
+        const ids = new Set(rDescPalabras[i].map(p => p.idInventario));
+        porDescripcion = porDescripcion.filter(p => ids.has(p.idInventario));
+      }
+
+      const combinados = [
+        ...(Array.isArray(rCodigo) ? rCodigo : rCodigo.content || []),
+        ...(Array.isArray(rProveedor) ? rProveedor : rProveedor.content || []),
+        ...porDescripcion,
+      ];
+      const unicos = combinados.filter((p, idx, arr) =>
+        arr.findIndex(x => x.idInventario === p.idInventario) === idx
+      );
+      setSugerenciasProductos(unicos.slice(0, 15));
+      setMostrarSugerenciasProductos(unicos.length > 0);
+    } catch (e) {
+      console.error('Error al buscar inventario:', e);
+      setSugerenciasProductos([]);
+      setMostrarSugerenciasProductos(false);
+    } finally {
+      setCargandoProductos(false);
+    }
   };
 
   const handleBusquedaProducto = (e) => {
@@ -351,9 +388,7 @@ const Layout = () => {
   };
 
   const tipoBusqueda = () => {
-    const seleccionado = documentoOpts.find((d) => String(d.indice) === String(documento));
-    if (!seleccionado) return 'nit';
-    const valor = (seleccionado.valor || '').toLowerCase();
+    const valor = (tiposReceptor[String(documento)] || '').toLowerCase();
     if (valor.includes('pasaporte')) return 'pasaporte';
     if (valor.includes('dpi')) return 'dpi';
     return 'nit';
@@ -431,6 +466,7 @@ const Layout = () => {
   useEffect(() => {
     cargarClientes();
     cargarDocumentos();
+    cargarTiposReceptor();
     cargarUbicaciones();
     cargarInventario();
   }, []);
@@ -507,11 +543,11 @@ const Layout = () => {
       const tieneDpi = !!formCliente.dpiPasaporte?.trim();
 
       if (tieneNit) {
-        const opcionNit = documentoOpts.find((d) => (d.valor || '').toLowerCase().includes('nit'));
-        if (opcionNit) de(String(opcionNit.indice));
+        const nitEntry = Object.entries(tiposReceptor).find(([, v]) => v.toLowerCase().includes('nit'));
+        if (nitEntry) setDocumento(nitEntry[0]);
       } else if (tieneDpi) {
-        const opcionDpi = documentoOpts.find((d) => (d.valor || '').toLowerCase().includes('dpi'));
-        if (opcionDpi) setDocumento(String(opcionDpi.indice));
+        const dpiEntry = Object.entries(tiposReceptor).find(([, v]) => v.toLowerCase().includes('dpi'));
+        if (dpiEntry) setDocumento(dpiEntry[0]);
       }
 
       const docValue = tieneNit
@@ -852,7 +888,7 @@ const Layout = () => {
           <!-- Datos del cliente -->
           <div class="cliente-box">
             <div class="field"><label>Nombre: </label>${cliente.nombre || 'Consumidor Final'}</div>
-            <div class="field"><label>${(documentoOpts.find((d) => String(d.indice) === String(documento))?.valor || 'NIT').toUpperCase()}: </label>${cliente.nit || 'CF'}</div>
+            <div class="field"><label>${(tiposReceptor[String(documento)] || 'NIT').toUpperCase()}: </label>${cliente.nit || 'CF'}</div>
             <div class="field"><label>Dirección: </label>${cliente.direccion || '—'}</div>
             <div class="field"><label>Dirección de entrega: </label>${cliente.direccionEntrega || '—'}</div>
           </div>
@@ -941,8 +977,13 @@ const Layout = () => {
       setErrorValidacionModal({ visible: true, mensaje });
     };
 
+    if (!formFactura.tipoDocumento) {
+      mostrarErrorValidacion('Debe seleccionar un Tipo de Documento (Factura, Nota de Crédito, etc.) antes de generar la factura.');
+      return;
+    }
+
     if (!esConsumidorFinal && !documento) {
-      mostrarErrorValidacion('Debe seleccionar un tipo de documento (Consumidor Final, NIT, DPI o Pasaporte) antes de generar la factura.');
+      mostrarErrorValidacion('Debe seleccionar un tipo de receptor (NIT, DPI o Pasaporte) antes de generar la factura.');
       return;
     }
 
@@ -1278,9 +1319,9 @@ const Layout = () => {
       }}
     >
       <option value="">Seleccione documento</option>
-      {documentoOpts.map((d) => (
-        <option key={d.indice} value={d.indice}>
-          {d.valor}
+      {Object.entries(tiposReceptor).map(([indice, valor]) => (
+        <option key={indice} value={indice}>
+          {valor}
         </option>
       ))}
     </CFormSelect>
@@ -1350,7 +1391,11 @@ const Layout = () => {
                             style={{ cursor: 'pointer' }}
                           >
                             <div>
-                              <strong>{cli.nombreCliente || cli.nombreFacturacion}</strong> - {cli.nit}
+                              <strong>{cli.nombreCliente || cli.nombreFacturacion}</strong>
+                              {' - '}
+                              {(tipoBusqueda() === 'dpi' || tipoBusqueda() === 'pasaporte')
+                                ? (cli.documentoIdentificacion || '—')
+                                : (cli.nit || '—')}
                             </div>
                             <small className="text-muted">{cli.telefono1}</small>
                           </button>
@@ -1411,10 +1456,11 @@ const Layout = () => {
                     onChange={handleChange}
                   >
                     <option value="">Seleccione tipo de documento</option>
-                    <option value="1">Factura</option>
-                    <option value="2">Nota de Crédito</option>
-                    <option value="3">Nota de Débito</option>
-                    <option value="4">Consignación</option>
+                    {documentoOpts.map((d) => (
+                      <option key={d.indice} value={String(d.indice)}>
+                        {d.valor}
+                      </option>
+                    ))}
                   </CFormSelect>
                 </CCol>
                 <CCol md={3}>

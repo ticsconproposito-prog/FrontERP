@@ -337,7 +337,7 @@ const ConsultaFacturas = () => {
           f.referencia ?? '',
           f.FechaFactura ? formatFecha(f.FechaFactura) : '',
           f.idCliente?.nombreCliente ?? '',
-          tiposDocumento[String(f.tipoDocumento)] ?? f.tipoDocumento ?? '',
+          tiposDocumento[String(f.tipoReceptor)] ?? f.tipoReceptor ?? '',
           f.totalNeto ?? 0,
           f.iva ?? 0,
           f.total ?? 0,
@@ -513,7 +513,7 @@ const ConsultaFacturas = () => {
       <CCol xs={12}>
         <CCard className="mb-4">
           <CCardHeader>
-            <strong className="fs-4">Consulta de Facturas</strong>
+            <strong className="fs-4">Reporte de Ventas</strong>
           </CCardHeader>
           <CCardBody className="p-4">
 
@@ -662,7 +662,7 @@ const ConsultaFacturas = () => {
                           <CTableDataCell>{factura.referencia || '—'}</CTableDataCell>
                           <CTableDataCell>{factura.FechaFactura || '—'}</CTableDataCell>
                           <CTableDataCell>{factura.idCliente?.nombreCliente || '—'}</CTableDataCell>
-                          <CTableDataCell>{tiposDocumento[String(factura.tipoDocumento)] ?? factura.tipoDocumento ?? '—'}</CTableDataCell>
+                          <CTableDataCell>{tiposDocumento[String(factura.tipoReceptor)] ?? factura.tipoReceptor ?? '—'}</CTableDataCell>
                           <CTableDataCell className="text-end">Q{(factura.totalNeto ?? 0).toFixed(2)}</CTableDataCell>
                           <CTableDataCell className="text-end">Q{(factura.iva ?? 0).toFixed(2)}</CTableDataCell>
                           <CTableDataCell className="text-end fw-bold text-success">Q{(factura.total ?? 0).toFixed(2)}</CTableDataCell>

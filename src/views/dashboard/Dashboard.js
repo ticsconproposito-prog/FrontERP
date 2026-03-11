@@ -24,12 +24,12 @@ const Dashboard = () => {
       route: '/pages/ventas/facturacion',
     },
     {
-      title: 'Consulta de Facturas',
+      title: 'Reporte de Ventas',
       description: 'Consulta el historial y detalle de todas las facturas emitidas.',
       icon: cilList,
       color: '#198754',
       bg: '#e6f4ec',
-      route: '/pages/ventas/consultaFacturas',
+      route: '/pages/reportes/reporteVentas',
     },
   ]
 
