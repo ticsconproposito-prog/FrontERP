@@ -508,7 +508,7 @@ const Layout = () => {
 
       if (tieneNit) {
         const opcionNit = documentoOpts.find((d) => (d.valor || '').toLowerCase().includes('nit'));
-        if (opcionNit) setDocumento(String(opcionNit.indice));
+        if (opcionNit) de(String(opcionNit.indice));
       } else if (tieneDpi) {
         const opcionDpi = documentoOpts.find((d) => (d.valor || '').toLowerCase().includes('dpi'));
         if (opcionDpi) setDocumento(String(opcionDpi.indice));
@@ -852,7 +852,7 @@ const Layout = () => {
           <!-- Datos del cliente -->
           <div class="cliente-box">
             <div class="field"><label>Nombre: </label>${cliente.nombre || 'Consumidor Final'}</div>
-            <div class="field"><label>NIT: </label>${cliente.nit || 'CF'}</div>
+            <div class="field"><label>${(documentoOpts.find((d) => String(d.indice) === String(documento))?.valor || 'NIT').toUpperCase()}: </label>${cliente.nit || 'CF'}</div>
             <div class="field"><label>Dirección: </label>${cliente.direccion || '—'}</div>
             <div class="field"><label>Dirección de entrega: </label>${cliente.direccionEntrega || '—'}</div>
           </div>
@@ -1011,6 +1011,7 @@ const Layout = () => {
         facturaProcesada: '',
         direccionEntrega: formFactura.direccionEntrega || '',
         enviarCorreo: enviarCorreo ? 'S' : 'N',
+        tipoReceptor: documento || '1',
         idUsuarioModificacion: idUsuarioActual,
       };
 
@@ -1129,7 +1130,7 @@ const Layout = () => {
             total:     parseFloat(totalesDetalle.total.toFixed(2)),
           },
           datosAdicionales: {
-            tipoReceptor: '1',
+            tipoReceptor: documento || '1',
             email: formFactura.correoElectronico || '',
             enviar: enviarCorreo ? 'S' : 'N',
           },
