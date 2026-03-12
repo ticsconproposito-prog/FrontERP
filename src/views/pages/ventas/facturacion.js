@@ -948,6 +948,7 @@ const Layout = () => {
           </div>
           ` : ''}
           <div class="footer">Gracias por su compra — Ferretería y Blockera Agmner</div>
+           <div style="font-weight:bold;margin-bottom:6px;text-align:center;font-size:14px;">No se aceptan cambios, Ni devoluciones.</div>
         </div>
         <script>
           window.onload = function() { window.print(); window.onafterprint = function() { window.close(); }; };

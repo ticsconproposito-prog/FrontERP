@@ -772,7 +772,7 @@ const Layout = () => {
             </CModal>
 
             <CTable bordered hover responsive="md" className="mt-4">
-              <CTableHead className="bg-light text-dark border-bottom">
+              <CTableHead style={{ '--cui-table-bg': '#1a3a6b', '--cui-table-color': '#fff', '--cui-table-border-color': '#2a4a8b', backgroundColor: '#1a3a6b', color: '#fff' }}>
                 <CTableRow>
                   <CTableHeaderCell>No.</CTableHeaderCell>
                   <CTableHeaderCell className="py-2 text-nowrap">Código Producto</CTableHeaderCell>

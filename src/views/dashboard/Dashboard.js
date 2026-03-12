@@ -10,11 +10,18 @@ import CIcon from '@coreui/icons-react'
 import { cilFile, cilList } from '@coreui/icons'
 
 import logo from 'src/assets/images/logo-ferreteria-agmner.png'
+import { useAuth } from 'src/context/AuthContext'
 
 const Dashboard = () => {
   const navigate = useNavigate()
+  const { paginasPermitidas, tienePerfiles } = useAuth()
 
-  const accesos = [
+  const tienePermiso = (ruta) => {
+    if (!tienePerfiles) return true
+    return paginasPermitidas.some((url) => url === ruta || url.includes(ruta) || ruta.includes(url))
+  }
+
+  const todosAccesos = [
     {
       title: 'Facturación',
       description: 'Crea y gestiona facturas de venta para tus clientes.',
@@ -32,6 +39,8 @@ const Dashboard = () => {
       route: '/pages/reportes/reporteVentas',
     },
   ]
+
+  const accesos = todosAccesos.filter((item) => tienePermiso(item.route))
 
   return (
     <>

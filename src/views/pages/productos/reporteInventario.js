@@ -479,7 +479,7 @@ const ReporteInventario = () => {
                       Mostrando {pageAgrupado * PAGE_SIZE + 1}–{Math.min((pageAgrupado + 1) * PAGE_SIZE, totalElemsAgrupado)} de {totalElemsAgrupado} registros
                     </small>
                     <CTable striped hover bordered responsive>
-                      <CTableHead>
+                      <CTableHead style={{ '--cui-table-bg': '#1a3a6b', '--cui-table-color': '#fff', '--cui-table-border-color': '#2a4a8b', backgroundColor: '#1a3a6b', color: '#fff' }}>
                         <CTableRow>
                           <CTableHeaderCell className="text-center">No.</CTableHeaderCell>
                           <CTableHeaderCell>Código Producto</CTableHeaderCell>
@@ -520,7 +520,7 @@ const ReporteInventario = () => {
                       Mostrando {pageInv * PAGE_SIZE + 1}–{Math.min((pageInv + 1) * PAGE_SIZE, totalElemsInv)} de {totalElemsInv} registros
                     </small>
                     <CTable striped hover bordered responsive>
-                      <CTableHead>
+                      <CTableHead style={{ '--cui-table-bg': '#1a3a6b', '--cui-table-color': '#fff', '--cui-table-border-color': '#2a4a8b', backgroundColor: '#1a3a6b', color: '#fff' }}>
                         <CTableRow>
                           <CTableHeaderCell className="text-center">No.</CTableHeaderCell>
                           <CTableHeaderCell>Código Producto</CTableHeaderCell>

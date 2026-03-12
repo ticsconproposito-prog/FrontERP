@@ -32,6 +32,11 @@ const _nav = [
       },
       {
         component: CNavItem,
+        name: 'Mantenimiento Facturación',
+        to: '/pages/ventas/mntFacturacion',
+      },
+      {
+        component: CNavItem,
         name: 'Clientes',
         to: '/pages/ventas/clientes',
       }
@@ -74,12 +79,7 @@ const _nav = [
         component: CNavItem,
         name: 'Reporte de Ventas',
         to: '/pages/reportes/reporteVentas',
-      },
-      {
-        component: CNavItem,
-        name: 'Detalle de Ventas',
-        to: '/forms/floating-labels',
-      },
+      }, 
       {
         component: CNavItem,
         name: 'Facturas Proveedores',

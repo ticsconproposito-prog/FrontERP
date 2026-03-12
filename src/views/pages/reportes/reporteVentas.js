@@ -128,15 +128,11 @@ const ConsultaFacturas = () => {
         const res = await fetch(`/api/erpEncabezadoFacturas?${params}`)
         if (!res.ok) throw new Error(`Error ${res.status}: ${res.statusText}`)
         const data = await res.json()
-        if (Array.isArray(data)) {
-          setFacturas(data)
-          setTotalPaginas(1)
-          setTotalElementos(data.length)
-        } else {
-          setFacturas(data.content ?? [])
-          setTotalPaginas(data.totalPages ?? 1)
-          setTotalElementos(data.totalElements ?? 0)
-        }
+        const soloFacturas = (Array.isArray(data) ? data : data.content ?? [])
+          .filter((f) => String(f.tipoDocumento) === '1')
+        setFacturas(soloFacturas)
+        setTotalPaginas(Array.isArray(data) ? 1 : data.totalPages ?? 1)
+        setTotalElementos(soloFacturas.length)
 
         // Carga completa para resumen y exportación (solo cuando cambia el filtro, no la página)
         if (paginaActual === 0) {
@@ -144,10 +140,11 @@ const ConsultaFacturas = () => {
           const resTotal = await fetch(`/api/erpEncabezadoFacturas?${paramsTotal}`)
           if (resTotal.ok) {
             const dataTotal = await resTotal.json()
-            const todas = Array.isArray(dataTotal) ? dataTotal : dataTotal.content ?? []
+            const todas = (Array.isArray(dataTotal) ? dataTotal : dataTotal.content ?? [])
+              .filter((f) => String(f.tipoDocumento) === '1')
             setTodasFacturas(todas)
             setResumen({
-              cantidadFacturas: Array.isArray(dataTotal) ? dataTotal.length : dataTotal.totalElements ?? 0,
+              cantidadFacturas: todas.length,
               totalVenta: todas.reduce((sum, f) => sum + (f.total ?? 0), 0),
             })
           }
@@ -178,7 +175,8 @@ const ConsultaFacturas = () => {
         const resEnc = await fetch(`/api/erpEncabezadoFacturas?${paramsEnc}`)
         if (!resEnc.ok) throw new Error(`Error ${resEnc.status}: ${resEnc.statusText}`)
         const dataEnc = await resEnc.json()
-        const encabezados = Array.isArray(dataEnc) ? dataEnc : dataEnc.content ?? []
+        const encabezados = (Array.isArray(dataEnc) ? dataEnc : dataEnc.content ?? [])
+          .filter((f) => String(f.tipoDocumento) === '1')
 
         // 2. Para cada encabezado obtener su detalle
         const resultados = await Promise.all(
@@ -289,7 +287,7 @@ const ConsultaFacturas = () => {
     if (tipoDetalle === '1') {
       const ws = wb.addWorksheet('Detalle por Factura')
       ws.columns = [
-        { width: 18 }, { width: 22 }, { width: 14 }, { width: 32 },
+        { width: 6 }, { width: 18 }, { width: 22 }, { width: 14 }, { width: 32 },
         { width: 18 }, { width: 13 }, { width: 11 }, { width: 13 }, { width: 13 },
       ]
 
@@ -324,20 +322,21 @@ const ConsultaFacturas = () => {
 
       // ── Encabezados de columna ──
       const filaEncabezado = ws.addRow([
-        'No. Factura', 'Referencia', 'Fecha Emisión', 'Cliente',
+        '#', 'No. Factura', 'Referencia', 'Fecha Emisión', 'Cliente',
         'Tipo Documento', 'Subtotal', 'IVA', 'Total', 'Estado',
       ])
       aplicarEstiloEncabezado(filaEncabezado)
       filaEncabezado.height = 20
 
       // ── Datos ──
-      todasFacturas.forEach((f) => {
+      todasFacturas.forEach((f, idx) => {
         const fila = ws.addRow([
+          idx + 1,
           f.preimpresoResAPI ?? '',
           f.referencia ?? '',
           f.FechaFactura ? formatFecha(f.FechaFactura) : '',
           f.idCliente?.nombreCliente ?? '',
-          tiposDocumento[String(f.tipoReceptor)] ?? f.tipoReceptor ?? '',
+          tiposDocumento[String(f.tipoDocumento)] ?? f.tipoDocumento ?? '',
           f.totalNeto ?? 0,
           f.iva ?? 0,
           f.total ?? 0,
@@ -347,11 +346,12 @@ const ConsultaFacturas = () => {
           cell.border = borderThin
           cell.alignment = { vertical: 'middle' }
         })
-        ;[6, 7, 8].forEach((col) => {
+        ;[7, 8, 9].forEach((col) => {
           fila.getCell(col).numFmt = '"Q"#,##0.00'
         })
-        fila.getCell(8).font = { bold: true, color: { argb: 'FF1E7E34' } }
-        const celdaEstado = fila.getCell(9)
+        fila.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' }
+        fila.getCell(9).font = { bold: true, color: { argb: 'FF1E7E34' } }
+        const celdaEstado = fila.getCell(10)
         celdaEstado.fill = f.facturaProcesada ? fillVerde : { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E3E5' } }
       })
 
@@ -368,7 +368,7 @@ const ConsultaFacturas = () => {
       const totalDetalleFmt = detalles.reduce((s, d) => s + (d.ImpTotal ?? 0), 0)
       const ws = wb.addWorksheet('Detalle por Producto')
       ws.columns = [
-        { width: 18 }, { width: 22 }, { width: 13 }, { width: 18 },
+        { width: 6 }, { width: 18 }, { width: 22 }, { width: 13 }, { width: 18 },
         { width: 18 }, { width: 42 }, { width: 11 }, { width: 11 }, { width: 13 },
       ]
 
@@ -403,15 +403,16 @@ const ConsultaFacturas = () => {
 
       // ── Encabezados de columna ──
       const filaEncabezado = ws.addRow([
-        'No. Factura', 'Referencia', 'Fecha', 'Cód. Producto',
+        '#', 'No. Factura', 'Referencia', 'Fecha', 'Cód. Producto',
         'Cód. Proveedor', 'Descripción', 'Cantidad', 'IVA', 'Total',
       ])
       aplicarEstiloEncabezado(filaEncabezado)
       filaEncabezado.height = 20
 
       // ── Datos ──
-      detalles.forEach((d) => {
+      detalles.forEach((d, idx) => {
         const fila = ws.addRow([
+          idx + 1,
           d._noFactura ?? '',
           d._referencia ?? '',
           d._fecha ? formatFecha(d._fecha) : '',
@@ -426,10 +427,11 @@ const ConsultaFacturas = () => {
           cell.border = borderThin
           cell.alignment = { vertical: 'middle' }
         })
-        ;[8, 9].forEach((col) => {
+        ;[9, 10].forEach((col) => {
           fila.getCell(col).numFmt = '"Q"#,##0.00'
         })
-        fila.getCell(9).font = { bold: true, color: { argb: 'FF1E7E34' } }
+        fila.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' }
+        fila.getCell(10).font = { bold: true, color: { argb: 'FF1E7E34' } }
       })
 
       const buf = await wb.xlsx.writeBuffer()
@@ -635,8 +637,9 @@ const ConsultaFacturas = () => {
             {!esCargando && !error && tipoDetalle === '1' && (
               <>
                 <CTable striped hover bordered responsive>
-                  <CTableHead className="bg-light text-dark">
+                  <CTableHead style={{ '--cui-table-bg': '#1a3a6b', '--cui-table-color': '#fff', '--cui-table-border-color': '#2a4a8b', backgroundColor: '#1a3a6b', color: '#fff' }}>
                     <CTableRow>
+                      <CTableHeaderCell className="text-center">#</CTableHeaderCell>
                       <CTableHeaderCell className="text-center">No. Factura</CTableHeaderCell>
                       <CTableHeaderCell>Referencia</CTableHeaderCell>
                       <CTableHeaderCell>Fecha Emisión</CTableHeaderCell>
@@ -651,18 +654,19 @@ const ConsultaFacturas = () => {
                   <CTableBody>
                     {facturas.length === 0 ? (
                       <CTableRow>
-                        <CTableDataCell colSpan={9} className="text-center py-4 text-muted">
+                        <CTableDataCell colSpan={10} className="text-center py-4 text-muted">
                           No hay facturas para mostrar.
                         </CTableDataCell>
                       </CTableRow>
                     ) : (
                       facturas.map((factura, index) => (
                         <CTableRow key={factura.preimpresoResAPI || index}>
+                          <CTableDataCell className="text-center">{paginaActual * PAGE_SIZE + index + 1}</CTableDataCell>
                           <CTableDataCell className="text-center">{factura.preimpresoResAPI || '—'}</CTableDataCell>
                           <CTableDataCell>{factura.referencia || '—'}</CTableDataCell>
                           <CTableDataCell>{factura.FechaFactura || '—'}</CTableDataCell>
                           <CTableDataCell>{factura.idCliente?.nombreCliente || '—'}</CTableDataCell>
-                          <CTableDataCell>{tiposDocumento[String(factura.tipoReceptor)] ?? factura.tipoReceptor ?? '—'}</CTableDataCell>
+                          <CTableDataCell>{tiposDocumento[String(factura.tipoDocumento)] ?? factura.tipoDocumento ?? '—'}</CTableDataCell>
                           <CTableDataCell className="text-end">Q{(factura.totalNeto ?? 0).toFixed(2)}</CTableDataCell>
                           <CTableDataCell className="text-end">Q{(factura.iva ?? 0).toFixed(2)}</CTableDataCell>
                           <CTableDataCell className="text-end fw-bold text-success">Q{(factura.total ?? 0).toFixed(2)}</CTableDataCell>
@@ -718,8 +722,9 @@ const ConsultaFacturas = () => {
                 </CRow>
 
                 <CTable striped hover bordered responsive>
-                  <CTableHead className="bg-light text-dark">
+                  <CTableHead style={{ '--cui-table-bg': '#1a3a6b', '--cui-table-color': '#fff', '--cui-table-border-color': '#2a4a8b', backgroundColor: '#1a3a6b', color: '#fff' }}>
                     <CTableRow>
+                      <CTableHeaderCell className="text-center">#</CTableHeaderCell>
                       <CTableHeaderCell className="text-center">No. Factura</CTableHeaderCell>
                       <CTableHeaderCell>Referencia</CTableHeaderCell>
                       <CTableHeaderCell>Fecha</CTableHeaderCell>
@@ -734,13 +739,14 @@ const ConsultaFacturas = () => {
                   <CTableBody>
                     {detallesPagina.length === 0 ? (
                       <CTableRow>
-                        <CTableDataCell colSpan={9} className="text-center py-4 text-muted">
+                        <CTableDataCell colSpan={10} className="text-center py-4 text-muted">
                           No hay detalles para mostrar.
                         </CTableDataCell>
                       </CTableRow>
                     ) : (
                       detallesPagina.map((det, index) => (
                         <CTableRow key={index}>
+                          <CTableDataCell className="text-center">{paginaDetalle * PAGE_SIZE + index + 1}</CTableDataCell>
                           <CTableDataCell className="text-center">{det._noFactura || '—'}</CTableDataCell>
                           <CTableDataCell>{det._referencia || '—'}</CTableDataCell>
                           <CTableDataCell>{det._fecha ? formatFecha(det._fecha) : '—'}</CTableDataCell>

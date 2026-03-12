@@ -95,10 +95,8 @@ const Empleados = () => {
     const nuevosErrores = {}
     if (!String(form.nombre || '').trim()) nuevosErrores.nombre = 'El nombre es requerido'
     if (!String(form.apellido || '').trim()) nuevosErrores.apellido = 'El apellido es requerido'
-    if (!String(form.email || '').trim()) nuevosErrores.email = 'El email es requerido'
     if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email))
       nuevosErrores.email = 'El email no tiene un formato válido'
-    if (!form.fechaNacimiento) nuevosErrores.fechaNacimiento = 'La fecha de nacimiento es requerida'
     if (!form.fechaIngresoLaboral) nuevosErrores.fechaIngresoLaboral = 'La fecha de ingreso es requerida'
     setErrores(nuevosErrores)
     return Object.keys(nuevosErrores).length === 0
@@ -361,7 +359,7 @@ const Empleados = () => {
 
               {/* Email */}
               <CCol md={6}>
-                <CFormLabel className="fw-semibold">Email <span className="text-danger">*</span></CFormLabel>
+                <CFormLabel className="fw-semibold">Email</CFormLabel>
                 <CFormInput
                   type="email"
                   name="email"
@@ -397,15 +395,13 @@ const Empleados = () => {
 
               {/* Fecha de nacimiento */}
               <CCol md={6}>
-                <CFormLabel className="fw-semibold">Fecha de Nacimiento <span className="text-danger">*</span></CFormLabel>
+                <CFormLabel className="fw-semibold">Fecha de Nacimiento</CFormLabel>
                 <CFormInput
                   type="date"
                   name="fechaNacimiento"
                   value={form.fechaNacimiento}
                   onChange={handleChange}
-                  className={errores.fechaNacimiento ? 'is-invalid' : ''}
                 />
-                {errores.fechaNacimiento && <div className="invalid-feedback">{errores.fechaNacimiento}</div>}
               </CCol>
 
               {/* Fecha de ingreso laboral */}
