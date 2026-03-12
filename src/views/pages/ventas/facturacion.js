@@ -312,6 +312,8 @@ const Layout = () => {
       precio,
       descuento,
       total,
+      stock: producto.cantidadExistencias ?? producto.stock ?? 0,
+      ubicacion: obtenerNombreUbicacion(producto.idUbicacion),
     };
 
     setDetalleFactura([...detalleFactura, nuevoItem]);
@@ -1498,7 +1500,7 @@ const Layout = () => {
                 </div>
 
                 <CTable bordered hover responsive>
-                  <CTableHead className="bg-light text-dark">
+                  <CTableHead style={{ '--cui-table-bg': '#6c757d', '--cui-table-color': '#fff', '--cui-table-border-color': '#7d868e', backgroundColor: '#6c757d', color: '#fff' }}>
                     <CTableRow>
                       <CTableHeaderCell className="py-2">No.</CTableHeaderCell>
                       <CTableHeaderCell className="py-2">Descripción Producto</CTableHeaderCell>
@@ -1526,6 +1528,8 @@ const Layout = () => {
                               <strong>{item.descripcion}</strong>
                               <br />
                               <small className="text-muted">Código: {item.codigo}</small>
+                              <br />
+                              <small className="text-muted">Stock: {item.stock ?? 0} · Ubicación: {item.ubicacion ?? '—'}</small>
                             </div>
                           </CTableDataCell>
                           <CTableDataCell className="text-center">{Number(item.cantidad) || 0}</CTableDataCell>
@@ -1727,7 +1731,7 @@ const Layout = () => {
                   <h6 className="text-primary mb-3">Detalle de Productos</h6>
 
                   <CTable bordered hover responsive>
-                    <CTableHead className="bg-light text-dark">
+                    <CTableHead style={{ '--cui-table-bg': '#6c757d', '--cui-table-color': '#fff', '--cui-table-border-color': '#7d868e', backgroundColor: '#6c757d', color: '#fff' }}>
                       <CTableRow>
                         <CTableHeaderCell className="py-2">No.</CTableHeaderCell>
                         <CTableHeaderCell className="py-2">Descripción Producto</CTableHeaderCell>
@@ -1755,6 +1759,8 @@ const Layout = () => {
                                 <strong>{item.descripcion}</strong>
                                 <br />
                                 <small className="text-muted">Código: {item.codigo}</small>
+                                <br />
+                                <small className="text-muted">Stock: {item.stock ?? 0} · Ubicación: {item.ubicacion ?? '—'}</small>
                               </div>
                             </CTableDataCell>
                             <CTableDataCell>

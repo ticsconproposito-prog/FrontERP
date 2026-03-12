@@ -559,8 +559,8 @@ const Layout = () => {
             </CForm>
 
             {/* Tabla de movimientos */}
-            <CTable bordered hover responsive className="mt-4">
-              <CTableHead className="bg-light text-dark border-bottom">
+            <CTable striped bordered hover responsive className="mt-4">
+              <CTableHead style={{ '--cui-table-bg': '#6c757d', '--cui-table-color': '#fff', '--cui-table-border-color': '#7d868e', backgroundColor: '#6c757d', color: '#fff' }}>
                 <CTableRow>
                   <CTableHeaderCell className="py-2 text-nowrap">No.</CTableHeaderCell>
                   <CTableHeaderCell className="py-2 text-nowrap">Documento</CTableHeaderCell>

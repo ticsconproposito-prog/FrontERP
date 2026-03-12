@@ -719,7 +719,7 @@ const MntFacturacion = () => {
         <CCol xs={12}>
           <CCard className="mb-4">
             <CCardHeader>
-              <strong className="fs-4">Mantenimiento de Facturación</strong>
+              <strong className="fs-4">Detalle de Facturas</strong>
             </CCardHeader>
             <CCardBody>
 

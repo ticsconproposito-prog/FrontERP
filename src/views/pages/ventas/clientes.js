@@ -351,10 +351,10 @@ const Layout = () => {
               </CButton>
             </div>
 
-            <CForm>
+            <CForm className="mt-3">
               <CRow className="gy-3">
                 <CCol md={3}>
-                  <CFormLabel>Nombre Cliente:</CFormLabel>
+                  <CFormLabel className="fw-bold">Nombre Cliente</CFormLabel>
                   <CFormInput
                     name="nombreCliente"
                     placeholder="Buscar por nombre"
@@ -363,7 +363,7 @@ const Layout = () => {
                   />
                 </CCol>
                 <CCol md={2}>
-                  <CFormLabel>Tipo Documento:</CFormLabel>
+                  <CFormLabel className="fw-bold">Tipo Documento</CFormLabel>
                   <CFormSelect
                     name="tipoDocumento"
                     value={filtros.tipoDocumento}
@@ -394,8 +394,8 @@ const Layout = () => {
             )}
 
             <div className="table-responsive mt-2" style={{ minHeight: 0 }}>
-              <CTable bordered hover responsive className="mb-0">
-                <CTableHead className="bg-light text-dark border-bottom">
+              <CTable striped bordered hover responsive className="mb-0">
+                <CTableHead style={{ '--cui-table-bg': '#1a3a6b', '--cui-table-color': '#fff', '--cui-table-border-color': '#2a4a8b', backgroundColor: '#1a3a6b', color: '#fff' }}>
                   <CTableRow>
                     <CTableHeaderCell>No.</CTableHeaderCell>
                     <CTableHeaderCell className="py-2 text-nowrap">Nombre Cliente</CTableHeaderCell>

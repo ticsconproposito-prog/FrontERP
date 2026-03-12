@@ -32,7 +32,7 @@ const _nav = [
       },
       {
         component: CNavItem,
-        name: 'Mantenimiento Facturación',
+        name: 'Detalle de Facturas',
         to: '/pages/ventas/mntFacturacion',
       },
       {

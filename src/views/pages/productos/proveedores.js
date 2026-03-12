@@ -329,20 +329,20 @@ const Layout = () => {
               </CButton>
             </div>
 
-            <CForm>
+            <CForm className="mt-3">
               <CRow className="gy-3" >
                 <CCol md={4} >
-                  <CFormLabel>Nombre Proveedor: </CFormLabel>
+                  <CFormLabel className="fw-bold">Nombre Proveedor </CFormLabel>
                   <CFormInput name="nombre"
                     placeholder="Nombre proveedor"
                     value={filtros.nombre}
                     onChange={handleFiltroChange} />
                 </CCol>
                 <CCol md={4}>
-                  <CFormLabel>Nombre Contacto No. 1: </CFormLabel>
+                  <CFormLabel className="fw-bold">Nombre Contacto No. 1 </CFormLabel>
                   <CFormInput
                     name="nombreDeContacto1"
-                    placeholder="Tecle el nombre del contacto 1 para buscar"
+                    placeholder="Teclee el nombre del contacto 1 para buscar"
                     value={filtros.nombreDeContacto1}
                     onChange={handleFiltroChange}
                     autoComplete="off"
@@ -635,8 +635,8 @@ const Layout = () => {
             </CModal>
 
             <div className="table-responsive mt-4" style={{ minHeight: 0 }}>
-              <CTable bordered hover responsive className="mb-0">
-              <CTableHead className="bg-light text-dark border-bottom">
+              <CTable striped bordered hover responsive className="mb-0">
+              <CTableHead style={{ '--cui-table-bg': '#1a3a6b', '--cui-table-color': '#fff', '--cui-table-border-color': '#2a4a8b', backgroundColor: '#1a3a6b', color: '#fff' }}>
                 <CTableRow>
                   <CTableHeaderCell>No.</CTableHeaderCell>
                   <CTableHeaderCell className="py-2 text-nowrap">Nombre Proveedor</CTableHeaderCell>

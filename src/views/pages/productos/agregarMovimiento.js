@@ -951,8 +951,8 @@ const AgregarMovimiento = () => {
                   </CButton>
                 </div>
 
-                <CTable bordered hover responsive>
-                  <CTableHead className="bg-light text-dark">
+                <CTable striped bordered hover responsive>
+                  <CTableHead style={{ '--cui-table-bg': '#6c757d', '--cui-table-color': '#fff', '--cui-table-border-color': '#7d868e', backgroundColor: '#6c757d', color: '#fff' }}>
                     <CTableRow>
                       <CTableHeaderCell className="py-2">No.</CTableHeaderCell>
                       <CTableHeaderCell className="py-2">Código Producto</CTableHeaderCell>
@@ -1163,8 +1163,8 @@ const AgregarMovimiento = () => {
           {/* Tabla de productos agregados en el modal */}
           <div className="mt-4">
             <h6 className="text-primary mb-3">Detalle de Productos</h6>
-            <CTable bordered hover responsive>
-              <CTableHead className="bg-light text-dark">
+            <CTable striped bordered hover responsive>
+              <CTableHead style={{ '--cui-table-bg': '#6c757d', '--cui-table-color': '#fff', '--cui-table-border-color': '#7d868e', backgroundColor: '#6c757d', color: '#fff' }}>
                 <CTableRow>
                   <CTableHeaderCell className="py-2">No.</CTableHeaderCell>
                   <CTableHeaderCell className="py-2">Código</CTableHeaderCell>

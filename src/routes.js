@@ -107,7 +107,7 @@ const routes = [
   { path: '/pages/ventas/facturacion', name: 'Facturacion', element: Facturacion },
   { path: '/pages/ventas/clientes', name: 'Clientes', element: Clientes },
   { path: '/pages/reportes/reporteVentas', name: 'Reporte de Ventas', element: ReporteVentas },
-  { path: '/pages/ventas/mntFacturacion', name: 'Mantenimiento de Facturación', element: mntFacturacion },
+  { path: '/pages/ventas/mntFacturacion', name: 'Detalle de Facturas', element: mntFacturacion },
   { path: '/pages/seguridad/empleados', name: 'Empleados', element: Empleados },
   { path: '/pages/seguridad/usuarios', name: 'Usuarios', element: Usuarios },
   { path: '/pages/seguridad/paginas', name: 'Paginas', element: Paginas },
