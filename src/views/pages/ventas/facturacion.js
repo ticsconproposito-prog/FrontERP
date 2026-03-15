@@ -625,7 +625,7 @@ const Layout = () => {
     return (resultado.trim() || 'CERO') + ' QUETZALES CON ' + String(centavos).padStart(2, '0') + '/100'
   }
 
-  const imprimirFactura = async ({ cliente, detalle, iva, total, totalDescuento, numeroAutorizacion, serieRes, referenciaRes, preimpresoRes, error = false }) => {
+  const imprimirFactura = async ({ cliente, detalle, iva, total, totalDescuento, numeroAutorizacion, serieRes, referenciaRes, preimpresoRes, error = false, esConsignacion = false }) => {
     const moneda = cliente.moneda === '1' ? 'Q' : '$';
 
     // Convertir logo a base64 para que funcione en la ventana de impresión
@@ -688,7 +688,7 @@ const Layout = () => {
       <html lang="es">
       <head>
         <meta charset="UTF-8" />
-        <title>${referenciaRes || 'Factura'}</title>
+        <title>${esConsignacion ? `Consignación - ${referenciaRes}` : error ? `Comprobante - ${referenciaRes}` : cliente.tipoDocumento === '2' ? `Nota de Crédito - ${referenciaRes}` : cliente.tipoDocumento === '3' ? `Nota de Débito - ${referenciaRes}` : `Factura - ${referenciaRes}`}</title>
         <style>
           * { margin: 0; padding: 0; box-sizing: border-box; }
           body { font-family: Arial, sans-serif; font-size: 12px; color: #222; }
@@ -864,7 +864,7 @@ const Layout = () => {
               <div class="telefonos">📞 7888-9138 / 5203-0726</div>
             </div>
             <div class="empresa-info">
-              <div style="font-size:13px;font-weight:bold;margin-bottom:3px;letter-spacing:0.5px;">${error ? 'COMPROBANTE DE PAGO' : 'DOCUMENTO TRIBUTARIO ELECTRÓNICO'}</div>
+              <div style="font-size:14px;font-weight:bold;margin-bottom:3px;letter-spacing:0.5px;">${esConsignacion ? 'CONSIGNACIÓN' : error ? 'COMPROBANTE DE PAGO' : 'DOCUMENTO TRIBUTARIO ELECTRÓNICO'}</div>
               <div class="empresa-nombre">Blockera Agmner</div>
               <div class="empresa-linea">JUAN ALBERTO, ARREDONDO GARCIA</div>
               <div class="empresa-linea">CALLE PRINCIPAL SECTOR PALIN NUEVA SANTA ROSA</div>
@@ -872,7 +872,7 @@ const Layout = () => {
               <div class="empresa-linea">NIT: 16949447</div>
             </div>
             <div class="factura-id">
-              ${error ? `
+              ${(error || esConsignacion) ? `
               <div class="factura-linea"><strong>Referencia:</strong> ${referenciaRes || '—'}</div>
               <div class="factura-linea" style="margin-top:5px;"><strong>Fecha de Emisión:</strong> ${formatearFechaFactura(cliente.fecha)}</div>
               ` : `
@@ -935,7 +935,7 @@ const Layout = () => {
             </tfoot>
           </table>
 
-          ${!error ? `
+          ${(!error && !esConsignacion) ? `
            <div style="margin-top:10px;padding:6px 10px;border:1px solid #000;border-radius:4px;font-size:10px;text-align:center;">
             <div><strong>Sujeto a pagos trimestrales ISR</strong></div>
             <div><strong>Agente de Retención de IVA</strong></div>
@@ -950,7 +950,8 @@ const Layout = () => {
           </div>
           ` : ''}
           <div class="footer">Gracias por su compra — Ferretería y Blockera Agmner</div>
-           <div style="font-weight:bold;margin-bottom:6px;text-align:center;font-size:14px;">No se aceptan cambios, Ni devoluciones.</div>
+          <div style="font-weight:bold;margin-bottom:6px;text-align:center;font-size:14px;">No se aceptan cambios, Ni devoluciones.</div>
+          ${esConsignacion ? `<div style="font-weight:bold;text-align:center;font-size:14px;margin-top:4px;">**Productos pendientes de pago**</div>` : ''}
         </div>
         <script>
           window.onload = function() { window.print(); window.onafterprint = function() { window.close(); }; };
@@ -1090,6 +1091,7 @@ const Layout = () => {
           iva: impIva.toFixed(2),
           isr: '0.00',
           ImpTotal: totalConDesc.toFixed(2),
+          consignacionFacturada: '0',
           idUsuarioModificacion: String(idUsuarioActual),
         };
 
@@ -1109,9 +1111,64 @@ const Layout = () => {
       // Construir la referencia en memoria: prefijo + idEncabezadoFactura
       const idFacturaTrimmed = idEncabezadoFactura.trim()
       const tipoDoc = String(formFactura.tipoDocumento)
-      const prefijoRef = tipoDoc === '1' ? 'FACT' : tipoDoc === '2' ? 'NCRE' : tipoDoc === '3' ? 'NDEB' : ''
+      const prefijoRef = tipoDoc === '1' ? 'FACT' : tipoDoc === '2' ? 'NCRE' : tipoDoc === '3' ? 'NDEB' : tipoDoc === '4' ? 'CONS' : ''
       const referenciaCalculada = prefijoRef ? `${prefijoRef}${idFacturaTrimmed}` : idFacturaTrimmed
       setReferenciaParaComprobante(referenciaCalculada)
+
+      // Tipo 4 (Consignación): no enviar DTE, guardar referencia y imprimir directamente
+      if (tipoDoc === '4') {
+        await fetch('/api/grabarEncabezadoFacturas', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            idEncabezadoFactura: idFacturaTrimmed,
+            tipoDocumento: formFactura.tipoDocumento,
+            idCliente: { idCliente: formFactura.idCliente },
+            tipoVenta: 'B',
+            destinoVenta: '1',
+            FechaFactura: formFactura.fecha,
+            moneda: formFactura.moneda,
+            tasaDeCambio: formFactura.moneda === '1' ? '1.00' : '2.00',
+            referencia: referenciaCalculada,
+            numeroAcceso: '0',
+            serieAdmin: '',
+            numeroAdmin: '0',
+            totalBruto:          totalesDetalle.totalBruto.toFixed(2),
+            cantidadDeDescuento: totalesDetalle.cantidadDeDescuento.toFixed(2),
+            porcentajeDeDescuento: 0,
+            exento: '0.00',
+            otro: '0.00',
+            totalNeto: totalesDetalle.totalNeto,
+            isr: '0.00',
+            iva: totalesDetalle.iva.toFixed(2),
+            total: totalesDetalle.total.toFixed(2),
+            facturaProcesada: '',
+            direccionEntrega: formFactura.direccionEntrega || '',
+            enviarCorreo: 'N',
+            tipoReceptor: documento || '1',
+            idUsuarioModificacion: idUsuarioActual,
+          }),
+        })
+
+        await imprimirFactura({
+          cliente: { ...formFactura },
+          detalle: [...detalleFactura],
+          iva: totalesDetalle.iva,
+          total: totalesDetalle.total,
+          totalDescuento: calcularTotalDescuentoProductos(),
+          numeroAutorizacion: '',
+          serieRes: '',
+          referenciaRes: referenciaCalculada,
+          preimpresoRes: '',
+          esConsignacion: true,
+        });
+        limpiarFormulario();
+        setDetalleFactura([]);
+        setErrorFactura('');
+        setTodosProductosCache([]);
+        cargarInventario();
+        return;
+      }
 
       let numeroAutorizacion = '';
       let serieRes = '';
@@ -1638,7 +1695,12 @@ const Layout = () => {
               <CRow className="mt-4">
                 <CCol className="d-flex justify-content-end gap-2">
                   <CButton color="primary" className="text-light" type="submit" disabled={detalleFactura.length === 0 || guardandoFactura}>
-                    {guardandoFactura ? 'Guardando...' : 'Guardar Factura'}
+                    {guardandoFactura ? 'Guardando...' : (
+                      formFactura.tipoDocumento === '2' ? 'Guardar Nota de Crédito' :
+                      formFactura.tipoDocumento === '3' ? 'Guardar Nota de Débito' :
+                      formFactura.tipoDocumento === '4' ? 'Guardar Consignación' :
+                      'Guardar Factura'
+                    )}
                   </CButton>
                 </CCol>
               </CRow>
@@ -2051,7 +2113,7 @@ const Layout = () => {
     {/* Modal error DTE / FEL */}
     <CModal
       visible={errorDteModal.visible}
-      onClose={() => setErrorDteModal({ visible: false, mensaje: '' })}
+      onClose={() => { setErrorDteModal({ visible: false, mensaje: '' }); limpiarFormulario(); setDetalleFactura([]); }}
       backdrop="static"
       alignment="center"
     >
@@ -2064,10 +2126,10 @@ const Layout = () => {
         </p>
       </CModalBody>
       <CModalFooter>
-        <CButton color="secondary" onClick={() => setErrorDteModal({ visible: false, mensaje: '' })}>
+        <CButton color="secondary" onClick={() => { setErrorDteModal({ visible: false, mensaje: '' }); limpiarFormulario(); setDetalleFactura([]); }}>
           Cerrar
         </CButton>
-        {!errorDteModal.mensaje?.includes('NO EXISTE EL NIT') && (
+        {!errorDteModal.mensaje?.includes('NO EXISTE EL NIT') && !errorDteModal.mensaje?.includes('2-NO EXISTE EL NIT/CUI DEL CONTRIBUYENTE') && !errorDteModal.mensaje?.includes('186-NUMERO DE DOCUMENTO DE IDENTIFICACION INVALIDO') && (
         <CButton color="success" className="text-white" onClick={async () => {
           const r2 = (n) => parseFloat(n.toFixed(2))
           const totales = detalleFactura.reduce((acc, item) => {

@@ -201,7 +201,7 @@ const MntFacturacion = () => {
           )
         }
 
-        todasLasFacturas = todas
+        todasLasFacturas = todas.filter((f) => String(f.tipoDocumento) !== '4')
         numPagina  = 0
         totalElems = todasLasFacturas.length
         totalPags  = Math.max(1, Math.ceil(totalElems / PAGE_SIZE))
@@ -214,10 +214,10 @@ const MntFacturacion = () => {
         const res = await fetch(`/api/erpEncabezadoFacturas?${params}`)
         if (!res.ok) throw new Error(`Error ${res.status}`)
         const data = await res.json()
-        todasLasFacturas = Array.isArray(data) ? data : data.content ?? []
+        todasLasFacturas = (Array.isArray(data) ? data : data.content ?? []).filter((f) => String(f.tipoDocumento) !== '4')
         numPagina  = data.number ?? 0
         totalPags  = data.totalPages ?? 0
-        totalElems = data.totalElements ?? 0
+        totalElems = data.totalElements ?? todasLasFacturas.length
       }
 
       setFacturas(todasLasFacturas)
@@ -647,7 +647,7 @@ const MntFacturacion = () => {
 
       // Calcular referencia igual que en facturacion.js
       const tipoDocRef  = String(enc.tipoDocumento || enc.idTipoDocumento || '1')
-      const prefijoRef  = tipoDocRef === '1' ? 'FACT' : tipoDocRef === '2' ? 'NCRE' : tipoDocRef === '3' ? 'NDEB' : ''
+      const prefijoRef  = tipoDocRef === '1' ? 'FACT' : tipoDocRef === '2' ? 'NCRE' : tipoDocRef === '3' ? 'NDEB' : tipoDocRef === '4' ? 'CONS' : ''
       const idFactura   = String(enc.idEncabezadoFactura || '').trim()
       const referenciaCalculada = prefijoRef ? `${prefijoRef}${idFactura}` : idFactura
 
@@ -793,7 +793,7 @@ const MntFacturacion = () => {
                         <CTableRow key={f.idEncabezadoFactura ?? idx}>
                           <CTableDataCell className="text-center">{paginaActual * PAGE_SIZE + idx + 1}</CTableDataCell>
                           <CTableDataCell>{f.preimpresoResAPI || '—'}</CTableDataCell>
-                          <CTableDataCell>{f.referencia || '—'}</CTableDataCell>
+                          <CTableDataCell>{(f.referencia && f.referencia !== '0') ? f.referencia : (() => { const t = String(f.tipoDocumento || ''); const p = t === '1' ? 'FACT' : t === '2' ? 'NCRE' : t === '3' ? 'NDEB' : t === '4' ? 'CONS' : ''; return p ? `${p}${f.idEncabezadoFactura}` : '—'; })()}</CTableDataCell>
                           <CTableDataCell>{formatFecha(f.FechaFactura)}</CTableDataCell>
                           <CTableDataCell>{f.idCliente?.nombreCliente || '—'}</CTableDataCell>
                           <CTableDataCell>
@@ -878,7 +878,7 @@ const MntFacturacion = () => {
               <CRow className="mb-3">
                 <CCol md={6}>
                   <div><strong>No. Factura:</strong> {facturaSeleccionada.preimpresoResAPI || '—'}</div>
-                  <div><strong>Referencia:</strong> {facturaSeleccionada.referencia || '—'}</div>
+                  <div><strong>Referencia:</strong> {(facturaSeleccionada.referencia && facturaSeleccionada.referencia !== '0') ? facturaSeleccionada.referencia : (() => { const t = String(facturaSeleccionada.tipoDocumento || ''); const p = t === '1' ? 'FACT' : t === '2' ? 'NCRE' : t === '3' ? 'NDEB' : t === '4' ? 'CONS' : ''; return p ? `${p}${facturaSeleccionada.idEncabezadoFactura}` : '—'; })()}</div>
                   <div><strong>Fecha Emisión:</strong> {formatFecha(facturaSeleccionada.FechaFactura)}</div>
                 </CCol>
                 <CCol md={6}>
