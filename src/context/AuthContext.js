@@ -133,7 +133,7 @@ export const AuthProvider = ({ children }) => {
       console.log('[Auth] idUsuario:', idUsuario)
 
       // 1. Perfiles asignados al usuario
-      const resUsuariosPerfiles = await fetch('/api/usuariosPerfiles')
+      const resUsuariosPerfiles = await fetch('/api/usuariosPerfiles?size=1000')
       const todosUsuariosPerfiles = await resUsuariosPerfiles.json()
       console.log('[Auth] /api/usuariosPerfiles response:', todosUsuariosPerfiles)
 
@@ -154,7 +154,7 @@ export const AuthProvider = ({ children }) => {
       console.log('[Auth] IDs de perfiles:', idPerfiles)
 
       // 2. Páginas asignadas a esos perfiles
-      const resPerfilesPaginas = await fetch('/api/perfilesPaginas')
+      const resPerfilesPaginas = await fetch('/api/perfilesPaginas?size=1000')
       const todosPerfilesPaginas = await resPerfilesPaginas.json()
       console.log('[Auth] /api/perfilesPaginas response:', todosPerfilesPaginas)
 
@@ -171,7 +171,7 @@ export const AuthProvider = ({ children }) => {
       console.log('[Auth] IDs de páginas permitidas:', idPaginasPermitidas)
 
       // 3. URLs desde /api/paginas (respuesta con content:[])
-      const resPaginas = await fetch('/api/paginas')
+      const resPaginas = await fetch('/api/paginas?size=1000')
       const respPaginas = await resPaginas.json()
       console.log('[Auth] /api/paginas response:', respPaginas)
 

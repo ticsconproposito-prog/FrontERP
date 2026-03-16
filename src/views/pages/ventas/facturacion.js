@@ -755,7 +755,7 @@ const Layout = () => {
             font-weight: bold;
             text-align: left;
             border-top: none;
-            border-bottom: 1px solid #555;
+            border-bottom: 1px solid #000;
             border-left: none;
             border-right: none;
           }
@@ -951,7 +951,13 @@ const Layout = () => {
           ` : ''}
           <div class="footer">Gracias por su compra — Ferretería y Blockera Agmner</div>
           <div style="font-weight:bold;margin-bottom:6px;text-align:center;font-size:14px;">No se aceptan cambios, Ni devoluciones.</div>
-          ${esConsignacion ? `<div style="font-weight:bold;text-align:center;font-size:14px;margin-top:4px;">**Productos pendientes de pago**</div>` : ''}
+          ${esConsignacion ? `
+          <div style="font-weight:bold;text-align:center;font-size:14px;margin-top:4px;">**Productos pendientes de pago**</div>
+          <div style="margin-top:30px;text-align:center;">
+            <div style="font-size:13px;">f._____________________</div>
+            <div style="font-size:12px;margin-top:4px;">${cliente.nombre || 'Consumidor Final'}</div>
+          </div>
+          ` : ''}
         </div>
         <script>
           window.onload = function() { window.print(); window.onafterprint = function() { window.close(); }; };

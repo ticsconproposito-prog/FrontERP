@@ -77,13 +77,13 @@ const _nav = [
     items: [
       {
         component: CNavItem,
-        name: 'Reporte de Ventas',
+        name: 'Ventas',
         to: '/pages/reportes/reporteVentas',
       }, 
       {
         component: CNavItem,
-        name: 'Facturas Proveedores',
-        to: '/forms/form-control',
+        name: 'Consignaciones',
+        to: '/pages/reportes/reporteConsignaciones',
       },
     ],
   },

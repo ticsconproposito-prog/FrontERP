@@ -107,9 +107,11 @@ const Paginas = () => {
     if (!validar()) return
     setGuardando(true)
     try {
+      const urlValue = String(form.URL || '').trim()
       const body = {
         nombrePagina: String(form.nombrePagina || '').trim(),
-        URL: String(form.URL || '').trim(),
+        URL: urlValue,
+        url: urlValue,
         idUsuarioModificacion: idUsuarioActual,
       }
 
@@ -119,7 +121,6 @@ const Paginas = () => {
         url = `/api/editarPagina/${idPaginaEditar}`
         method = 'PUT'
         body.idPagina = idPaginaEditar
-        body.id_Pagina = idPaginaEditar
       }
 
       console.log('URL:', url)

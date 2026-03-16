@@ -37,6 +37,7 @@ const Proveedores = React.lazy(() => import('./views/pages/productos/proveedores
 const mntFacturacion = React.lazy(() => import('./views/pages/ventas/mntFacturacion'))
 const Clientes = React.lazy(() => import('./views/pages/ventas/clientes'))
 const ReporteVentas = React.lazy(() => import('./views/pages/reportes/reporteVentas'))
+const ReporteConsignaciones = React.lazy(() => import('./views/pages/reportes/reporteConsignaciones'))
 const Facturacion = React.lazy(() => import('./views/pages/ventas/facturacion'))
 const Empleados = React.lazy(() => import('./views/pages/seguridad/empleados'))
 const Usuarios = React.lazy(() => import('./views/pages/seguridad/usuarios'))
@@ -107,6 +108,7 @@ const routes = [
   { path: '/pages/ventas/facturacion', name: 'Facturacion', element: Facturacion },
   { path: '/pages/ventas/clientes', name: 'Clientes', element: Clientes },
   { path: '/pages/reportes/reporteVentas', name: 'Reporte de Ventas', element: ReporteVentas },
+  { path: '/pages/reportes/reporteConsignaciones', name: 'Reporte de Consignaciones', element: ReporteConsignaciones },
   { path: '/pages/ventas/mntFacturacion', name: 'Detalle de Facturas', element: mntFacturacion },
   { path: '/pages/seguridad/empleados', name: 'Empleados', element: Empleados },
   { path: '/pages/seguridad/usuarios', name: 'Usuarios', element: Usuarios },

@@ -426,10 +426,25 @@ const MntFacturacion = () => {
           <style>
             * { margin: 0; padding: 0; box-sizing: border-box; }
             body { font-family: Arial, sans-serif; font-size: 12px; color: #222; }
+
             @page { size: A4; margin: 8mm 10mm; }
-            @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+
+            @media print {
+              body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            }
+
             .page { width: 100%; min-height: 277mm; padding: 6mm 8mm; }
-            .header-empresa { display: flex; align-items: flex-start; gap: 12px; border-bottom: 2px solid #555; padding-bottom: 10px; margin-bottom: 10px; width: 100%; }
+
+            /* ── Encabezado ── */
+            .header-empresa {
+              display: flex;
+              align-items: flex-start;
+              gap: 12px;
+              border-bottom: 2px solid #555;
+              padding-bottom: 10px;
+              margin-bottom: 10px;
+              width: 100%;
+            }
             .logo { min-width: 140px; text-align: center; }
             .logo img { width: 140px; height: auto; display: block; margin: 0 auto; }
             .logo .telefonos { font-size: 12px; font-weight: bold; color: #222; margin-top: 6px; }
@@ -439,20 +454,84 @@ const MntFacturacion = () => {
             .factura-id { text-align: right; min-width: 185px; }
             .factura-id .factura-titulo { font-size: 17px; font-weight: bold; margin-bottom: 4px; }
             .factura-id .factura-linea { font-size: 11px; margin-bottom: 3px; color: #333; }
-            .cliente-box { border: 1px solid #555; border-radius: 3px; padding: 7px 10px; margin-bottom: 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 4px 24px; font-size: 11.5px; }
+
+            /* ── Datos cliente ── */
+            .cliente-box {
+              border: 1px solid #555;
+              border-radius: 3px;
+              padding: 7px 10px;
+              margin-bottom: 10px;
+              display: grid;
+              grid-template-columns: 1fr 1fr;
+              gap: 4px 24px;
+              font-size: 11.5px;
+            }
             .cliente-box .field label { font-weight: bold; color: #000; }
-            .detalle-table { width: 100%; border-collapse: separate; border-spacing: 0; margin-bottom: 10px; font-size: 11.5px; table-layout: fixed; border: 1px solid #555; border-radius: 6px; overflow: hidden; }
-            .detalle-table th { background: #fff; color: #000; padding: 6px 8px; font-weight: bold; text-align: left; border-top: none; border-bottom: 1px solid #555; border-left: none; border-right: none; }
-            .detalle-table td { padding: 5px 8px; border: none; vertical-align: top; height: 22px; }
-            .detalle-table th + th, .detalle-table td + td { border-left: 1px solid #000; }
+
+            /* ── Tabla detalle ── */
+            .detalle-table {
+              width: 100%;
+              border-collapse: separate;
+              border-spacing: 0;
+              margin-bottom: 10px;
+              font-size: 11.5px;
+              table-layout: fixed;
+              border: 1px solid #555;
+              border-radius: 6px;
+              overflow: hidden;
+            }
+
+            .detalle-table th {
+              background: #fff;
+              color: #000;
+              padding: 6px 8px;
+              font-weight: bold;
+              text-align: left;
+              border-top: none;
+              border-bottom: 1px solid #000;
+              border-left: none;
+              border-right: none;
+            }
+
+            .detalle-table td {
+              padding: 5px 8px;
+              border: none;
+              vertical-align: top;
+              height: 22px;
+            }
+
+            .detalle-table th + th,
+            .detalle-table td + td {
+              border-left: 1px solid #000;
+            }
+
+            .detalle-table tr:first-child th:first-child { border-top-left-radius: 6px; }
+            .detalle-table tr:first-child th:last-child  { border-top-right-radius: 6px; }
+            .detalle-table tr:last-child td:first-child  { border-bottom-left-radius: 6px; }
+            .detalle-table tr:last-child td:last-child   { border-bottom-right-radius: 6px; }
+
             .detalle-table col.col-cant   { width: 60px; }
             .detalle-table col.col-desc   { width: auto; }
             .detalle-table col.col-precio { width: 110px; }
             .detalle-table col.col-total  { width: 110px; }
-            .detalle-table th:nth-child(1), .detalle-table td:nth-child(1) { text-align: center; }
-            .detalle-table th:nth-child(3), .detalle-table td:nth-child(3),
-            .detalle-table th:nth-child(4), .detalle-table td:nth-child(4) { text-align: right; }
-            .footer { text-align: center; font-size: 10px; color: #777; border-top: 1px solid #ccc; padding-top: 7px; margin-top: 8px; }
+
+            .detalle-table th:nth-child(1),
+            .detalle-table td:nth-child(1) { text-align: center; }
+
+            .detalle-table th:nth-child(3),
+            .detalle-table td:nth-child(3),
+            .detalle-table th:nth-child(4),
+            .detalle-table td:nth-child(4) { text-align: right; }
+
+            /* ── Pie ── */
+            .footer {
+              text-align: center;
+              font-size: 10px;
+              color: #777;
+              border-top: 1px solid #ccc;
+              padding-top: 7px;
+              margin-top: 8px;
+            }
           </style>
         </head>
         <body>
