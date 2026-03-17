@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../../../context/AuthContext'
 import logoFerreteria from 'src/assets/images/logo-ferreteria-agmner.png'
 import {
@@ -231,14 +231,14 @@ const Layout = () => {
 
   const buscarEnInventario = async (termino) => {
     const t = (termino || '').trim();
-    if (t.length < 2) {
+    if (t.length < 1) {
       setSugerenciasProductos([]);
       setMostrarSugerenciasProductos(false);
       return;
     }
     try {
       setCargandoProductos(true);
-      const SIZE_BUSQUEDA = 100;
+      const SIZE_BUSQUEDA = 500;
       const palabras = t.split(/\s+/).filter(Boolean);
 
       const fetchDescripcion = (palabra) =>
@@ -277,10 +277,14 @@ const Layout = () => {
     }
   };
 
+  const debounceProducto = useRef(null);
   const handleBusquedaProducto = (e) => {
     const value = e.target.value;
     setBusquedaProducto(value);
-    buscarEnInventario(value);
+    clearTimeout(debounceProducto.current);
+    debounceProducto.current = setTimeout(() => {
+      buscarEnInventario(value);
+    }, 300);
   };
 
   const agregarProductoDetalle = (producto) => {

@@ -256,7 +256,7 @@ const MntFacturacion = () => {
     debouncePreimpreso.current = setTimeout(() => {
       setPaginaActual(0)
       setFiltroAplicado((prev) => ({ ...prev, preimpreso: valor.trim() }))
-    }, 400)
+    }, 300)
   }
 
   // Filtro en tiempo real al escribir el nombre del cliente (debounce 400ms)
@@ -267,7 +267,7 @@ const MntFacturacion = () => {
     debounceCliente.current = setTimeout(() => {
       setPaginaActual(0)
       setFiltroAplicado((prev) => ({ ...prev, cliente: valor.trim() }))
-    }, 400)
+    }, 300)
   }
 
   // ── Ver detalle ──────────────────────────────────────────────────────────

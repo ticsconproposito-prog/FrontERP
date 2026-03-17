@@ -30,6 +30,8 @@ import {
 import "react-datepicker/dist/react-datepicker.css";
 import * as XLSX from 'xlsx';
 
+const PAGE_SIZE = 20
+
 const Layout = () => {
   const { usuario } = useAuth()
   const idUsuarioActual = Number(usuario?.idUsuario ?? usuario?.id_Usuario ?? 0)
@@ -335,54 +337,64 @@ const Layout = () => {
   }
   const [busqueda, setBusqueda] = useState('')
   const [todosProductos, setTodosProductos] = useState([])
-
-  const pageSize = 20
+  const [loadingProductos, setLoadingProductos] = useState(false)
+  const [errorProductos, setErrorProductos] = useState(null)
 
   const cargarProductos = async (pagina = 0, busquedaActual = busqueda) => {
-    const termino = (busquedaActual || '').trim()
+    try {
+      setLoadingProductos(true)
+      setErrorProductos(null)
+      const termino = (busquedaActual || '').trim()
 
-    if (!termino) {
-      const params = new URLSearchParams({ page: pagina })
-      const response = await fetch(`/api/productos?${params.toString()}`)
-      const data = await response.json()
-      setProductos(data.content)
-      setTodosProductos([])
-      setPage(data.number)
-      setTotalPages(data.totalPages)
-      return
+      if (!termino) {
+        const params = new URLSearchParams({ page: pagina })
+        const response = await fetch(`/api/productos?${params.toString()}`)
+        if (!response.ok) throw new Error(`Error ${response.status}`)
+        const data = await response.json()
+        setProductos(Array.isArray(data) ? data : data.content || [])
+        setTodosProductos([])
+        setPage(data.number ?? pagina)
+        setTotalPages(data.totalPages ?? 1)
+        return
+      }
+
+      const SIZE_BUSQUEDA = 500
+      const palabras = termino.split(/\s+/).filter(Boolean)
+
+      const fetchDesc = (palabra) =>
+        fetch(`/api/productos?descripcionProducto=${encodeURIComponent(palabra)}&page=0&size=${SIZE_BUSQUEDA}`)
+          .then(r => r.json()).then(d => (Array.isArray(d) ? d : d.content || []))
+
+      const [rCodigo, rProveedor, ...rDescPalabras] = await Promise.all([
+        fetch(`/api/productos?codigoProducto=${encodeURIComponent(termino)}&page=0&size=${SIZE_BUSQUEDA}`).then(r => r.json()),
+        fetch(`/api/productos?codigoProductoProveedor=${encodeURIComponent(termino)}&page=0&size=${SIZE_BUSQUEDA}`).then(r => r.json()),
+        ...palabras.map(fetchDesc),
+      ])
+
+      let porDescripcion = rDescPalabras[0] || []
+      for (let i = 1; i < rDescPalabras.length; i++) {
+        const ids = new Set(rDescPalabras[i].map(p => p.idProducto))
+        porDescripcion = porDescripcion.filter(p => ids.has(p.idProducto))
+      }
+
+      const combinados = [
+        ...(Array.isArray(rCodigo) ? rCodigo : rCodigo.content || []),
+        ...(Array.isArray(rProveedor) ? rProveedor : rProveedor.content || []),
+        ...porDescripcion,
+      ]
+      const unicos = combinados.filter((p, idx, arr) =>
+        arr.findIndex(x => x.idProducto === p.idProducto) === idx
+      )
+      const inicio = pagina * PAGE_SIZE
+      setTodosProductos(unicos)
+      setProductos(unicos.slice(inicio, inicio + PAGE_SIZE))
+      setPage(pagina)
+      setTotalPages(Math.ceil(unicos.length / PAGE_SIZE))
+    } catch (err) {
+      setErrorProductos(err.message)
+    } finally {
+      setLoadingProductos(false)
     }
-
-    const SIZE_BUSQUEDA = 500
-    const palabras = termino.split(/\s+/).filter(Boolean)
-
-    // Para codigoProducto y codigoProductoProveedor: búsqueda con el término completo
-    // Para descripcionProducto: si hay varias palabras, buscar cada una y hacer intersección
-    const fetchDesc = (palabra) =>
-      fetch(`/api/productos?descripcionProducto=${encodeURIComponent(palabra)}&page=0&size=${SIZE_BUSQUEDA}`)
-        .then(r => r.json()).then(d => d.content || [])
-
-    const [rCodigo, rProveedor, ...rDescPalabras] = await Promise.all([
-      fetch(`/api/productos?codigoProducto=${encodeURIComponent(termino)}&page=0&size=${SIZE_BUSQUEDA}`).then(r => r.json()),
-      fetch(`/api/productos?codigoProductoProveedor=${encodeURIComponent(termino)}&page=0&size=${SIZE_BUSQUEDA}`).then(r => r.json()),
-      ...palabras.map(fetchDesc),
-    ])
-
-    // Intersección de resultados por descripcion (producto debe aparecer en TODAS las palabras)
-    let porDescripcion = rDescPalabras[0] || []
-    for (let i = 1; i < rDescPalabras.length; i++) {
-      const ids = new Set(rDescPalabras[i].map(p => p.idProducto))
-      porDescripcion = porDescripcion.filter(p => ids.has(p.idProducto))
-    }
-
-    const combinados = [...(rCodigo.content || []), ...(rProveedor.content || []), ...porDescripcion]
-    const unicos = combinados.filter((p, idx, arr) =>
-      arr.findIndex(x => x.idProducto === p.idProducto) === idx
-    )
-    const inicio = pagina * pageSize
-    setTodosProductos(unicos)
-    setProductos(unicos.slice(inicio, inicio + pageSize))
-    setPage(pagina)
-    setTotalPages(Math.ceil(unicos.length / pageSize))
   }
 
   // Función para exportar productos a Excel
@@ -420,7 +432,9 @@ const Layout = () => {
       }
 
       // Preparar los datos para el Excel
-      const datosExcel = todosLosProductos.map((producto, index) => ({
+      const datosExcel = [...todosLosProductos]
+        .sort((a, b) => (a.idProducto ?? 0) - (b.idProducto ?? 0))
+        .map((producto, index) => ({
         'No.': index + 1,
         'Código Producto': producto.codigoProducto || '',
         'Código Producto Proveedor': producto.codigoProductoProveedor || '',
@@ -475,7 +489,10 @@ const Layout = () => {
   const activarModoEditarPrecio = () => {
     const inicial = {}
     productos.forEach(p => {
-      inicial[p.idProducto] = p.precioVenta != null ? String(p.precioVenta) : ''
+      inicial[p.idProducto] = {
+        venta:  p.precioVenta  != null ? String(p.precioVenta)  : '',
+        compra: p.precioCompra != null ? String(p.precioCompra) : '',
+      }
     })
     setPreciosEditados(inicial)
     setModoEditarPrecio(true)
@@ -489,9 +506,11 @@ const Layout = () => {
   const guardarPrecios = async () => {
     const regexDecimal = /^\d+(\.\d{1,2})?$/
     const cambios = productos.filter(p => {
-      const nuevo = preciosEditados[p.idProducto]
-      if (!nuevo?.trim() || !regexDecimal.test(nuevo.trim())) return false
-      return Number(nuevo) !== Number(p.precioVenta)
+      const ed = preciosEditados[p.idProducto]
+      if (!ed) return false
+      const ventaCambio  = ed.venta?.trim()  && regexDecimal.test(ed.venta.trim())  && Number(ed.venta)  !== Number(p.precioVenta)
+      const compraCambio = ed.compra?.trim() && regexDecimal.test(ed.compra.trim()) && Number(ed.compra) !== Number(p.precioCompra)
+      return ventaCambio || compraCambio
     })
 
     if (cambios.length === 0) {
@@ -506,8 +525,11 @@ const Layout = () => {
     setGuardandoPrecios(true)
     try {
       await Promise.all(
-        cambios.map(p =>
-          fetch(`/api/editarProducto/${p.idProducto}`, {
+        cambios.map(p => {
+          const ed = preciosEditados[p.idProducto]
+          const nuevaVenta  = ed.venta?.trim()  && regexDecimal.test(ed.venta.trim())  ? Number(ed.venta)  : p.precioVenta
+          const nuevaCompra = ed.compra?.trim() && regexDecimal.test(ed.compra.trim()) ? Number(ed.compra) : p.precioCompra
+          return fetch(`/api/editarProducto/${p.idProducto}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -516,12 +538,12 @@ const Layout = () => {
               codigoProductoProveedor:   p.codigoProductoProveedor,
               descripcionProducto:       p.descripcionProducto,
               unidadDeMedida:            p.unidadDeMedida,
-              precioCompra:              p.precioCompra,
-              precioVenta:               Number(preciosEditados[p.idProducto]),
+              precioCompra:              nuevaCompra,
+              precioVenta:               nuevaVenta,
               idUsuarioModificacion:     idUsuarioActual,
             }),
           }).then(r => { if (!r.ok) throw new Error(`Error al actualizar ${p.codigoProducto}`) })
-        )
+        })
       )
       await cargarProductos(page)
       cancelarEditarPrecio()
@@ -542,7 +564,7 @@ const Layout = () => {
   useEffect(() => {
     const delayDebounce = setTimeout(() => {
       cargarProductos(0, busqueda)
-    }, 500)
+    }, 300)
     return () => clearTimeout(delayDebounce)
   }, [busqueda])
 
@@ -576,7 +598,7 @@ const Layout = () => {
                       setVisible(true)
                     }}>+ Agregar</CButton>
                     <CButton color="primary" className="text-light" onClick={activarModoEditarPrecio}>
-                      $ Editar Precio Venta
+                      $ Editar Precios
                     </CButton>
                     <CButton color="info" className="text-light" onClick={exportarAExcel}>Exportar</CButton>
                   </>
@@ -771,6 +793,15 @@ const Layout = () => {
               </CModalFooter>
             </CModal>
 
+            {loadingProductos && (
+              <div className="text-center my-3">
+                <CSpinner color="primary" size="sm" /> Cargando productos...
+              </div>
+            )}
+            {errorProductos && (
+              <div className="text-danger my-2">Error: {errorProductos}</div>
+            )}
+
             <CTable bordered hover responsive="md" className="mt-4">
               <CTableHead style={{ '--cui-table-bg': '#1a3a6b', '--cui-table-color': '#fff', '--cui-table-border-color': '#2a4a8b', backgroundColor: '#1a3a6b', color: '#fff' }}>
                 <CTableRow>
@@ -788,11 +819,10 @@ const Layout = () => {
               <CTableBody>
                 {productos.map((producto, index) => (
                   <CTableRow key={`prod-${producto.idProducto ?? index}`}>
-                    <CTableDataCell>{page * pageSize + index + 1}</CTableDataCell>
+                    <CTableDataCell>{page * PAGE_SIZE + index + 1}</CTableDataCell>
                     <CTableDataCell>{producto.codigoProducto}</CTableDataCell>
                     <CTableDataCell>{producto.codigoProductoProveedor}</CTableDataCell>
                     <CTableDataCell>{producto.descripcionProducto}</CTableDataCell>
-                    <CTableDataCell className="text-end">{producto.precioCompra != null ? Number(producto.precioCompra).toFixed(2) : '—'}</CTableDataCell>
                     <CTableDataCell className="text-end">
                       {modoEditarPrecio ? (
                         <CFormInput
@@ -801,9 +831,32 @@ const Layout = () => {
                           min="0"
                           size="sm"
                           style={{ minWidth: '90px' }}
-                          value={preciosEditados[producto.idProducto] ?? ''}
+                          value={preciosEditados[producto.idProducto]?.compra ?? ''}
                           onChange={(e) =>
-                            setPreciosEditados(prev => ({ ...prev, [producto.idProducto]: e.target.value }))
+                            setPreciosEditados(prev => ({
+                              ...prev,
+                              [producto.idProducto]: { ...prev[producto.idProducto], compra: e.target.value }
+                            }))
+                          }
+                        />
+                      ) : (
+                        producto.precioCompra != null ? Number(producto.precioCompra).toFixed(2) : '—'
+                      )}
+                    </CTableDataCell>
+                    <CTableDataCell className="text-end">
+                      {modoEditarPrecio ? (
+                        <CFormInput
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          size="sm"
+                          style={{ minWidth: '90px' }}
+                          value={preciosEditados[producto.idProducto]?.venta ?? ''}
+                          onChange={(e) =>
+                            setPreciosEditados(prev => ({
+                              ...prev,
+                              [producto.idProducto]: { ...prev[producto.idProducto], venta: e.target.value }
+                            }))
                           }
                         />
                       ) : (

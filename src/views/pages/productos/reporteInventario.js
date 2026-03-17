@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useAuth } from '../../../context/AuthContext'
 import {
   CButton,
   CCard,
@@ -19,6 +20,11 @@ import {
   CSpinner,
   CPagination,
   CPaginationItem,
+  CModal,
+  CModalHeader,
+  CModalTitle,
+  CModalBody,
+  CModalFooter,
 } from '@coreui/react'
 import * as XLSX from 'xlsx'
 
@@ -27,6 +33,8 @@ const SIZE_TODOS = 10000
 
 const ReporteInventario = () => {
   const navigate = useNavigate()
+  const { usuario } = useAuth()
+  const idUsuarioActual = usuario?.idUsuario ?? usuario?.id_Usuario ?? usuario?.ID_Usuario ?? null
 
   // Tipo de reporte
   const [tipoReporte, setTipoReporte] = useState('1')
@@ -51,6 +59,20 @@ const ReporteInventario = () => {
   const [totalElemsInv, setTotalElemsInv]   = useState(0)
   const [loading, setLoading]               = useState(false)
   const [error, setError]                   = useState(null)
+
+  // Filtro de ubicación (solo para reporte por ubicación)
+  const [ubicacionFiltro, setUbicacionFiltro] = useState('')
+
+  // Edición de existencias (solo para reporte por ubicación)
+  const [modoEditarExistencias, setModoEditarExistencias] = useState(false)
+  const [existenciasEditadas, setExistenciasEditadas] = useState({}) // { idInventario: { existencias, danados } }
+  const [guardandoExistencias, setGuardandoExistencias] = useState(false)
+
+  // Modal de mensajes
+  const [modalMsgVisible, setModalMsgVisible] = useState(false)
+  const [modalMsgTitle, setModalMsgTitle]     = useState('')
+  const [modalMsgBody, setModalMsgBody]       = useState('')
+  const [modalMsgColor, setModalMsgColor]     = useState('info')
 
   // Diccionarios y ubicaciones
   const [unidadesMedida, setUnidadesMedida] = useState([])
@@ -89,16 +111,16 @@ const ReporteInventario = () => {
   // Formatea items de /api/inventario (anida campos de idProducto)
   const formatearInventario = (arr) =>
     arr.map((item) => ({
-      idInventario:            item.idInventario,
-      codigoProducto:          item.idProducto?.codigoProducto          || 'N/A',
-      codigoProductoProveedor: item.idProducto?.codigoProductoProveedor || 'N/A',
-      descripcionProducto:     item.idProducto?.descripcionProducto     || 'N/A',
-      precioCompra:            item.idProducto?.precioCompra            || 0,
-      estado:                  item.idProducto?.estado                  ?? item.estado,
-      idUbicacion:             item.idUbicacion                         ?? '—',
-      cantidadExistencias:     item.cantidadExistencias                 || 0,
-      cantidadDanados:         item.cantidadDanados                     || 0,
-    }))
+        idInventario:            item.idInventario,
+        codigoProducto:          item.idProducto?.codigoProducto          || 'N/A',
+        codigoProductoProveedor: item.idProducto?.codigoProductoProveedor || 'N/A',
+        descripcionProducto:     item.idProducto?.descripcionProducto     || 'N/A',
+        precioCompra:            item.idProducto?.precioCompra            || 0,
+        estado:                  item.idProducto?.estado                  ?? item.estado,
+        idUbicacion:             item.idUbicacion                         ?? '—',
+        cantidadExistencias:     item.cantidadExistencias                 || 0,
+        cantidadDanados:         item.cantidadDanados                     || 0,
+      }))
 
   // ── Reporte General ──
   // Con búsqueda: llamadas paralelas por campo server-side (descripcion, codigoProducto, codigoProductoProveedor)
@@ -113,8 +135,9 @@ const ReporteInventario = () => {
         const res = await fetch(`/api/inventarioAgrupado?${params}`)
         if (!res.ok) throw new Error(`Error ${res.status}`)
         const data = await res.json()
+        const arrAgrupado = Array.isArray(data) ? data : data.content || []
         setTodosAgrupado([])
-        setInventarioAgrupado(Array.isArray(data) ? data : data.content || [])
+        setInventarioAgrupado(arrAgrupado)
         setPageAgrupado(data.number ?? 0)
         setTotalPagesAgrupado(data.totalPages ?? 0)
         setTotalElemsAgrupado(data.totalElements ?? 0)
@@ -144,9 +167,9 @@ const ReporteInventario = () => {
           ...(Array.isArray(rProveedor) ? rProveedor : rProveedor.content || []),
           ...porDescripcion,
         ]
-        const unicos = combinados.filter((p, idx, arr) =>
+        const unicos = [...combinados.filter((p, idx, arr) =>
           arr.findIndex(x => x.producto?.idProducto === p.producto?.idProducto) === idx
-        )
+        )].sort((a, b) => (a.producto?.idProducto ?? 0) - (b.producto?.idProducto ?? 0))
         const inicio = pagina * PAGE_SIZE
         setTodosAgrupado(unicos)
         setInventarioAgrupado(unicos.slice(inicio, inicio + PAGE_SIZE))
@@ -163,15 +186,16 @@ const ReporteInventario = () => {
   }
 
   // ── Reporte por Ubicación ──
-  // Con búsqueda: llamadas paralelas por campo server-side (descripcion, codigoProducto, codigoProductoProveedor)
-  const cargarInventario = async (pagina = 0, termino = busqueda) => {
+  const cargarInventario = async (pagina = 0, termino = busqueda, ubicacion = ubicacionFiltro) => {
     try {
       setLoading(true)
       setError(null)
       const t = (termino || '').trim()
 
       if (!t) {
+        // Sin búsqueda: carga paginada con idUbicacion como parámetro server-side
         const params = new URLSearchParams({ page: pagina, size: PAGE_SIZE })
+        if (ubicacion) params.append('idUbicacion', ubicacion)
         const res = await fetch(`/api/inventario?${params}`)
         if (!res.ok) throw new Error(`Error ${res.status}`)
         const data = await res.json()
@@ -181,43 +205,46 @@ const ReporteInventario = () => {
         setPageInv(data.number ?? 0)
         setTotalPagesInv(data.totalPages ?? 0)
         setTotalElemsInv(data.totalElements ?? 0)
-      } else {
-        const SIZE_BUSQUEDA = 500
-        const palabras = t.split(/\s+/).filter(Boolean)
-
-        const fetchDescripcion = (palabra) =>
-          fetch(`/api/inventario?descripcion=${encodeURIComponent(palabra)}&page=0&size=${SIZE_BUSQUEDA}`)
-            .then(r => r.json()).then(d => (Array.isArray(d) ? d : d.content || []))
-
-        const [rCodigo, rProveedor, ...rDescPalabras] = await Promise.all([
-          fetch(`/api/inventario?codigoProducto=${encodeURIComponent(t)}&page=0&size=${SIZE_BUSQUEDA}`).then(r => r.json()),
-          fetch(`/api/inventario?codigoProductoProveedor=${encodeURIComponent(t)}&page=0&size=${SIZE_BUSQUEDA}`).then(r => r.json()),
-          ...palabras.map(fetchDescripcion),
-        ])
-
-        // Intersección por descripción (el producto debe aparecer en TODAS las palabras)
-        let porDescripcion = rDescPalabras[0] || []
-        for (let i = 1; i < rDescPalabras.length; i++) {
-          const ids = new Set(rDescPalabras[i].map(p => p.idInventario))
-          porDescripcion = porDescripcion.filter(p => ids.has(p.idInventario))
-        }
-
-        const combinados = [
-          ...(Array.isArray(rCodigo) ? rCodigo : rCodigo.content || []),
-          ...(Array.isArray(rProveedor) ? rProveedor : rProveedor.content || []),
-          ...porDescripcion,
-        ]
-        const unicos = combinados.filter((p, idx, arr) =>
-          arr.findIndex(x => x.idInventario === p.idInventario) === idx
-        )
-        const formateados = formatearInventario(unicos)
-        const inicio = pagina * PAGE_SIZE
-        setTodosInventario(formateados)
-        setInventario(formateados.slice(inicio, inicio + PAGE_SIZE))
-        setPageInv(pagina)
-        setTotalPagesInv(Math.ceil(formateados.length / PAGE_SIZE))
-        setTotalElemsInv(formateados.length)
+        return
       }
+
+      // Con búsqueda: llamadas paralelas server-side incluyendo idUbicacion
+      const SIZE_BUSQUEDA = 500
+      const palabras = t.split(/\s+/).filter(Boolean)
+      const ubParam = ubicacion ? `&idUbicacion=${encodeURIComponent(ubicacion)}` : ''
+
+      const fetchDescripcion = (palabra) =>
+        fetch(`/api/inventario?descripcion=${encodeURIComponent(palabra)}&page=0&size=${SIZE_BUSQUEDA}${ubParam}`)
+          .then(r => r.json()).then(d => (Array.isArray(d) ? d : d.content || []))
+
+      const [rCodigo, rProveedor, ...rDescPalabras] = await Promise.all([
+        fetch(`/api/inventario?codigoProducto=${encodeURIComponent(t)}&page=0&size=${SIZE_BUSQUEDA}${ubParam}`).then(r => r.json()),
+        fetch(`/api/inventario?codigoProductoProveedor=${encodeURIComponent(t)}&page=0&size=${SIZE_BUSQUEDA}${ubParam}`).then(r => r.json()),
+        ...palabras.map(fetchDescripcion),
+      ])
+
+      let porDescripcion = rDescPalabras[0] || []
+      for (let i = 1; i < rDescPalabras.length; i++) {
+        const ids = new Set(rDescPalabras[i].map(p => p.idInventario))
+        porDescripcion = porDescripcion.filter(p => ids.has(p.idInventario))
+      }
+
+      const combinados = [
+        ...(Array.isArray(rCodigo) ? rCodigo : rCodigo.content || []),
+        ...(Array.isArray(rProveedor) ? rProveedor : rProveedor.content || []),
+        ...porDescripcion,
+      ]
+      const unicos = combinados
+        .filter((p, idx, arr) => arr.findIndex(x => x.idInventario === p.idInventario) === idx)
+        .sort((a, b) => (a.idInventario ?? 0) - (b.idInventario ?? 0))
+      const formateados = formatearInventario(unicos)
+
+      const inicio = pagina * PAGE_SIZE
+      setTodosInventario(formateados)
+      setInventario(formateados.slice(inicio, inicio + PAGE_SIZE))
+      setPageInv(pagina)
+      setTotalPagesInv(Math.ceil(formateados.length / PAGE_SIZE))
+      setTotalElemsInv(formateados.length)
     } catch (err) {
       setError(err.message)
       setInventario([])
@@ -238,7 +265,7 @@ const ReporteInventario = () => {
   }
 
   const irPaginaInv = (p) => {
-    if (busqueda.trim() && todosInventario.length > 0) {
+    if ((busqueda.trim() || ubicacionFiltro) && todosInventario.length > 0) {
       const inicio = p * PAGE_SIZE
       setInventario(todosInventario.slice(inicio, inicio + PAGE_SIZE))
       setPageInv(p)
@@ -247,11 +274,86 @@ const ReporteInventario = () => {
     }
   }
 
+  // ── Editar Existencias ──
+  const activarModoEditarExistencias = () => {
+    const inicial = {}
+    inventario.forEach(item => {
+      inicial[item.idInventario] = {
+        existencias: item.cantidadExistencias != null ? String(item.cantidadExistencias) : '0',
+        danados:     item.cantidadDanados     != null ? String(item.cantidadDanados)     : '0',
+      }
+    })
+    setExistenciasEditadas(inicial)
+    setModoEditarExistencias(true)
+  }
+
+  const cancelarEditarExistencias = () => {
+    setModoEditarExistencias(false)
+    setExistenciasEditadas({})
+  }
+
+  const guardarExistencias = async () => {
+    const regexEntero = /^\d+$/
+    const cambios = inventario.filter(item => {
+      const ed = existenciasEditadas[item.idInventario]
+      if (!ed) return false
+      const exCambio  = ed.existencias?.trim() && regexEntero.test(ed.existencias.trim()) && Number(ed.existencias) !== Number(item.cantidadExistencias)
+      const danCambio = ed.danados?.trim()     && regexEntero.test(ed.danados.trim())     && Number(ed.danados)     !== Number(item.cantidadDanados)
+      return exCambio || danCambio
+    })
+
+    if (cambios.length === 0) {
+      setModalMsgTitle('Sin cambios')
+      setModalMsgBody('No se detectaron cambios en las existencias.')
+      setModalMsgColor('info')
+      setModalMsgVisible(true)
+      cancelarEditarExistencias()
+      return
+    }
+
+    setGuardandoExistencias(true)
+    try {
+      await Promise.all(
+        cambios.map(item => {
+          const ed = existenciasEditadas[item.idInventario]
+          const nuevasEx  = ed.existencias?.trim() && regexEntero.test(ed.existencias.trim()) ? Number(ed.existencias) : item.cantidadExistencias
+          const nuevosDan = ed.danados?.trim()     && regexEntero.test(ed.danados.trim())     ? Number(ed.danados)     : item.cantidadDanados
+          const payload = {
+            idInventario:          item.idInventario,
+            cantidadExistencias:   nuevasEx,
+            cantidadDanados:       nuevosDan,
+            idUsuarioModificacion: idUsuarioActual,
+          }
+          console.log(`[editarInventario] PUT /api/editarInventario/${item.idInventario}`, payload)
+          return fetch(`/api/editarInventario/${item.idInventario}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          }).then(r => { if (!r.ok) throw new Error(`Error al actualizar inventario ${item.idInventario}`) })
+        })
+      )
+      await cargarInventario(pageInv, busqueda, ubicacionFiltro)
+      cancelarEditarExistencias()
+      setModalMsgTitle('Éxito')
+      setModalMsgBody(`${cambios.length} registro(s) actualizado(s) correctamente.`)
+      setModalMsgColor('success')
+      setModalMsgVisible(true)
+    } catch (err) {
+      setModalMsgTitle('Error')
+      setModalMsgBody(err.message)
+      setModalMsgColor('danger')
+      setModalMsgVisible(true)
+    } finally {
+      setGuardandoExistencias(false)
+    }
+  }
+
   // ── Limpiar ──
   const limpiarBusqueda = () => {
     setBusqueda('')
+    setUbicacionFiltro('')
     if (tipoReporte === '1') cargarInventarioAgrupado(0, '')
-    else cargarInventario(0, '')
+    else cargarInventario(0, '', '')
   }
 
   // ── Exportar a Excel (todos los registros según filtros activos) ──
@@ -297,17 +399,19 @@ const ReporteInventario = () => {
         } catch { return }
       }
 
-      const datosExcel = todos.map((item, i) => ({
-        'No.':                 i + 1,
-        'Código Producto':   item.producto?.codigoProducto          || '',
-        'Código Proveedor':  item.producto?.codigoProductoProveedor || '',
-        'Descripción':       item.producto?.descripcionProducto     || '',
-        'Precio Compra':     item.producto?.precioCompra != null ? Number(item.producto.precioCompra).toFixed(2) : '',
-        'Total Existencias': item.totalExistencias ?? 0,
-        'Total Dañados':     item.totalDanados     ?? 0,
-        'Unidad de Medida':  obtenerNombreUnidad(item.producto?.unidadDeMedida),
-        'Estado':            obtenerNombreEstado(item.producto?.estado),
-      }))
+      const datosExcel = [...todos]
+        .sort((a, b) => (a.producto?.idProducto ?? 0) - (b.producto?.idProducto ?? 0))
+        .map((item, i) => ({
+          'No.':                 i + 1,
+          'Código Producto':   item.producto?.codigoProducto          || '',
+          'Código Proveedor':  item.producto?.codigoProductoProveedor || '',
+          'Descripción':       item.producto?.descripcionProducto     || '',
+          'Precio Compra':     item.producto?.precioCompra != null ? Number(item.producto.precioCompra).toFixed(2) : '',
+          'Total Existencias': item.totalExistencias ?? 0,
+          'Total Dañados':     item.totalDanados     ?? 0,
+          'Unidad de Medida':  obtenerNombreUnidad(item.producto?.unidadDeMedida),
+          'Estado':            obtenerNombreEstado(item.producto?.estado),
+        }))
       const ws = XLSX.utils.json_to_sheet(datosExcel)
       ws['!cols'] = [{ wch:5 },{ wch:20 },{ wch:20 },{ wch:50 },{ wch:15 },{ wch:18 },{ wch:15 },{ wch:20 },{ wch:15 }]
       const wb = XLSX.utils.book_new()
@@ -340,9 +444,9 @@ const ReporteInventario = () => {
             ...(Array.isArray(rProveedor) ? rProveedor : rProveedor.content || []),
             ...porDescripcion,
           ]
-          const unicos = combinados.filter((p, idx, arr) =>
-            arr.findIndex(x => x.idInventario === p.idInventario) === idx
-          )
+          const unicos = combinados
+            .filter((p, idx, arr) => arr.findIndex(x => x.idInventario === p.idInventario) === idx)
+            .sort((a, b) => (a.idInventario ?? 0) - (b.idInventario ?? 0))
           todos = formatearInventario(unicos)
         } catch { return }
       } else {
@@ -355,17 +459,19 @@ const ReporteInventario = () => {
         } catch { return }
       }
 
-      const datosExcel = todos.map((item, i) => ({
-        'No.':                i + 1,
-        'Código Producto':  item.codigoProducto          || '',
-        'Código Proveedor': item.codigoProductoProveedor || '',
-        'Descripción':      item.descripcionProducto     || '',
-        'Precio Compra':    Number(item.precioCompra || 0).toFixed(2),
-        'Existencias':      item.cantidadExistencias,
-        'Dañados':          item.cantidadDanados,
-        'Ubicación':        obtenerNombreUbicacion(item.idUbicacion),
-        'Estado':           obtenerNombreEstado(item.estado),
-      }))
+      const datosExcel = [...todos]
+        .sort((a, b) => (a.idInventario ?? 0) - (b.idInventario ?? 0))
+        .map((item, i) => ({
+          'No.':                i + 1,
+          'Código Producto':  item.codigoProducto          || '',
+          'Código Proveedor': item.codigoProductoProveedor || '',
+          'Descripción':      item.descripcionProducto     || '',
+          'Precio Compra':    Number(item.precioCompra || 0).toFixed(2),
+          'Existencias':      item.cantidadExistencias,
+          'Dañados':          item.cantidadDanados,
+          'Ubicación':        obtenerNombreUbicacion(item.idUbicacion),
+          'Estado':           obtenerNombreEstado(item.estado),
+        }))
       const ws = XLSX.utils.json_to_sheet(datosExcel)
       ws['!cols'] = [{ wch:5 },{ wch:20 },{ wch:20 },{ wch:50 },{ wch:15 },{ wch:12 },{ wch:12 },{ wch:20 },{ wch:15 }]
       const wb = XLSX.utils.book_new()
@@ -377,21 +483,20 @@ const ReporteInventario = () => {
   // ── Effects ──
   useEffect(() => { cargarDiccionarios() }, [])
 
-  // Al cambiar tipo de reporte: solo resetear búsqueda
-  // (el reset dispara el efecto de debounce que hace la carga)
+  // Al cambiar tipo de reporte: resetear búsqueda y filtro de ubicación
   useEffect(() => {
     setBusqueda('')
+    setUbicacionFiltro('')
   }, [tipoReporte])
 
-  // Único efecto de carga — igual que gestionProductos.js
-  // Cubre: carga inicial, cambio de busqueda y cambio de tipoReporte
+  // Único efecto de carga — cubre: carga inicial, cambio de busqueda, tipoReporte y ubicacionFiltro
   useEffect(() => {
     const timer = setTimeout(() => {
       if (tipoReporte === '1') cargarInventarioAgrupado(0, busqueda)
-      else cargarInventario(0, busqueda)
-    }, 500)
+      else cargarInventario(0, busqueda, ubicacionFiltro)
+    }, 300)
     return () => clearTimeout(timer)
-  }, [busqueda, tipoReporte])
+  }, [busqueda, tipoReporte, ubicacionFiltro])
 
   // ── Componente de paginación reutilizable ──
   const Paginacion = ({ page, totalPages, onIr }) => {
@@ -438,7 +543,7 @@ const ReporteInventario = () => {
             </CCardHeader>
             <CCardBody>
               {/* Filtros */}
-              <CRow className="mb-3">
+              <CRow className="mb-3 g-3">
                 <CCol md={3}>
                   <CFormLabel className="fw-semibold">Tipo de Reporte</CFormLabel>
                   <CFormSelect value={tipoReporte} onChange={(e) => setTipoReporte(e.target.value)}>
@@ -446,7 +551,23 @@ const ReporteInventario = () => {
                     <option value="2">Reporte por Ubicación</option>
                   </CFormSelect>
                 </CCol>
-                <CCol md={6}>
+                {tipoReporte === '2' && (
+                  <CCol md={2}>
+                    <CFormLabel className="fw-semibold">Ubicación</CFormLabel>
+                    <CFormSelect
+                      value={ubicacionFiltro}
+                      onChange={(e) => setUbicacionFiltro(e.target.value)}
+                    >
+                      <option value="">Todas las ubicaciones</option>
+                      {ubicaciones.map((u) => (
+                        <option key={u.idUbicacion} value={u.idUbicacion}>
+                          {u.nombreUbicacion || `Ubicación ${u.idUbicacion}`}
+                        </option>
+                      ))}
+                    </CFormSelect>
+                  </CCol>
+                )}
+                <CCol md={tipoReporte === '2' ? 3 : 6}>
                   <CFormLabel className="fw-semibold">Buscar</CFormLabel>
                   <CFormInput
                     type="text"
@@ -456,9 +577,25 @@ const ReporteInventario = () => {
                     autoComplete="off"
                   />
                 </CCol>
-                <CCol md={3} className="d-flex align-items-end justify-content-end gap-2">
-                  <CButton color="secondary" onClick={limpiarBusqueda}>Limpiar</CButton>
-                  <CButton color="success" className="text-white" onClick={exportarAExcel}>Exportar</CButton>
+                <CCol md={tipoReporte === '2' ? 4 : 3} className="d-flex align-items-end justify-content-end gap-2">
+                  {tipoReporte === '2' && !modoEditarExistencias && (
+                    <CButton className="text-white text-nowrap" style={{ backgroundColor: '#e8590c', borderColor: '#e8590c' }} onClick={activarModoEditarExistencias}>
+                      Editar Existencias
+                    </CButton>
+                  )}
+                  {tipoReporte === '2' && modoEditarExistencias && (
+                    <>
+                      <CButton color="success" className="text-white" onClick={guardarExistencias} disabled={guardandoExistencias}>
+                        {guardandoExistencias && <CSpinner size="sm" className="me-1" />}
+                        Guardar
+                      </CButton>
+                      <CButton color="secondary" onClick={cancelarEditarExistencias} disabled={guardandoExistencias}>
+                        Cancelar
+                      </CButton>
+                    </>
+                  )}
+                  <CButton color="secondary" className="text-nowrap" onClick={limpiarBusqueda}>Limpiar</CButton>
+                  <CButton color="success" className="text-white text-nowrap" onClick={exportarAExcel}>Exportar</CButton>
                 </CCol>
               </CRow>
 
@@ -541,8 +678,36 @@ const ReporteInventario = () => {
                             <CTableDataCell>{item.codigoProductoProveedor}</CTableDataCell>
                             <CTableDataCell>{item.descripcionProducto}</CTableDataCell>
                             <CTableDataCell className="text-end">Q{Number(item.precioCompra).toFixed(2)}</CTableDataCell>
-                            <CTableDataCell className="text-center">{item.cantidadExistencias}</CTableDataCell>
-                            <CTableDataCell className="text-center">{item.cantidadDanados}</CTableDataCell>
+                            <CTableDataCell className="text-center">
+                              {modoEditarExistencias ? (
+                                <CFormInput
+                                  type="number"
+                                  min="0"
+                                  size="sm"
+                                  style={{ minWidth: '80px' }}
+                                  value={existenciasEditadas[item.idInventario]?.existencias ?? ''}
+                                  onChange={(e) => setExistenciasEditadas(prev => ({
+                                    ...prev,
+                                    [item.idInventario]: { ...prev[item.idInventario], existencias: e.target.value }
+                                  }))}
+                                />
+                              ) : item.cantidadExistencias}
+                            </CTableDataCell>
+                            <CTableDataCell className="text-center">
+                              {modoEditarExistencias ? (
+                                <CFormInput
+                                  type="number"
+                                  min="0"
+                                  size="sm"
+                                  style={{ minWidth: '80px' }}
+                                  value={existenciasEditadas[item.idInventario]?.danados ?? ''}
+                                  onChange={(e) => setExistenciasEditadas(prev => ({
+                                    ...prev,
+                                    [item.idInventario]: { ...prev[item.idInventario], danados: e.target.value }
+                                  }))}
+                                />
+                              ) : item.cantidadDanados}
+                            </CTableDataCell>
                             <CTableDataCell className="text-center">{obtenerNombreUbicacion(item.idUbicacion)}</CTableDataCell>
                             <CTableDataCell className="text-center">{obtenerNombreEstado(item.estado)}</CTableDataCell>
                           </CTableRow>
@@ -557,6 +722,17 @@ const ReporteInventario = () => {
           </CCard>
         </CCol>
       </CRow>
+      <CModal visible={modalMsgVisible} onClose={() => setModalMsgVisible(false)} alignment="center">
+        <CModalHeader className={`bg-${modalMsgColor} text-white`}>
+          <CModalTitle>{modalMsgTitle}</CModalTitle>
+        </CModalHeader>
+        <CModalBody>{modalMsgBody}</CModalBody>
+        <CModalFooter>
+          <CButton color={modalMsgColor} className="text-white" onClick={() => setModalMsgVisible(false)}>
+            Cerrar
+          </CButton>
+        </CModalFooter>
+      </CModal>
     </>
   )
 }

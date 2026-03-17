@@ -121,6 +121,8 @@ const ConsultaFacturas = () => {
         const filtros = {
           ...(filtroAplicado.inicio && { fechaInicio: filtroAplicado.inicio }),
           ...(filtroAplicado.fin && { fechaFin: filtroAplicado.fin }),
+          tipoDocumento: '1',
+          facturaProcesada: 'S',
         }
 
         // Carga paginada para la tabla
@@ -128,11 +130,10 @@ const ConsultaFacturas = () => {
         const res = await fetch(`/api/erpEncabezadoFacturas?${params}`)
         if (!res.ok) throw new Error(`Error ${res.status}: ${res.statusText}`)
         const data = await res.json()
-        const soloFacturas = (Array.isArray(data) ? data : data.content ?? [])
-          .filter((f) => String(f.tipoDocumento) === '1')
+        const soloFacturas = Array.isArray(data) ? data : data.content ?? []
         setFacturas(soloFacturas)
         setTotalPaginas(Array.isArray(data) ? 1 : data.totalPages ?? 1)
-        setTotalElementos(soloFacturas.length)
+        setTotalElementos(Array.isArray(data) ? soloFacturas.length : data.totalElements ?? soloFacturas.length)
 
         // Carga completa para resumen y exportación (solo cuando cambia el filtro, no la página)
         if (paginaActual === 0) {
@@ -140,8 +141,7 @@ const ConsultaFacturas = () => {
           const resTotal = await fetch(`/api/erpEncabezadoFacturas?${paramsTotal}`)
           if (resTotal.ok) {
             const dataTotal = await resTotal.json()
-            const todas = (Array.isArray(dataTotal) ? dataTotal : dataTotal.content ?? [])
-              .filter((f) => String(f.tipoDocumento) === '1')
+            const todas = Array.isArray(dataTotal) ? dataTotal : dataTotal.content ?? []
             setTodasFacturas(todas)
             setResumen({
               cantidadFacturas: todas.length,
@@ -171,12 +171,13 @@ const ConsultaFacturas = () => {
           size: 1000,
           ...(filtroAplicado.inicio && { fechaInicio: filtroAplicado.inicio }),
           ...(filtroAplicado.fin && { fechaFin: filtroAplicado.fin }),
+          tipoDocumento: '1',
+          facturaProcesada: 'S',
         })
         const resEnc = await fetch(`/api/erpEncabezadoFacturas?${paramsEnc}`)
         if (!resEnc.ok) throw new Error(`Error ${resEnc.status}: ${resEnc.statusText}`)
         const dataEnc = await resEnc.json()
-        const encabezados = (Array.isArray(dataEnc) ? dataEnc : dataEnc.content ?? [])
-          .filter((f) => String(f.tipoDocumento) === '1')
+        const encabezados = Array.isArray(dataEnc) ? dataEnc : dataEnc.content ?? []
 
         // 2. Para cada encabezado obtener su detalle
         const resultados = await Promise.all(
@@ -590,7 +591,7 @@ const ConsultaFacturas = () => {
                 <CCol md={4}>
                   <div className="border rounded p-3 text-center" style={{ borderColor: '#1a3a6b' }}>
                     <div className="text-muted small mb-1">Período consultado</div>
-                    <div className="fs-3 fw-bold" style={{ color: '#1a8fd1' }}>
+                    <div className="fs-5 fw-bold" style={{ color: '#1a8fd1' }}>
                       {filtroAplicado.inicio && filtroAplicado.fin
                         ? filtroAplicado.inicio === filtroAplicado.fin
                           ? formatFecha(filtroAplicado.inicio)
@@ -602,7 +603,7 @@ const ConsultaFacturas = () => {
                 <CCol md={4}>
                   <div className="border rounded p-3 text-center" style={{ borderColor: '#321fdb' }}>
                     <div className="text-muted small mb-1">Cantidad de Facturas</div>
-                    <div className="fs-3 fw-bold text-primary">
+                    <div className="fs-5 fw-bold text-primary">
                       {cargando ? <CSpinner size="sm" /> : resumen.cantidadFacturas}
                     </div>
                   </div>
@@ -610,7 +611,7 @@ const ConsultaFacturas = () => {
                 <CCol md={4}>
                   <div className="border rounded p-3 text-center" style={{ borderColor: '#2eb85c' }}>
                     <div className="text-muted small mb-1">Total de Venta</div>
-                    <div className="fs-3 fw-bold text-success">
+                    <div className="fs-5 fw-bold text-success">
                       {cargando ? <CSpinner size="sm" /> : formatMoneda(resumen.totalVenta)}
                     </div>
                   </div>
@@ -696,7 +697,7 @@ const ConsultaFacturas = () => {
                   <CCol md={4}>
                     <div className="border rounded p-3 text-center" style={{ borderColor: '#1a3a6b' }}>
                       <div className="text-muted small mb-1">Período consultado</div>
-                      <div className="fs-3 fw-bold" style={{ color: '#1a8fd1' }}>
+                      <div className="fs-4 fw-bold" style={{ color: '#1a8fd1' }}>
                         {filtroAplicado.inicio && filtroAplicado.fin
                           ? filtroAplicado.inicio === filtroAplicado.fin
                             ? formatFecha(filtroAplicado.inicio)
@@ -708,13 +709,13 @@ const ConsultaFacturas = () => {
                   <CCol md={4}>
                     <div className="border rounded p-3 text-center" style={{ borderColor: '#321fdb' }}>
                       <div className="text-muted small mb-1">Cantidad de Productos</div>
-                      <div className="fs-3 fw-bold text-primary">{totalDetalles}</div>
+                      <div className="fs-5 fw-bold text-primary">{totalDetalles}</div>
                     </div>
                   </CCol>
                   <CCol md={4}>
                     <div className="border rounded p-3 text-center" style={{ borderColor: '#2eb85c' }}>
                       <div className="text-muted small mb-1">Total de Venta</div>
-                      <div className="fs-3 fw-bold text-success">
+                      <div className="fs-5 fw-bold text-success">
                         {formatMoneda(detalles.reduce((sum, d) => sum + (d.ImpTotal ?? 0), 0))}
                       </div>
                     </div>
