@@ -38,10 +38,11 @@ const Layout = () => {
   const [guardandoCliente, setGuardandoCliente] = useState(false);
   const [errorCliente, setErrorCliente] = useState('');
   const [errorsCliente, setErrorsCliente] = useState({});
-  const [clientes, setClientes] = useState([]);
   const [sugerenciasClientes, setSugerenciasClientes] = useState([]);
   const [mostrarSugerenciasClientes, setMostrarSugerenciasClientes] = useState(false);
+  const [cargandoClientes, setCargandoClientes] = useState(false);
   const [clienteSeleccionado, setClienteSeleccionado] = useState(false);
+  const debounceCliente = useRef(null);
 
   // Estados para productos
   const [productos, setProductos] = useState([]);
@@ -116,17 +117,26 @@ const Layout = () => {
     setFormFactura((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleConsumidorFinal = (e) => {
+  const handleConsumidorFinal = async (e) => {
     const checked = e.target.checked;
     setEsConsumidorFinal(checked);
 
     if (checked) {
-      const clienteCF = clientes.find(
-        (c) => (c.nit || '').toString().toUpperCase() === 'CF' ||
-               (c.nombreCliente || c.nombreFacturacion || '').toLowerCase().includes('consumidor final')
-      );
+      let idClienteCF = null;
+      try {
+        const res = await fetch('/api/clientes?documentoCliente=CF&page=0&size=1');
+        if (res.ok) {
+          const data = await res.json();
+          const lista = Array.isArray(data) ? data : (data?.content || []);
+          const cf = lista.find(
+            (c) => (c.nit || '').toString().toUpperCase() === 'CF' ||
+                   (c.nombreCliente || c.nombreFacturacion || '').toLowerCase().includes('consumidor final')
+          );
+          idClienteCF = cf?.idCliente ?? cf?.id ?? null;
+        }
+      } catch { /* silencioso */ }
       setFormFactura({
-        idCliente: clienteCF?.idCliente ?? clienteCF?.id ?? null,
+        idCliente: idClienteCF,
         nit: 'CF',
         nombre: 'Consumidor Final',
         correoElectronico: '',
@@ -199,15 +209,33 @@ const Layout = () => {
     }
   };
 
-  const cargarClientes = async () => {
+  const buscarClientes = async (termino, campo = 'nombre') => {
+    const t = (termino || '').trim();
+    if (t.length < 1) {
+      setSugerenciasClientes([]);
+      setMostrarSugerenciasClientes(false);
+      return;
+    }
+    setCargandoClientes(true);
     try {
-      const response = await fetch('/api/clientes?size=1000');
-      const data = await response.json();
+      const params = new URLSearchParams({ page: 0, size: 15 });
+      if (campo === 'nombre') {
+        params.append('nombreCliente', t);
+      } else {
+        if (documento) params.append('tipoDocumento', documento);
+        params.append('documentoCliente', t);
+      }
+      const res = await fetch(`/api/clientes?${params}`);
+      if (!res.ok) throw new Error();
+      const data = await res.json();
       const lista = Array.isArray(data) ? data : (data?.content || []);
-      setClientes(lista);
-    } catch (e) {
-      console.error('Error al cargar clientes:', e);
-      setClientes([]);
+      setSugerenciasClientes(lista.slice(0, 15));
+      setMostrarSugerenciasClientes(lista.length > 0);
+    } catch {
+      setSugerenciasClientes([]);
+      setMostrarSugerenciasClientes(false);
+    } finally {
+      setCargandoClientes(false);
     }
   };
 
@@ -403,44 +431,27 @@ const Layout = () => {
   const handleNitChange = (e) => {
     const value = (e.target.value || '').toString();
     setFormFactura((prev) => ({ ...prev, nit: value }));
-
-    const valorLimpio = value.trim();
-    if (valorLimpio.length >= 2) {
-      const valorLower = valorLimpio.toLowerCase();
-      const tipo = tipoBusqueda();
-      const encontrados = clientes.filter((c) => {
-        if (tipo === 'dpi' || tipo === 'pasaporte') {
-          const dpi = (c.documentoIdentificacion || '').toString().toLowerCase();
-          return dpi.includes(valorLower);
-        }
-        const nit = (c.nit || '').toString().toLowerCase();
-        return nit.includes(valorLower);
-      });
-      setSugerenciasClientes(encontrados.slice(0, 10));
-      setMostrarSugerenciasClientes(encontrados.length > 0);
-    } else {
+    const tipo = tipoBusqueda();
+    const campo = (tipo === 'dpi' || tipo === 'pasaporte') ? 'dpi' : 'nit';
+    clearTimeout(debounceCliente.current);
+    if (value.trim().length < 1) {
       setSugerenciasClientes([]);
       setMostrarSugerenciasClientes(false);
+      return;
     }
+    debounceCliente.current = setTimeout(() => buscarClientes(value, campo), 300);
   };
 
   const handleNombreChange = (e) => {
     const value = (e.target.value || '').toString();
     setFormFactura((prev) => ({ ...prev, nombre: value }));
-
-    const valorLimpio = value.trim();
-    if (valorLimpio.length >= 2) {
-      const valorLower = valorLimpio.toLowerCase();
-      const encontrados = clientes.filter((c) => {
-        const nombre = (c.nombreCliente || c.nombreFacturacion || '').toString().toLowerCase();
-        return nombre.includes(valorLower);
-      });
-      setSugerenciasClientes(encontrados.slice(0, 10));
-      setMostrarSugerenciasClientes(encontrados.length > 0);
-    } else {
+    clearTimeout(debounceCliente.current);
+    if (value.trim().length < 1) {
       setSugerenciasClientes([]);
       setMostrarSugerenciasClientes(false);
+      return;
     }
+    debounceCliente.current = setTimeout(() => buscarClientes(value, 'nombre'), 300);
   };
 
   const seleccionarClienteSugerencia = (cliente) => {
@@ -470,7 +481,6 @@ const Layout = () => {
   };
 
   useEffect(() => {
-    cargarClientes();
     cargarDocumentos();
     cargarTiposReceptor();
     cargarUbicaciones();
@@ -966,12 +976,6 @@ const Layout = () => {
         <script>
           window.onload = function() { window.print(); window.onafterprint = function() { window.close(); }; };
         </script>
-      <script>
-        window.onload = function() {
-          window.print();
-          window.close();
-        };
-      </script>
       </body>
       </html>
     `;
@@ -1432,7 +1436,7 @@ const Layout = () => {
                       disabled={esConsumidorFinal || clienteSeleccionado || !documento}
                       autoComplete="off"
                     />
-                    {mostrarSugerenciasClientes && sugerenciasClientes.length > 0 && (
+                    {(cargandoClientes || (mostrarSugerenciasClientes && sugerenciasClientes.length > 0)) && (
                       <div
                         style={{
                           position: 'absolute',
@@ -1449,9 +1453,15 @@ const Layout = () => {
                         }}
                         className="list-group"
                       >
-                        <div className="list-group-item list-group-item-secondary py-2">
-                          <small><strong>Clientes encontrados:</strong> haga clic para seleccionar</small>
-                        </div>
+                        {cargandoClientes ? (
+                          <div className="list-group-item py-2 text-muted text-center">
+                            <small>Buscando clientes...</small>
+                          </div>
+                        ) : (
+                          <div className="list-group-item list-group-item-secondary py-2">
+                            <small><strong>Clientes encontrados:</strong> haga clic para seleccionar</small>
+                          </div>
+                        )}
                         {sugerenciasClientes.map((cli) => (
                           <button
                             key={cli.idCliente ?? cli.id}

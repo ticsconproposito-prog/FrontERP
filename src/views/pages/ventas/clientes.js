@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useAuth } from '../../../context/AuthContext'
 import {
   CButton,
@@ -12,6 +12,7 @@ import {
   CFormSelect,
   CFormTextarea,
   CRow,
+  CSpinner,
   CTable,
   CTableHead,
   CTableRow,
@@ -33,13 +34,16 @@ const Layout = () => {
   const idUsuarioActual = Number(usuario?.idUsuario ?? usuario?.id_Usuario ?? 0)
   const PAGE_SIZE = 20
   const [clientes, setClientes] = useState([])
-  const [todosClientes, setTodosClientes] = useState([])  // caché completo
+  const [cargando, setCargando] = useState(false)
   const [page, setPage] = useState(0)
+  const [totalPaginas, setTotalPaginas] = useState(1)
+  const [totalElementos, setTotalElementos] = useState(0)
   const [filtros, setFiltros] = useState({
     nombreCliente: '',
     tipoDocumento: 'nit',
     numeroDocumento: '',
   })
+  const debounceRef = useRef(null)
   const [modalAgregarVisible, setModalAgregarVisible] = useState(false)
   const [guardando, setGuardando] = useState(false)
   const [errorGrabar, setErrorGrabar] = useState('')
@@ -69,54 +73,47 @@ const Layout = () => {
   const handleFiltroChange = (e) => {
     const { name, value } = e.target
     if (name === 'tipoDocumento') {
-      setFiltros((prev) => ({ ...prev, tipoDocumento: value, numeroDocumento: '' }))
+      const nuevos = { ...filtros, tipoDocumento: value, numeroDocumento: '' }
+      setFiltros(nuevos)
+      buscarClientes(0, nuevos)
     } else if (name === 'numeroDocumento') {
       const soloNumeros = value.replace(/\D/g, '')
-      setFiltros((prev) => ({ ...prev, numeroDocumento: soloNumeros }))
+      const nuevos = { ...filtros, numeroDocumento: soloNumeros }
+      setFiltros(nuevos)
+      clearTimeout(debounceRef.current)
+      debounceRef.current = setTimeout(() => buscarClientes(0, nuevos), 300)
     } else {
-      setFiltros((prev) => ({ ...prev, [name]: value }))
+      const nuevos = { ...filtros, [name]: value }
+      setFiltros(nuevos)
+      clearTimeout(debounceRef.current)
+      debounceRef.current = setTimeout(() => buscarClientes(0, nuevos), 300)
     }
   }
 
-  // Carga todos los clientes una vez y los guarda en caché (igual que facturacion.js)
-  const cargarClientes = async () => {
+  const buscarClientes = async (pagina = 0, filtrosActuales = filtros) => {
+    setCargando(true)
     try {
-      const response = await fetch('/api/clientes?size=10000')
-      const data = await response.json()
+      const params = new URLSearchParams({ page: pagina, size: PAGE_SIZE })
+      if (filtrosActuales.nombreCliente?.trim())
+        params.append('nombreCliente', filtrosActuales.nombreCliente.trim())
+      if (filtrosActuales.numeroDocumento?.trim()) {
+        params.append('tipoDocumento', filtrosActuales.tipoDocumento === 'nit' ? 1 : 2)
+        params.append('documentoCliente', filtrosActuales.numeroDocumento.trim())
+      }
+      const res = await fetch(`/api/clientes?${params}`)
+      if (!res.ok) throw new Error(`Error ${res.status}`)
+      const data = await res.json()
       const lista = Array.isArray(data) ? data : (data?.content || [])
-      setTodosClientes(lista)
-      return lista
+      setClientes(lista)
+      setPage(data.number ?? pagina)
+      setTotalPaginas(data.totalPages ?? 1)
+      setTotalElementos(data.totalElements ?? lista.length)
     } catch (e) {
       console.error('Error al cargar clientes:', e)
-      setTodosClientes([])
-      return []
+      setClientes([])
+    } finally {
+      setCargando(false)
     }
-  }
-
-  // Filtra desde la caché client-side (igual que handleNitChange en facturacion.js)
-  const filtrarClientes = (todos = todosClientes, filtrosActuales = filtros) => {
-    let resultado = [...todos]
-    const nombre = (filtrosActuales.nombreCliente || '').trim().toLowerCase()
-    const numero = (filtrosActuales.numeroDocumento || '').trim().toLowerCase()
-
-    if (nombre) {
-      resultado = resultado.filter((c) =>
-        (c.nombreCliente || '').toLowerCase().includes(nombre) ||
-        (c.nombreFacturacion || '').toLowerCase().includes(nombre)
-      )
-    }
-    if (numero) {
-      if (filtrosActuales.tipoDocumento === 'nit') {
-        resultado = resultado.filter((c) =>
-          (c.nit || '').toString().toLowerCase().includes(numero)
-        )
-      } else {
-        resultado = resultado.filter((c) =>
-          (c.documentoIdentificacion || '').toString().toLowerCase().includes(numero)
-        )
-      }
-    }
-    setClientes(resultado)
   }
 
   const quitarFocoDelModal = () => {
@@ -193,10 +190,17 @@ const Layout = () => {
     }
   }
 
-  const exportarAExcel = () => {
+  const exportarAExcel = async () => {
     try {
-      // Usa la lista ya filtrada (clientes) — sin llamada a API
-      const lista = clientes
+      const params = new URLSearchParams({ page: 0, size: 10000 })
+      if (filtros.nombreCliente?.trim()) params.append('nombreCliente', filtros.nombreCliente.trim())
+      if (filtros.numeroDocumento?.trim()) {
+        params.append('tipoDocumento', filtros.tipoDocumento === 'nit' ? 1 : 2)
+        params.append('documentoCliente', filtros.numeroDocumento.trim())
+      }
+      const res = await fetch(`/api/clientes?${params}`)
+      const data = await res.json()
+      const lista = Array.isArray(data) ? data : (data?.content || [])
 
       if (!lista || lista.length === 0) {
         alert('No hay clientes para exportar')
@@ -260,7 +264,7 @@ const Layout = () => {
       setClienteAEliminar(null)
       setMensajeExito('El cliente fue eliminado correctamente.')
       setModalExitoVisible(true)
-      cargarClientes()
+      buscarClientes(0, filtros)
     } catch (err) {
       console.error('Error al eliminar cliente:', err)
       alert(err.message || 'No se pudo eliminar el cliente')
@@ -314,7 +318,7 @@ const Layout = () => {
       cerrarModalAgregar()
       setMensajeExito(modoEdicionCliente ? 'El cliente fue actualizado exitosamente.' : 'El cliente fue guardado exitosamente.')
       setModalExitoVisible(true)
-      cargarClientes()
+      buscarClientes(0, filtros)
     } catch (err) {
       console.error('Error grabar cliente:', err)
       setErrorGrabar(err.message || 'No se pudo guardar el cliente')
@@ -323,16 +327,9 @@ const Layout = () => {
     }
   }
 
-  // Carga inicial de todos los clientes
   useEffect(() => {
-    cargarClientes().then((lista) => filtrarClientes(lista, filtros))
+    buscarClientes(0, filtros)
   }, [])
-
-  // Filtrado instantáneo al cambiar filtros (client-side, sin API)
-  useEffect(() => {
-    setPage(0)
-    filtrarClientes(todosClientes, filtros)
-  }, [filtros.nombreCliente, filtros.tipoDocumento, filtros.numeroDocumento, todosClientes])
 
   return (
     <CRow>
@@ -387,9 +384,15 @@ const Layout = () => {
               </CRow>
             </CForm>
 
-            {clientes.length > 0 && (
+            {cargando && (
+              <div className="text-center py-4">
+                <CSpinner color="primary" />
+                <p className="mt-2 text-muted small">Cargando clientes...</p>
+              </div>
+            )}
+            {!cargando && totalElementos > 0 && (
               <small className="text-muted d-block mt-3">
-                Mostrando {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, clientes.length)} de {clientes.length} clientes
+                Mostrando {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, totalElementos)} de {totalElementos} clientes
               </small>
             )}
 
@@ -409,7 +412,7 @@ const Layout = () => {
                   </CTableRow>
                 </CTableHead>
                 <CTableBody>
-                  {clientes.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE).map((cliente, index) => (
+                  {clientes.map((cliente, index) => (
                     <CTableRow key={`cli-${cliente.idCliente ?? cliente.id ?? index}`}>
                       <CTableDataCell>{page * PAGE_SIZE + index + 1}</CTableDataCell>
                       <CTableDataCell>{cliente.nombreCliente ?? ''}</CTableDataCell>
@@ -437,28 +440,27 @@ const Layout = () => {
             </div>
 
             {/* Paginación */}
-            {Math.ceil(clientes.length / PAGE_SIZE) > 1 && (() => {
-              const totalPages = Math.ceil(clientes.length / PAGE_SIZE)
+            {clientes.length > 0 && (() => {
               const items = []
               const inicio = Math.max(0, page - 2)
-              const fin    = Math.min(totalPages - 1, page + 2)
+              const fin    = Math.min(totalPaginas - 1, page + 2)
               if (page > 2) {
-                items.push(<CPaginationItem key={0} onClick={() => setPage(0)}>1</CPaginationItem>)
+                items.push(<CPaginationItem key={0} onClick={() => buscarClientes(0, filtros)}>1</CPaginationItem>)
                 if (page > 3) items.push(<CPaginationItem key="e1" disabled>…</CPaginationItem>)
               }
               for (let i = inicio; i <= fin; i++)
-                items.push(<CPaginationItem key={i} active={i === page} onClick={() => setPage(i)}>{i + 1}</CPaginationItem>)
-              if (page < totalPages - 3) {
-                if (page < totalPages - 4) items.push(<CPaginationItem key="e2" disabled>…</CPaginationItem>)
-                items.push(<CPaginationItem key={totalPages - 1} onClick={() => setPage(totalPages - 1)}>{totalPages}</CPaginationItem>)
+                items.push(<CPaginationItem key={i} active={i === page} onClick={() => buscarClientes(i, filtros)}>{i + 1}</CPaginationItem>)
+              if (page < totalPaginas - 3) {
+                if (page < totalPaginas - 4) items.push(<CPaginationItem key="e2" disabled>…</CPaginationItem>)
+                items.push(<CPaginationItem key={totalPaginas - 1} onClick={() => buscarClientes(totalPaginas - 1, filtros)}>{totalPaginas}</CPaginationItem>)
               }
               return (
                 <CPagination className="justify-content-end mt-3 flex-wrap">
-                  <CPaginationItem disabled={page === 0} onClick={() => setPage(0)} title="Primera">«</CPaginationItem>
-                  <CPaginationItem disabled={page === 0} onClick={() => setPage(page - 1)}>Anterior</CPaginationItem>
+                  <CPaginationItem disabled={page === 0} onClick={() => buscarClientes(0, filtros)} title="Primera">«</CPaginationItem>
+                  <CPaginationItem disabled={page === 0} onClick={() => buscarClientes(page - 1, filtros)}>Anterior</CPaginationItem>
                   {items}
-                  <CPaginationItem disabled={page === totalPages - 1} onClick={() => setPage(page + 1)}>Siguiente</CPaginationItem>
-                  <CPaginationItem disabled={page === totalPages - 1} onClick={() => setPage(totalPages - 1)} title="Última">»</CPaginationItem>
+                  <CPaginationItem disabled={page >= totalPaginas - 1} onClick={() => buscarClientes(page + 1, filtros)}>Siguiente</CPaginationItem>
+                  <CPaginationItem disabled={page >= totalPaginas - 1} onClick={() => buscarClientes(totalPaginas - 1, filtros)} title="Última">»</CPaginationItem>
                 </CPagination>
               )
             })()}

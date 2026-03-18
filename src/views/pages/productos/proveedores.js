@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useAuth } from '../../../context/AuthContext'
 import {
   CButton,
@@ -10,6 +10,7 @@ import {
   CFormInput,
   CFormLabel,
   CRow,
+  CSpinner,
   CTable,
   CTableHead,
   CTableRow,
@@ -49,8 +50,11 @@ const Layout = () => {
   const [proveedorAEliminar, setProveedorAEliminar] = useState(null)
   const [eliminando, setEliminando] = useState(false)
   const [guardando, setGuardando] = useState(false)
+  const [cargando, setCargando] = useState(false)
+  const [totalElementos, setTotalElementos] = useState(0)
   const [errorGrabar, setErrorGrabar] = useState('')
   const [errorsProveedor, setErrorsProveedor] = useState({})
+  const debounceRef = useRef(null)
 
   const [formProveedor, setFormProveedor] = useState({
     nombre: '',
@@ -75,10 +79,14 @@ const Layout = () => {
 
   const handleFiltroChange = (e) => {
     const { name, value } = e.target
-    setFiltros((prev) => ({ ...prev, [name]: value }))
+    const nuevos = { ...filtros, [name]: value }
+    setFiltros(nuevos)
+    clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => cargarProveedores(0, nuevos), 300)
   }
 
   const cargarProveedores = async (pagina = 0, filtrosActuales = filtros) => {
+    setCargando(true)
     try {
       const params = new URLSearchParams()
       params.set('page', String(pagina))
@@ -92,26 +100,19 @@ const Layout = () => {
       const lista = Array.isArray(data) ? data : (data?.content || [])
       setProveedores(lista)
       setTotalPages(data.totalPages !== undefined ? data.totalPages : 1)
+      setTotalElementos(data.totalElements !== undefined ? data.totalElements : lista.length)
       setPage(data.number !== undefined ? data.number : 0)
     } catch (e) {
       console.error('Error al cargar proveedores:', e)
       setProveedores([])
+    } finally {
+      setCargando(false)
     }
   }
 
   useEffect(() => {
-    const delayDebounce = setTimeout(() => {
-      if (
-        filtros.nombre.length < 2 &&
-        filtros.nombreDeContacto1.length < 2
-      ) {
-        cargarProveedores(0)
-        return
-      }
-      cargarProveedores(0, filtros)
-    }, 500)
-    return () => clearTimeout(delayDebounce)
-  }, [filtros])
+    cargarProveedores(0, filtros)
+  }, [])
 
   const handleFormProveedorChange = (e) => {
     const { name, value } = e.target
@@ -633,6 +634,18 @@ const Layout = () => {
                 <CButton color="secondary" onClick={() => setProveedorVer(null)}>Cerrar</CButton>
               </CModalFooter>
             </CModal>
+
+            {cargando && (
+              <div className="text-center py-4">
+                <CSpinner color="primary" />
+                <p className="mt-2 text-muted small">Cargando proveedores...</p>
+              </div>
+            )}
+            {!cargando && totalElementos > 0 && (
+              <small className="text-muted d-block mt-3">
+                Mostrando {page * pageSize + 1}–{Math.min((page + 1) * pageSize, totalElementos)} de {totalElementos} proveedores
+              </small>
+            )}
 
             <div className="table-responsive mt-4" style={{ minHeight: 0 }}>
               <CTable striped bordered hover responsive className="mb-0">

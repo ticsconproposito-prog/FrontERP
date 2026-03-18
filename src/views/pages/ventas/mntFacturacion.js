@@ -8,6 +8,7 @@ import {
   CCol,
   CFormInput,
   CFormLabel,
+  CFormTextarea,
   CModal,
   CModalBody,
   CModalFooter,
@@ -29,6 +30,9 @@ const PAGE_SIZE = 20
 
 const _d = new Date()
 const HOY = `${_d.getFullYear()}-${String(_d.getMonth() + 1).padStart(2, '0')}-${String(_d.getDate()).padStart(2, '0')}`
+const MES_ACTUAL   = `${_d.getFullYear()}-${String(_d.getMonth() + 1).padStart(2, '0')}`
+const _mesSig      = new Date(_d.getFullYear(), _d.getMonth() + 1, 1)
+const MES_SIGUIENTE = `${_mesSig.getFullYear()}-${String(_mesSig.getMonth() + 1).padStart(2, '0')}`
 
 const formatFecha = (fecha) => {
   if (!fecha) return ''
@@ -142,6 +146,13 @@ const MntFacturacion = () => {
   const [facturaProcesando, setFacturaProcesando] = useState(null)
   const [procesando, setProcesando] = useState(false)
   const [msgProcesar, setMsgProcesar] = useState({ visible: false, ok: true, texto: '' })
+
+  // ── Modal Anular ─────────────────────────────────────────────────────────
+  const [modalAnular, setModalAnular] = useState(false)
+  const [facturaAnulando, setFacturaAnulando] = useState(null)
+  const [motivoAnulacion, setMotivoAnulacion] = useState('')
+  const [anulando, setAnulando] = useState(false)
+  const [msgAnular, setMsgAnular] = useState({ visible: false, ok: true, texto: '' })
 
   // ── Diccionarios ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -791,6 +802,67 @@ const MntFacturacion = () => {
     }
   }
 
+  // ── Anular ───────────────────────────────────────────────────────────────
+  const handleAnular = (factura) => {
+    setFacturaAnulando(factura)
+    setMotivoAnulacion('')
+    setMsgAnular({ visible: false, ok: true, texto: '' })
+    setModalAnular(true)
+  }
+
+  const confirmarAnular = async () => {
+    if (!facturaAnulando) return
+    if (!motivoAnulacion.trim()) {
+      setMsgAnular({ visible: true, ok: false, texto: 'Debe ingresar el motivo de anulación.' })
+      return
+    }
+    setAnulando(true)
+    try {
+      const enc = facturaAnulando
+      const cliente = (typeof enc.idCliente === 'object' && enc.idCliente !== null) ? enc.idCliente : {}
+      const tipoRec = String(enc.tipoReceptor ?? '1')
+
+      // Fecha de hoy en formato YYYYmmdd
+      const hoy = new Date()
+      const fechaAnulacion = `${hoy.getFullYear()}${String(hoy.getMonth() + 1).padStart(2, '0')}${String(hoy.getDate()).padStart(2, '0')}`
+
+      let nitComprador = 'CF'
+      if (tipoRec === '1') nitComprador = cliente.nit                      || 'CF'
+      if (tipoRec === '2') nitComprador = cliente.documentoIdentificacion  || ''
+      if (tipoRec === '3') nitComprador = cliente.documentoIdentificacion  || ''
+
+      const paramObj = {
+        idEncabezadoFactura: enc.idEncabezadoFactura || '',
+        serie:               enc.serieResAPI          || '',
+        preimpreso:          enc.preimpresoResAPI      || '',
+        nitComprador,
+        fechaAnulacion,
+        motivo:              motivoAnulacion.trim(),
+      }
+
+      const params = new URLSearchParams(paramObj)
+      console.log('[Anular Factura] POST /api/fel/anularFactura?' + params.toString())
+      const res = await fetch(`/api/fel/anularFactura?${params}`, {
+        method: 'POST',
+      })
+      const raw = await res.text()
+      let data = null
+      try { data = JSON.parse(raw) } catch (_) { data = raw }
+
+      if (!res.ok) {
+        const msg = data?.message || data?.error || `Error ${res.status}`
+        setMsgAnular({ visible: true, ok: false, texto: msg })
+      } else {
+        setMsgAnular({ visible: true, ok: true, texto: `Factura ${enc.preimpresoResAPI || enc.idEncabezadoFactura} anulada correctamente.` })
+        await cargarFacturas(paginaActual, filtroAplicado)
+      }
+    } catch (e) {
+      setMsgAnular({ visible: true, ok: false, texto: `Error al anular: ${e.message}` })
+    } finally {
+      setAnulando(false)
+    }
+  }
+
   // ── Render ───────────────────────────────────────────────────────────────
   return (
     <>
@@ -885,7 +957,7 @@ const MntFacturacion = () => {
                             <span
                               className="badge"
                               style={{
-                                backgroundColor: f.facturaProcesada === 'S' ? '#198754' : '#6c757d',
+                                backgroundColor: f.facturaProcesada === 'S' ? '#198754' : f.facturaProcesada === 'A' ? '#dc3545' : '#6c757d',
                                 color: '#fff',
                                 fontSize: '0.75rem',
                                 padding: '4px 8px',
@@ -905,17 +977,31 @@ const MntFacturacion = () => {
                             >
                               Ver
                             </CButton>
-                            <CButton
-                              color="secondary"
-                              size="sm"
-                              className="text-white me-1"
-                              title={f.facturaProcesada === 'N' || !f.facturaProcesada ? 'Solo se puede reimprimir cuando la factura está procesada (S)' : 'Reimprimir factura'}
-                              onClick={() => handleReimprimir(f)}
-                              disabled={reimprimiendo || f.facturaProcesada === 'N' || !f.facturaProcesada}
-                            >
-                              {reimprimiendo ? <CSpinner size="sm" /> : 'Reimprimir'}
-                            </CButton>
-                            {f.facturaProcesada !== 'S' && (
+                            {f.facturaProcesada !== 'A' && (
+                              <CButton
+                                color="secondary"
+                                size="sm"
+                                className="text-white me-1"
+                                title={f.facturaProcesada === 'N' || !f.facturaProcesada ? 'Solo se puede reimprimir cuando la factura está procesada (S)' : 'Reimprimir factura'}
+                                onClick={() => handleReimprimir(f)}
+                                disabled={reimprimiendo || f.facturaProcesada === 'N' || !f.facturaProcesada}
+                              >
+                                {reimprimiendo ? <CSpinner size="sm" /> : 'Reimprimir'}
+                              </CButton>
+                            )}
+                            {f.facturaProcesada === 'S' &&
+                              (f.FechaFactura?.slice(0, 7) === MES_ACTUAL || f.FechaFactura?.slice(0, 7) === MES_SIGUIENTE) && (
+                              <CButton
+                                color="danger"
+                                size="sm"
+                                className="text-white me-1"
+                                title="Anular factura"
+                                onClick={() => handleAnular(f)}
+                              >
+                                Anular
+                              </CButton>
+                            )}
+                            {f.facturaProcesada !== 'S' && f.facturaProcesada !== 'A' && (
                               <CButton
                                 color="success"
                                 size="sm"
@@ -968,14 +1054,14 @@ const MntFacturacion = () => {
                     <span
                       className="badge"
                       style={{
-                        backgroundColor: facturaSeleccionada.facturaProcesada === 'S' ? '#198754' : '#6c757d',
+                        backgroundColor: facturaSeleccionada.facturaProcesada === 'S' ? '#198754' : facturaSeleccionada.facturaProcesada === 'A' ? '#dc3545' : '#6c757d',
                         color: '#fff',
                         fontSize: '0.75rem',
                         padding: '4px 8px',
                         borderRadius: 6,
                       }}
                     >
-                      {facturaSeleccionada.facturaProcesada === 'S' ? 'Procesado' : 'No Procesado'}
+                      {facturaSeleccionada.facturaProcesada === 'S' ? 'Procesada' : facturaSeleccionada.facturaProcesada === 'A' ? 'Anulada' : 'No Procesada'}
                     </span>
                   </div>
                 </CCol>
@@ -1022,6 +1108,55 @@ const MntFacturacion = () => {
         </CModalBody>
         <CModalFooter>
           <CButton color="secondary" onClick={() => setModalVer(false)}>Cerrar</CButton>
+        </CModalFooter>
+      </CModal>
+
+      {/* ── Modal Anular ──────────────────────────────────────────────────── */}
+      <CModal visible={modalAnular} onClose={() => { if (!anulando) setModalAnular(false) }}>
+        <CModalHeader>
+          <CModalTitle>Anular Factura</CModalTitle>
+        </CModalHeader>
+        <CModalBody>
+          {msgAnular.visible && msgAnular.ok ? (
+            <div className="alert alert-success mb-0">{msgAnular.texto}</div>
+          ) : (
+            <>
+              <p className="mb-3">
+                ¿Está seguro que desea <strong>anular</strong> la factura{' '}
+                <strong>{facturaAnulando?.preimpresoResAPI || facturaAnulando?.idEncabezadoFactura}</strong>?
+                <br />
+                <span className="text-danger small">Esta acción no se puede deshacer.</span>
+              </p>
+              <CFormLabel className="fw-semibold">Motivo de anulación <span className="text-danger">*</span></CFormLabel>
+              <CFormTextarea
+                rows={3}
+                placeholder="Ingrese el motivo de anulación..."
+                value={motivoAnulacion}
+                onChange={(e) => {
+                  setMotivoAnulacion(e.target.value)
+                  if (msgAnular.visible) setMsgAnular({ visible: false, ok: true, texto: '' })
+                }}
+                disabled={anulando}
+              />
+              {msgAnular.visible && !msgAnular.ok && (
+                <div className="alert alert-danger mt-2 mb-0 py-2">{msgAnular.texto}</div>
+              )}
+            </>
+          )}
+        </CModalBody>
+        <CModalFooter>
+          {msgAnular.visible && msgAnular.ok ? (
+            <CButton color="primary" onClick={() => setModalAnular(false)}>Aceptar</CButton>
+          ) : (
+            <>
+              <CButton color="secondary" onClick={() => setModalAnular(false)} disabled={anulando}>
+                Cancelar
+              </CButton>
+              <CButton color="danger" className="text-white" onClick={confirmarAnular} disabled={anulando}>
+                {anulando ? <><CSpinner size="sm" className="me-1" />Anulando...</> : 'Confirmar Anulación'}
+              </CButton>
+            </>
+          )}
         </CModalFooter>
       </CModal>
 

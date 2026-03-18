@@ -59,6 +59,9 @@ const EditarMovimiento = () => {
   const [detallesEliminados, setDetallesEliminados] = useState([])
   const [sugerenciasProductos, setSugerenciasProductos] = useState([])
   const [mostrarSugerencias, setMostrarSugerencias] = useState(false)
+  const [loadingProductos, setLoadingProductos] = useState(false)
+  const [errorProductos, setErrorProductos] = useState(null)
+  const debounceProducto = useRef(null)
   const [busquedaProducto, setBusquedaProducto] = useState('')
   const [proveedorTexto, setProveedorTexto] = useState('')
   const [sugerenciasProveedores, setSugerenciasProveedores] = useState([])
@@ -163,7 +166,15 @@ const EditarMovimiento = () => {
   const handleBusquedaProducto = (e) => {
     const value = e.target.value
     setBusquedaProducto(value)
-    buscarProductos(value)
+    clearTimeout(debounceProducto.current)
+    const valorLimpio = value.trim()
+    if (valorLimpio.length >= 1) {
+      debounceProducto.current = setTimeout(() => buscarProductos(valorLimpio), 300)
+    } else {
+      setSugerenciasProductos([])
+      setMostrarSugerencias(false)
+      setErrorProductos(null)
+    }
   }
 
   const seleccionarProductoAgregar = (producto) => {
@@ -412,21 +423,24 @@ const EditarMovimiento = () => {
     }
   }
 
-  // Búsqueda server-side paralela por campo en /api/productos (igual que agregarMovimiento.js)
+  // Búsqueda server-side paralela por campo en /api/productos
   const buscarProductos = async (termino) => {
     const t = (termino || '').trim()
-    if (t.length < 2) {
+    if (t.length < 1) {
       setSugerenciasProductos([])
       setMostrarSugerencias(false)
+      setErrorProductos(null)
       return
     }
+    setLoadingProductos(true)
+    setErrorProductos(null)
     try {
       const SIZE_BUSQUEDA = 500
       const palabras = t.split(/\s+/).filter(Boolean)
 
       const fetchDesc = (palabra) =>
         fetch(`/api/productos?descripcionProducto=${encodeURIComponent(palabra)}&page=0&size=${SIZE_BUSQUEDA}`)
-          .then(r => r.json()).then(d => d.content || [])
+          .then(r => r.json()).then(d => Array.isArray(d.content) ? d.content : [])
 
       const [rCodigo, rProveedor, ...rDescPalabras] = await Promise.all([
         fetch(`/api/productos?codigoProducto=${encodeURIComponent(t)}&page=0&size=${SIZE_BUSQUEDA}`).then(r => r.json()),
@@ -435,15 +449,15 @@ const EditarMovimiento = () => {
       ])
 
       // Intersección por descripción (el producto debe aparecer en TODAS las palabras)
-      let porDescripcion = rDescPalabras[0] || []
+      let porDescripcion = Array.isArray(rDescPalabras[0]) ? rDescPalabras[0] : []
       for (let i = 1; i < rDescPalabras.length; i++) {
-        const ids = new Set(rDescPalabras[i].map(p => p.idProducto))
+        const ids = new Set((Array.isArray(rDescPalabras[i]) ? rDescPalabras[i] : []).map(p => p.idProducto))
         porDescripcion = porDescripcion.filter(p => ids.has(p.idProducto))
       }
 
       const combinados = [
-        ...(rCodigo.content || []),
-        ...(rProveedor.content || []),
+        ...(Array.isArray(rCodigo.content) ? rCodigo.content : []),
+        ...(Array.isArray(rProveedor.content) ? rProveedor.content : []),
         ...porDescripcion,
       ]
       const unicos = combinados.filter((p, idx, arr) =>
@@ -455,8 +469,11 @@ const EditarMovimiento = () => {
       setMostrarSugerencias(unicos.length > 0)
     } catch (e) {
       console.error('Error al buscar productos:', e)
+      setErrorProductos('Error al buscar productos')
       setSugerenciasProductos([])
       setMostrarSugerencias(false)
+    } finally {
+      setLoadingProductos(false)
     }
   }
 
@@ -922,7 +939,13 @@ const EditarMovimiento = () => {
               autoComplete="off"
               className="form-control-lg mb-3"
             />
-            {mostrarSugerencias && sugerenciasProductos.length > 0 && (
+            {loadingProductos && (
+              <div className="text-muted my-2"><small>Buscando productos...</small></div>
+            )}
+            {errorProductos && (
+              <div className="text-danger my-2"><small>{errorProductos}</small></div>
+            )}
+            {!loadingProductos && mostrarSugerencias && sugerenciasProductos.length > 0 && (
               <div className="list-group" style={{ maxHeight: '220px', overflowY: 'auto', border: '1px solid #dee2e6', borderRadius: '6px' }}>
                 <div className="list-group-item list-group-item-primary py-2" style={{ position: 'sticky', top: 0, zIndex: 1 }}>
                   <small><strong>Productos encontrados ({sugerenciasProductos.length}):</strong> Haga clic para agregar</small>
