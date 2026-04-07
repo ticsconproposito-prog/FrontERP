@@ -62,6 +62,7 @@ const Layout = () => {
   const [documento, setDocumento] = useState('');
   const [ubicaciones, setUbicaciones] = useState([]);
   const [errorDteModal, setErrorDteModal] = useState({ visible: false, mensaje: '' });
+  const esErrorNitDteRef = useRef(false);
   const [errorValidacionModal, setErrorValidacionModal] = useState({ visible: false, mensaje: '' });
   const [alertaCantidadModal, setAlertaCantidadModal] = useState(false);
   const [referenciaParaComprobante, setReferenciaParaComprobante] = useState('');
@@ -1269,6 +1270,10 @@ const Layout = () => {
           const mensajeError = fel.error || 'Error desconocido al emitir el DTE'
           console.warn('[DTE] Error FEL:', mensajeError)
           hayErrorDte = true
+          const msgStr = String(mensajeError)
+          const esNit = msgStr.includes('NO EXISTE EL NIT') || msgStr.includes('186-NUMERO') || msgStr.includes('DOCUMENTO DE IDENTIFICACION INVALIDO')
+          console.warn('[DTE] esErrorNitDteRef →', esNit, '| mensaje →', msgStr)
+          esErrorNitDteRef.current = esNit
           setErrorDteModal({ visible: true, mensaje: mensajeError })
         } else {
           if (fel?.referencia) referenciaRes = fel.referencia
@@ -1281,7 +1286,11 @@ const Layout = () => {
       } catch (eDte) {
         console.warn('[DTE] Error al enviar DTE:', eDte)
         hayErrorDte = true
-        setErrorDteModal({ visible: true, mensaje: eDte.message || 'Error al conectar con el servicio DTE' })
+        const msgCatch = eDte.message || 'Error al conectar con el servicio DTE'
+        const esNitCatch = String(msgCatch).includes('NO EXISTE EL NIT') || String(msgCatch).includes('186-NUMERO') || String(msgCatch).includes('DOCUMENTO DE IDENTIFICACION INVALIDO')
+        console.warn('[DTE] esErrorNitDteRef (catch) →', esNitCatch, '| mensaje →', msgCatch)
+        esErrorNitDteRef.current = esNitCatch
+        setErrorDteModal({ visible: true, mensaje: msgCatch })
       }
 
       if (!hayErrorDte) {
@@ -2133,7 +2142,12 @@ const Layout = () => {
     {/* Modal error DTE / FEL */}
     <CModal
       visible={errorDteModal.visible}
-      onClose={() => { setErrorDteModal({ visible: false, mensaje: '' }); limpiarFormulario(); setDetalleFactura([]); }}
+      onClose={() => {
+        console.warn('[DTE] onClose | esErrorNitDteRef.current:', esErrorNitDteRef.current);
+        if (!esErrorNitDteRef.current) { limpiarFormulario(); setDetalleFactura([]); }
+        esErrorNitDteRef.current = false;
+        setErrorDteModal({ visible: false, mensaje: '' });
+      }}
       backdrop="static"
       alignment="center"
     >
@@ -2146,7 +2160,10 @@ const Layout = () => {
         </p>
       </CModalBody>
       <CModalFooter>
-        <CButton color="secondary" onClick={() => { setErrorDteModal({ visible: false, mensaje: '' }); limpiarFormulario(); setDetalleFactura([]); }}>
+        <CButton color="secondary" onClick={() => {
+          console.warn('[DTE] Cerrar clicked | esErrorNitDteRef.current:', esErrorNitDteRef.current);
+          setErrorDteModal({ visible: false, mensaje: '' });
+        }}>
           Cerrar
         </CButton>
         {!errorDteModal.mensaje?.includes('NO EXISTE EL NIT') && !errorDteModal.mensaje?.includes('2-NO EXISTE EL NIT/CUI DEL CONTRIBUYENTE') && !errorDteModal.mensaje?.includes('186-NUMERO DE DOCUMENTO DE IDENTIFICACION INVALIDO') && (

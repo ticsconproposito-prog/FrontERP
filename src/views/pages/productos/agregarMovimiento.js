@@ -963,7 +963,7 @@ const AgregarMovimiento = () => {
                       <CTableHeaderCell className="py-2">Descripción</CTableHeaderCell>
                       <CTableHeaderCell className="py-2">Ubicación</CTableHeaderCell>
                       <CTableHeaderCell className="py-2">Cantidad</CTableHeaderCell>
-                      <CTableHeaderCell className="py-2">Precio</CTableHeaderCell>
+                      <CTableHeaderCell className="py-2">Precio Compra</CTableHeaderCell>
                       <CTableHeaderCell className="py-2">Subtotal</CTableHeaderCell>
                       <CTableHeaderCell className="py-2 text-center">Eliminar</CTableHeaderCell>
                     </CTableRow>
@@ -1181,7 +1181,7 @@ const AgregarMovimiento = () => {
                   <CTableHeaderCell className="py-2">Descripción</CTableHeaderCell>
                   <CTableHeaderCell className="py-2">Ubicación</CTableHeaderCell>
                   <CTableHeaderCell className="py-2">Cantidad</CTableHeaderCell>
-                  <CTableHeaderCell className="py-2">Precio</CTableHeaderCell>
+                  <CTableHeaderCell className="py-2">Precio Compra</CTableHeaderCell>
                   <CTableHeaderCell className="py-2 text-end">Subtotal</CTableHeaderCell>
                   <CTableHeaderCell className="py-2 text-center">Eliminar</CTableHeaderCell>
                 </CTableRow>

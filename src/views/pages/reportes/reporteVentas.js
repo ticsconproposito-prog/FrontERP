@@ -118,37 +118,30 @@ const ConsultaFacturas = () => {
       setCargando(true)
       setError(null)
       try {
-        const filtros = {
+        const filtrosBase = {
           ...(filtroAplicado.inicio && { fechaInicio: filtroAplicado.inicio }),
           ...(filtroAplicado.fin && { fechaFin: filtroAplicado.fin }),
           tipoDocumento: '1',
-          facturaProcesada: 'S',
         }
 
-        // Carga paginada para la tabla
-        const params = new URLSearchParams({ page: paginaActual, size: PAGE_SIZE, ...filtros })
-        const res = await fetch(`/api/erpEncabezadoFacturas?${params}`)
+        // Carga completa una sola vez y se pagina en cliente
+        const res = await fetch(`/api/erpEncabezadoFacturas?${new URLSearchParams({ page: 0, size: 10000, ...filtrosBase })}`)
         if (!res.ok) throw new Error(`Error ${res.status}: ${res.statusText}`)
         const data = await res.json()
-        const soloFacturas = Array.isArray(data) ? data : data.content ?? []
-        setFacturas(soloFacturas)
-        setTotalPaginas(Array.isArray(data) ? 1 : data.totalPages ?? 1)
-        setTotalElementos(Array.isArray(data) ? soloFacturas.length : data.totalElements ?? soloFacturas.length)
+        const todas = (Array.isArray(data) ? data : data.content ?? [])
+          .filter((f) => f.facturaProcesada !== 'A')
+          .sort((a, b) => b.idEncabezadoFactura - a.idEncabezadoFactura)
 
-        // Carga completa para resumen y exportación (solo cuando cambia el filtro, no la página)
-        if (paginaActual === 0) {
-          const paramsTotal = new URLSearchParams({ page: 0, size: 10000, ...filtros })
-          const resTotal = await fetch(`/api/erpEncabezadoFacturas?${paramsTotal}`)
-          if (resTotal.ok) {
-            const dataTotal = await resTotal.json()
-            const todas = Array.isArray(dataTotal) ? dataTotal : dataTotal.content ?? []
-            setTodasFacturas(todas)
-            setResumen({
-              cantidadFacturas: todas.length,
-              totalVenta: todas.reduce((sum, f) => sum + (f.total ?? 0), 0),
-            })
-          }
-        }
+        setTodasFacturas(todas)
+        setTotalElementos(todas.length)
+        setTotalPaginas(Math.ceil(todas.length / PAGE_SIZE))
+        setResumen({
+          cantidadFacturas: todas.length,
+          totalVenta: todas.reduce((sum, f) => sum + (f.total ?? 0), 0),
+        })
+
+        // Paginación en cliente
+        setFacturas(todas.slice(paginaActual * PAGE_SIZE, (paginaActual + 1) * PAGE_SIZE))
       } catch (err) {
         setError(err.message)
       } finally {
@@ -156,7 +149,13 @@ const ConsultaFacturas = () => {
       }
     }
     cargarFacturas()
-  }, [paginaActual, filtroAplicado, tipoDetalle])
+  }, [filtroAplicado, tipoDetalle])
+
+  // Re-paginar en cliente cuando cambia la página (sin re-fetch)
+  useEffect(() => {
+    if (tipoDetalle !== '1') return
+    setFacturas(todasFacturas.slice(paginaActual * PAGE_SIZE, (paginaActual + 1) * PAGE_SIZE))
+  }, [paginaActual])
 
   // Cargar Detalles por Producto (tipoDetalle === '2')
   useEffect(() => {
@@ -166,18 +165,19 @@ const ConsultaFacturas = () => {
       setErrorDetalle(null)
       try {
         // 1. Obtener todos los encabezados del rango de fechas
-        const paramsEnc = new URLSearchParams({
+        const filtrosEncBase = new URLSearchParams({
           page: 0,
           size: 1000,
           ...(filtroAplicado.inicio && { fechaInicio: filtroAplicado.inicio }),
           ...(filtroAplicado.fin && { fechaFin: filtroAplicado.fin }),
           tipoDocumento: '1',
-          facturaProcesada: 'S',
         })
-        const resEnc = await fetch(`/api/erpEncabezadoFacturas?${paramsEnc}`)
+        const resEnc = await fetch(`/api/erpEncabezadoFacturas?${filtrosEncBase}`)
         if (!resEnc.ok) throw new Error(`Error ${resEnc.status}: ${resEnc.statusText}`)
         const dataEnc = await resEnc.json()
-        const encabezados = Array.isArray(dataEnc) ? dataEnc : dataEnc.content ?? []
+        const encabezados = (Array.isArray(dataEnc) ? dataEnc : dataEnc.content ?? [])
+          .filter((e) => e.facturaProcesada !== 'A')
+          .sort((a, b) => b.idEncabezadoFactura - a.idEncabezadoFactura)
 
         // 2. Para cada encabezado obtener su detalle
         const resultados = await Promise.all(
@@ -672,8 +672,8 @@ const ConsultaFacturas = () => {
                           <CTableDataCell className="text-end">Q{(factura.iva ?? 0).toFixed(2)}</CTableDataCell>
                           <CTableDataCell className="text-end fw-bold text-success">Q{(factura.total ?? 0).toFixed(2)}</CTableDataCell>
                           <CTableDataCell className="text-center">
-                            <span className={`badge bg-${factura.facturaProcesada ? 'success' : 'secondary'}`}>
-                              {factura.facturaProcesada ? 'Procesada' : 'Pendiente'}
+                            <span className={`badge bg-${factura.facturaProcesada === 'S' ? 'success' : 'secondary'}`}>
+                              {factura.facturaProcesada === 'S' ? 'Procesada' : 'Pendiente'}
                             </span>
                           </CTableDataCell>
                         </CTableRow>

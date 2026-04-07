@@ -1172,7 +1172,7 @@ const MntFacturacion = () => {
             </div>
           ) : (
             <p className="mb-0">
-              ¿Confirma que desea enviar el DTE de la factura <strong>{facturaProcesando?.preimpresoResAPI}</strong>?
+              ¿Confirma que desea enviar el DTE de la factura <strong>{facturaProcesando?.referencia}</strong>?
             </p>
           )}
         </CModalBody>
