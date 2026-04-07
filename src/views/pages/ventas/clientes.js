@@ -77,8 +77,7 @@ const Layout = () => {
       setFiltros(nuevos)
       buscarClientes(0, nuevos)
     } else if (name === 'numeroDocumento') {
-      const soloNumeros = value.replace(/\D/g, '')
-      const nuevos = { ...filtros, numeroDocumento: soloNumeros }
+      const nuevos = { ...filtros, numeroDocumento: value }
       setFiltros(nuevos)
       clearTimeout(debounceRef.current)
       debounceRef.current = setTimeout(() => buscarClientes(0, nuevos), 300)
@@ -125,9 +124,7 @@ const Layout = () => {
 
   const handleFormClienteChange = (e) => {
     const { name, value } = e.target
-    const camposNumericos = ['nit', 'dpiPasaporte']
-    const valorFinal = camposNumericos.includes(name) ? value.replace(/\D/g, '') : value
-    setFormCliente((prev) => ({ ...prev, [name]: valorFinal }))
+    setFormCliente((prev) => ({ ...prev, [name]: value }))
   }
 
   const abrirModalAgregar = () => {
@@ -377,7 +374,6 @@ const Layout = () => {
                     placeholder={filtros.tipoDocumento === 'nit' ? 'Buscar por NIT' : 'Buscar por DPI / Pasaporte'}
                     value={filtros.numeroDocumento}
                     onChange={handleFiltroChange}
-                    inputMode="numeric"
                     autoComplete="off"
                   />
                 </CCol>
@@ -512,7 +508,6 @@ const Layout = () => {
                             value={formCliente.nit}
                             onChange={handleFormClienteChange}
                             placeholder="NIT"
-                            inputMode="numeric"
                             invalid={!!errorsCliente.nit}
                           />
                           {errorsCliente.nit && (
@@ -526,7 +521,6 @@ const Layout = () => {
                             value={formCliente.dpiPasaporte}
                             onChange={handleFormClienteChange}
                             placeholder="DPI o Pasaporte"
-                            inputMode="numeric"
                           />
                         </CCol>
                       </CRow>

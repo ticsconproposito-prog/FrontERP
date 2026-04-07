@@ -490,9 +490,7 @@ const Layout = () => {
 
   const handleClienteChange = (e) => {
     const { name, value } = e.target;
-    const camposNumericos = ['nit', 'dpiPasaporte'];
-    const valorFinal = camposNumericos.includes(name) ? value.replace(/\D/g, '') : value;
-    setFormCliente((prev) => ({ ...prev, [name]: valorFinal }));
+    setFormCliente((prev) => ({ ...prev, [name]: value }));
   };
 
   const abrirModalCliente = () => {
@@ -530,6 +528,7 @@ const Layout = () => {
       const body = {
         nombreCliente: formCliente.nombreCliente.trim(),
         nit: formCliente.nit.trim(),
+        documentoIdentificacion: formCliente.dpiPasaporte?.trim() || '',
         nombreFacturacion: formCliente.nombreFacturacion.trim(),
         direccionFisica: formCliente.direccionFisica.trim(),
         correoElectronico: formCliente.correoElectronico?.trim() || '',
@@ -2002,7 +2001,6 @@ const Layout = () => {
                           value={formCliente.nit}
                           onChange={handleClienteChange}
                           placeholder="NIT"
-                          inputMode="numeric"
                         />
                       </CCol>
                       <CCol xs={6}>
@@ -2012,7 +2010,6 @@ const Layout = () => {
                           value={formCliente.dpiPasaporte}
                           onChange={handleClienteChange}
                           placeholder="DPI o Pasaporte"
-                          inputMode="numeric"
                         />
                       </CCol>
                     </CRow>

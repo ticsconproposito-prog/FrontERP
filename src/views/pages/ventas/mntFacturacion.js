@@ -30,9 +30,20 @@ const PAGE_SIZE = 20
 
 const _d = new Date()
 const HOY = `${_d.getFullYear()}-${String(_d.getMonth() + 1).padStart(2, '0')}-${String(_d.getDate()).padStart(2, '0')}`
-const MES_ACTUAL   = `${_d.getFullYear()}-${String(_d.getMonth() + 1).padStart(2, '0')}`
-const _mesSig      = new Date(_d.getFullYear(), _d.getMonth() + 1, 1)
-const MES_SIGUIENTE = `${_mesSig.getFullYear()}-${String(_mesSig.getMonth() + 1).padStart(2, '0')}`
+
+const esMesAnulable = (fechaFactura) => {
+  if (!fechaFactura) return false
+  const [y, m] = String(fechaFactura).split('-').map(Number)
+  if (!y || !m) return false
+  const hoy = new Date()
+  // Comparar solo año-mes, ignorando el día
+  const mesHoy     = hoy.getFullYear() * 12 + hoy.getMonth()       // mes actual (0-indexado)
+  const mesFact    = y * 12 + (m - 1)                               // mes de la factura (0-indexado)
+  const anulable   = mesHoy <= mesFact + 1
+  const limiteStr  = (() => { const l = new Date(y, m, 1); return `${l.getFullYear()}-${String(l.getMonth() + 1).padStart(2, '0')}` })()
+  console.log('[esMesAnulable]', { fechaFactura, 'hoy.getFullYear()': hoy.getFullYear(), 'hoy.getMonth()': hoy.getMonth(), mesHoy, mesFact, anulable, limiteStr })
+  return anulable
+}
 
 const formatFecha = (fecha) => {
   if (!fecha) return ''
@@ -989,8 +1000,7 @@ const MntFacturacion = () => {
                                 {reimprimiendo ? <CSpinner size="sm" /> : 'Reimprimir'}
                               </CButton>
                             )}
-                            {f.facturaProcesada === 'S' &&
-                              (f.FechaFactura?.slice(0, 7) === MES_ACTUAL || f.FechaFactura?.slice(0, 7) === MES_SIGUIENTE) && (
+                            {f.facturaProcesada === 'N' && esMesAnulable(f.FechaFactura) && (
                               <CButton
                                 color="danger"
                                 size="sm"
