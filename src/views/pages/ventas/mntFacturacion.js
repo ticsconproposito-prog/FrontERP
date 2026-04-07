@@ -1000,7 +1000,7 @@ const MntFacturacion = () => {
                                 {reimprimiendo ? <CSpinner size="sm" /> : 'Reimprimir'}
                               </CButton>
                             )}
-                            {f.facturaProcesada === 'N' && esMesAnulable(f.FechaFactura) && (
+                            {f.facturaProcesada === 'S' && esMesAnulable(f.FechaFactura) && (
                               <CButton
                                 color="danger"
                                 size="sm"
