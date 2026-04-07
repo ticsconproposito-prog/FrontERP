@@ -60,8 +60,7 @@ const PerfilesPaginas = () => {
   const [sugerenciasPerfil, setSugerenciasPerfil] = useState([])
   const [mostrarSugerenciasPerfil, setMostrarSugerenciasPerfil] = useState(false)
 
-  // Búsqueda en tabla
-  const [busqueda, setBusqueda] = useState('')
+  // Filtro en tabla
   const [filtroPerfil, setFiltroPerfil] = useState('')
 
   const cargarDatos = async () => {
@@ -234,30 +233,22 @@ const PerfilesPaginas = () => {
 
   const obtenerNombrePerfil = (id) => {
     const p = perfiles.find((x) => (x.idPerfil ?? x.id_Perfil) == id)
-    return p?.nombrePerfil || id || '—'
+    return String(p?.nombrePerfil || id || '—')
   }
 
   const obtenerNombrePagina = (id) => {
     const p = paginas.find((x) => (x.idPagina ?? x.id_Pagina) == id)
-    return p?.nombrePagina || id || '—'
+    return String(p?.nombrePagina || id || '—')
   }
 
   const obtenerURLPagina = (id) => {
     const p = paginas.find((x) => (x.idPagina ?? x.id_Pagina) == id)
-    return p?.URL || p?.url || '—'
+    return String(p?.URL || p?.url || '—')
   }
 
-  const registrosFiltrados = registros.filter((reg) => {
-    const q = busqueda.trim().toLowerCase()
-    const matchBusqueda = !q ||
-      obtenerNombrePerfil(reg.idPerfil).toLowerCase().includes(q) ||
-      obtenerNombrePagina(reg.idPagina).toLowerCase().includes(q) ||
-      obtenerURLPagina(reg.idPagina).toLowerCase().includes(q)
-
-    const matchPerfil = !filtroPerfil || String(reg.idPerfil) === filtroPerfil
-
-    return matchBusqueda && matchPerfil
-  })
+  const registrosFiltrados = registros.filter((reg) =>
+    !filtroPerfil || String(reg.idPerfil) === filtroPerfil
+  )
 
   if (loading) {
     return (
@@ -288,13 +279,6 @@ const PerfilesPaginas = () => {
             <CCardBody>
               {/* Filtros */}
               <CRow className="mb-3 g-2">
-                <CCol md={4}>
-                  <CFormInput
-                    placeholder="Buscar por perfil o página..."
-                    value={busqueda}
-                    onChange={(e) => setBusqueda(e.target.value)}
-                  />
-                </CCol>
                 <CCol md={3}>
                   <CFormSelect
                     value={filtroPerfil}
