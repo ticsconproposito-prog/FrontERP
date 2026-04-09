@@ -143,14 +143,16 @@ const Layout = () => {
         correoElectronico: '',
         telefono: '',
         direccion: 'Ciudad',
-        direccionEntrega: '',
+        direccionEntrega: formFactura.direccionEntrega,
         tipoDocumento: formFactura.tipoDocumento,
         moneda: formFactura.moneda,
         fecha: formFactura.fecha,
         establecimiento: formFactura.establecimiento,
       });
     } else {
+      const entregaActual = formFactura.direccionEntrega;
       limpiarFormulario();
+      setFormFactura((prev) => ({ ...prev, direccionEntrega: entregaActual }));
     }
   };
 
