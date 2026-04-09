@@ -656,7 +656,8 @@ const Layout = () => {
       logoBase64 = '';
     }
 
-    const FILAS_MINIMAS = 25;
+    const FILAS_PAGINA_1 = 20   // filas de productos en la primera hoja (carta: ~87mm disponibles ÷ 5.8mm/fila)
+    const FILAS_PAGINA_N = 30   // filas de productos en hojas de continuación
 
     // Calcular valores por ítem para columnas condicionales
     const detalleConCalculo = detalle.map((item) => {
@@ -678,7 +679,7 @@ const Layout = () => {
     // Total de columnas dinámico
     const totalCols = 4 + (hayDescuento ? 1 : 0) + (hayExento ? 1 : 0) + (hayOtros ? 1 : 0);
 
-    const filasProducto = detalleConCalculo.map((item) => `
+    const renderFilasProducto = (items) => items.map((item) => `
       <tr>
         <td style="text-align:center;">${item.cantidad}</td>
         <td>${item.descripcion || item.nombre || ''}</td>
@@ -688,14 +689,149 @@ const Layout = () => {
         ${hayOtros     ? `<td style="text-align:right;">${moneda}${item.ImpOtros.toFixed(2)}</td>` : ''}
         <td style="text-align:right;">${moneda}${Number(item.total || 0).toFixed(2)}</td>
       </tr>
-    `).join('');
+    `).join('')
 
-    const filasVacias = Math.max(0, FILAS_MINIMAS - detalle.length);
-    const filasRelleno = Array.from({ length: filasVacias }, () => `
-      <tr>${Array(totalCols).fill('<td>&nbsp;</td>').join('')}</tr>
-    `).join('');
+    const renderFilasVacias = (n) => Array.from({ length: Math.max(0, n) }, () =>
+      `<tr>${Array(totalCols).fill('<td>&nbsp;</td>').join('')}</tr>`
+    ).join('')
 
-    const filas = filasProducto + filasRelleno;
+    // Dividir el detalle en páginas
+    const paginasDetalle = []
+    paginasDetalle.push(detalleConCalculo.slice(0, FILAS_PAGINA_1))
+    let restoDetalle = detalleConCalculo.slice(FILAS_PAGINA_1)
+    while (restoDetalle.length > 0) {
+      paginasDetalle.push(restoDetalle.slice(0, FILAS_PAGINA_N))
+      restoDetalle = restoDetalle.slice(FILAS_PAGINA_N)
+    }
+    const totalPaginas = paginasDetalle.length
+
+    // Fragmentos HTML reutilizables
+    const colgroupHTML = `
+      <colgroup>
+        <col class="col-cant" />
+        <col class="col-desc" />
+        <col class="col-precio" />
+        ${hayDescuento ? '<col class="col-precio" />' : ''}
+        ${hayExento    ? '<col class="col-precio" />' : ''}
+        ${hayOtros     ? '<col class="col-precio" />' : ''}
+        <col class="col-total" />
+      </colgroup>`
+
+    const theadHTML = `
+      <thead>
+        <tr>
+          <th>Cantidad</th>
+          <th>Descripción</th>
+          <th>Precio Unitario</th>
+          ${hayDescuento ? '<th>Descuento</th>' : ''}
+          ${hayExento    ? '<th>Valor Exento</th>' : ''}
+          ${hayOtros     ? '<th>Otros Impuestos</th>' : ''}
+          <th>Total</th>
+        </tr>
+      </thead>`
+
+    const tfootHTML = `
+      <tfoot>
+        <tr>
+          <td colspan="2" rowspan="2" style="font-size:10px;color:#000;vertical-align:middle;padding:6px 8px;border-top:1px solid #000;">
+            <strong>TOTAL EN QUETZALES:</strong> ${numeroALetras(total.toFixed(2))}
+          </td>
+          <td colspan="${totalCols - 3}" style="text-align:left;padding:5px 8px;border-left:1px solid #000;border-top:1px solid #000;">IVA:</td>
+          <td style="text-align:right;padding:5px 8px;border-top:1px solid #000;">${moneda}${iva.toFixed(2)}</td>
+        </tr>
+        <tr>
+          <td colspan="${totalCols - 3}" style="text-align:left;padding:5px 8px;font-weight:bold;font-size:13px;border-left:1px solid #000;border-top:1px solid #000;">TOTAL:</td>
+          <td style="text-align:right;padding:5px 8px;font-weight:bold;font-size:13px;border-top:1px solid #000;">${moneda}${total.toFixed(2)}</td>
+        </tr>
+      </tfoot>`
+
+    const headerEmpresaHTML = `
+      <div class="header-empresa">
+        <div class="logo">
+          ${logoBase64 ? `<img src="${logoBase64}" alt="Logo" />` : ''}
+          <div class="telefonos">📞 7888-9138 / 5203-0726</div>
+        </div>
+        <div class="empresa-info">
+          <div style="font-size:14px;font-weight:bold;margin-bottom:3px;letter-spacing:0.5px;">${esConsignacion ? 'CONSIGNACIÓN' : error ? 'COMPROBANTE DE PAGO' : 'DOCUMENTO TRIBUTARIO ELECTRÓNICO'}</div>
+          <div class="empresa-nombre">Blockera Agmner</div>
+          <div class="empresa-linea">JUAN ALBERTO, ARREDONDO GARCIA</div>
+          <div class="empresa-linea">CALLE PRINCIPAL SECTOR PALIN NUEVA SANTA ROSA</div>
+          <div class="empresa-linea">SANTA ROSA</div>
+          <div class="empresa-linea">NIT: 16949447</div>
+        </div>
+        <div class="factura-id">
+          ${(error || esConsignacion) ? `
+          <div class="factura-linea"><strong>Referencia:</strong> ${referenciaRes || '—'}</div>
+          <div class="factura-linea" style="margin-top:5px;"><strong>Fecha de Emisión:</strong> ${formatearFechaFactura(cliente.fecha)}</div>
+          ` : `
+          <div class="factura-titulo">FACTURA</div>
+          <div class="factura-linea"><strong>NÚMERO DE AUTORIZACIÓN</strong></div>
+          <div class="factura-linea" style="font-size:10px;line-height:1.4;">${numeroAutorizacion ? numeroAutorizacion.slice(0, 26) : '—'}</div>
+          ${numeroAutorizacion && numeroAutorizacion.length > 26 ? `<div class="factura-linea" style="font-size:10px;line-height:1.4;">${numeroAutorizacion.slice(26)}</div>` : ''}
+          <div class="factura-linea"><strong>Serie:</strong> ${serieRes || '—'}</div>
+          <div class="factura-linea"><strong>Número:</strong> ${preimpresoRes || '—'}</div>
+          <div class="factura-linea" style="margin-top:5px;"><strong>Fecha de Emisión:</strong> ${formatearFechaFactura(cliente.fecha)}</div>
+          `}
+        </div>
+      </div>`
+
+    const clienteBoxHTML = `
+      <div class="cliente-box">
+        <div class="field"><label>Nombre: </label>${cliente.nombre || 'Consumidor Final'}</div>
+        <div class="field"><label>${(tiposReceptor[String(documento)] || 'NIT').toUpperCase()}: </label>${cliente.nit || 'CF'}</div>
+        <div class="field"><label>Dirección: </label>${cliente.direccion || '—'}</div>
+        <div class="field"><label>Dirección de entrega: </label>${cliente.direccionEntrega || '—'}</div>
+      </div>`
+
+    const footerContenidoHTML = `
+      ${(!error && !esConsignacion) ? `
+      <div style="margin-top:10px;padding:6px 10px;border:1px solid #000;border-radius:4px;font-size:10px;text-align:center;">
+        <div><strong>Sujeto a pagos trimestrales ISR</strong></div>
+        <div><strong>Agente de Retención de IVA</strong></div>
+      </div>
+      <div style="margin-top:10px;padding:6px 10px;border:1px solid #000;border-radius:4px;font-size:10px;text-align:center;">
+        <div style="font-weight:bold;margin-bottom:4px;">DATOS DEL CERTIFICADOR</div>
+        <div style="text-align:center;">
+          <span><strong>NIT del contribuyente:</strong> 5640773-4</span>
+          &nbsp;&nbsp;
+          <span><strong>Nombre, razón o denominación social:</strong> AINNOVA, SOCIEDAD ANÓNIMA</span>
+        </div>
+      </div>
+      ` : ''}
+      <div class="footer">Gracias por su compra — Ferretería y Blockera Agmner</div>
+      <div style="font-weight:bold;margin-bottom:6px;text-align:center;font-size:14px;">No se aceptan cambios, Ni devoluciones.</div>
+      ${esConsignacion ? `
+      <div style="font-weight:bold;text-align:center;font-size:14px;margin-top:4px;">**Productos pendientes de pago**</div>
+      <div style="margin-top:30px;text-align:center;">
+        <div style="font-size:13px;">f._____________________</div>
+        <div style="font-size:12px;margin-top:4px;">${cliente.nombre || 'Consumidor Final'}</div>
+      </div>
+      ` : ''}`
+
+    const paginasHTML = paginasDetalle.map((chunk, idx) => {
+      const esPrimera = idx === 0
+      const esUltima  = idx === totalPaginas - 1
+      const filasPorPagina = esPrimera ? FILAS_PAGINA_1 : FILAS_PAGINA_N
+      // Cada descripción larga que haga wrap resta una fila disponible para el relleno
+      const CHARS_POR_LINEA = 56
+      const lineasExtra = chunk.reduce((acc, item) => {
+        const desc = (item.descripcion || item.nombre || '').trim()
+        return acc + Math.max(0, Math.ceil(desc.length / CHARS_POR_LINEA) - 1)
+      }, 0)
+      const bodyFilas = renderFilasProducto(chunk) + (esPrimera ? renderFilasVacias(filasPorPagina - chunk.length - lineasExtra) : '')
+      return `
+        <div class="page"${!esUltima ? ' style="page-break-after:always;"' : ''}>
+          ${esPrimera ? headerEmpresaHTML + clienteBoxHTML : ''}
+          <table class="${`detalle-table${!esUltima ? ' tabla-continua' : ''}${!esPrimera ? ' tabla-desde-anterior' : ''}`}">
+            ${colgroupHTML}
+            ${esPrimera ? theadHTML : ''}
+            <tbody>${bodyFilas}</tbody>
+            ${esUltima ? tfootHTML : ''}
+          </table>
+          ${esUltima ? footerContenidoHTML : ''}
+        </div>
+      `
+    }).join('')
 
     const html = `
       <!DOCTYPE html>
@@ -707,13 +843,13 @@ const Layout = () => {
           * { margin: 0; padding: 0; box-sizing: border-box; }
           body { font-family: Arial, sans-serif; font-size: 12px; color: #222; }
 
-          @page { size: A4; margin: 8mm 10mm; }
+          @page { size: letter; margin: 8mm 10mm; }
 
           @media print {
             body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
           }
 
-          .page { width: 100%; min-height: 277mm; padding: 6mm 8mm; }
+          .page { width: 100%; min-height: 259mm; padding: 6mm 8mm; }
 
           /* ── Encabezado ── */
           .header-empresa {
@@ -857,6 +993,42 @@ const Layout = () => {
             width: 55%;
           }
 
+          /* ── Continuación ── */
+          .cont-header {
+            font-size: 11px;
+            font-weight: bold;
+            border-bottom: 1px solid #555;
+            padding-bottom: 6px;
+            margin-bottom: 8px;
+            color: #333;
+          }
+
+          /* Tabla que continúa en la siguiente hoja: sin borde ni radio inferior */
+          .detalle-table.tabla-continua {
+            border-bottom: none;
+            border-bottom-left-radius: 0;
+            border-bottom-right-radius: 0;
+          }
+          .detalle-table.tabla-continua tr:last-child td:first-child {
+            border-bottom-left-radius: 0;
+          }
+          .detalle-table.tabla-continua tr:last-child td:last-child {
+            border-bottom-right-radius: 0;
+          }
+
+          /* Tabla que viene de la hoja anterior: sin borde ni radio superior */
+          .detalle-table.tabla-desde-anterior {
+            border-top: none;
+            border-top-left-radius: 0;
+            border-top-right-radius: 0;
+          }
+          .detalle-table.tabla-desde-anterior tr:first-child td:first-child {
+            border-top-left-radius: 0;
+          }
+          .detalle-table.tabla-desde-anterior tr:first-child td:last-child {
+            border-top-right-radius: 0;
+          }
+
           /* ── Pie ── */
           .footer {
             text-align: center;
@@ -869,110 +1041,7 @@ const Layout = () => {
         </style>
       </head>
       <body>
-        <div class="page">
-
-          <!-- Encabezado empresa -->
-          <div class="header-empresa">
-            <div class="logo">
-              ${logoBase64 ? `<img src="${logoBase64}" alt="Logo" />` : ''}
-              <div class="telefonos">📞 7888-9138 / 5203-0726</div>
-            </div>
-            <div class="empresa-info">
-              <div style="font-size:14px;font-weight:bold;margin-bottom:3px;letter-spacing:0.5px;">${esConsignacion ? 'CONSIGNACIÓN' : error ? 'COMPROBANTE DE PAGO' : 'DOCUMENTO TRIBUTARIO ELECTRÓNICO'}</div>
-              <div class="empresa-nombre">Blockera Agmner</div>
-              <div class="empresa-linea">JUAN ALBERTO, ARREDONDO GARCIA</div>
-              <div class="empresa-linea">CALLE PRINCIPAL SECTOR PALIN NUEVA SANTA ROSA</div>
-              <div class="empresa-linea">SANTA ROSA</div>
-              <div class="empresa-linea">NIT: 16949447</div>
-            </div>
-            <div class="factura-id">
-              ${(error || esConsignacion) ? `
-              <div class="factura-linea"><strong>Referencia:</strong> ${referenciaRes || '—'}</div>
-              <div class="factura-linea" style="margin-top:5px;"><strong>Fecha de Emisión:</strong> ${formatearFechaFactura(cliente.fecha)}</div>
-              ` : `
-              <div class="factura-titulo">FACTURA</div>
-              <div class="factura-linea"><strong>NÚMERO DE AUTORIZACIÓN</strong></div>
-              <div class="factura-linea" style="font-size:10px;line-height:1.4;">${numeroAutorizacion ? numeroAutorizacion.slice(0, 26) : '—'}</div>
-              ${numeroAutorizacion && numeroAutorizacion.length > 26 ? `<div class="factura-linea" style="font-size:10px;line-height:1.4;">${numeroAutorizacion.slice(26)}</div>` : ''}
-              <div class="factura-linea"><strong>Serie:</strong> ${serieRes || '—'}</div>
-              <div class="factura-linea"><strong>Número:</strong> ${preimpresoRes || '—'}</div>
-              <div class="factura-linea" style="margin-top:5px;"><strong>Fecha de Emisión:</strong> ${formatearFechaFactura(cliente.fecha)}</div>
-              `}
-            </div>
-          </div>
-
-          <!-- Datos del cliente -->
-          <div class="cliente-box">
-            <div class="field"><label>Nombre: </label>${cliente.nombre || 'Consumidor Final'}</div>
-            <div class="field"><label>${(tiposReceptor[String(documento)] || 'NIT').toUpperCase()}: </label>${cliente.nit || 'CF'}</div>
-            <div class="field"><label>Dirección: </label>${cliente.direccion || '—'}</div>
-            <div class="field"><label>Dirección de entrega: </label>${cliente.direccionEntrega || '—'}</div>
-          </div>
-
-          <!-- Tabla de detalle -->
-          <table class="detalle-table">
-            <colgroup>
-              <col class="col-cant" />
-              <col class="col-desc" />
-              <col class="col-precio" />
-              ${hayDescuento ? '<col class="col-precio" />' : ''}
-              ${hayExento    ? '<col class="col-precio" />' : ''}
-              ${hayOtros     ? '<col class="col-precio" />' : ''}
-              <col class="col-total" />
-            </colgroup>
-            <thead>
-              <tr>
-                <th>Cantidad</th>
-                <th>Descripción</th>
-                <th>Precio Unitario</th>
-                ${hayDescuento ? '<th>Descuento</th>' : ''}
-                ${hayExento    ? '<th>Valor Exento</th>' : ''}
-                ${hayOtros     ? '<th>Otros Impuestos</th>' : ''}
-                <th>Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${filas}
-            </tbody>
-            <tfoot>
-              <tr>
-                <td colspan="2" rowspan="2" style="font-size:10px;color:#000;vertical-align:middle;padding:6px 8px;border-top:1px solid #000;">
-                  <strong>TOTAL EN QUETZALES:</strong> ${numeroALetras(total.toFixed(2))}
-                </td>
-                <td colspan="${totalCols - 3}" style="text-align:left;padding:5px 8px;border-left:1px solid #000;border-top:1px solid #000;">IVA:</td>
-                <td style="text-align:right;padding:5px 8px;border-top:1px solid #000;">${moneda}${iva.toFixed(2)}</td>
-              </tr>
-              <tr>
-                <td colspan="${totalCols - 3}" style="text-align:left;padding:5px 8px;font-weight:bold;font-size:13px;border-left:1px solid #000;border-top:1px solid #000;">TOTAL:</td>
-                <td style="text-align:right;padding:5px 8px;font-weight:bold;font-size:13px;border-top:1px solid #000;">${moneda}${total.toFixed(2)}</td>
-              </tr>
-            </tfoot>
-          </table>
-
-          ${(!error && !esConsignacion) ? `
-           <div style="margin-top:10px;padding:6px 10px;border:1px solid #000;border-radius:4px;font-size:10px;text-align:center;">
-            <div><strong>Sujeto a pagos trimestrales ISR</strong></div>
-            <div><strong>Agente de Retención de IVA</strong></div>
-          </div>
-          <div style="margin-top:10px;padding:6px 10px;border:1px solid #000;border-radius:4px;font-size:10px;text-align:center;">
-            <div style="font-weight:bold;margin-bottom:4px;">DATOS DEL CERTIFICADOR</div>
-            <div style="text-align:center;">
-              <span><strong>NIT del contribuyente:</strong> 5640773-4</span>
-              &nbsp;&nbsp;
-              <span><strong>Nombre, razón o denominación social:</strong> AINNOVA, SOCIEDAD ANÓNIMA</span>
-            </div>
-          </div>
-          ` : ''}
-          <div class="footer">Gracias por su compra — Ferretería y Blockera Agmner</div>
-          <div style="font-weight:bold;margin-bottom:6px;text-align:center;font-size:14px;">No se aceptan cambios, Ni devoluciones.</div>
-          ${esConsignacion ? `
-          <div style="font-weight:bold;text-align:center;font-size:14px;margin-top:4px;">**Productos pendientes de pago**</div>
-          <div style="margin-top:30px;text-align:center;">
-            <div style="font-size:13px;">f._____________________</div>
-            <div style="font-size:12px;margin-top:4px;">${cliente.nombre || 'Consumidor Final'}</div>
-          </div>
-          ` : ''}
-        </div>
+        ${paginasHTML}
         <script>
           window.onload = function() { window.print(); window.onafterprint = function() { window.close(); }; };
         </script>
@@ -1532,7 +1601,11 @@ const Layout = () => {
                     value={formFactura.direccionEntrega}
                     onChange={handleChange}
                     rows={2}
+                    maxLength={250}
                   />
+                  <div className="text-end" style={{ fontSize: '0.75rem', color: (formFactura.direccionEntrega?.length || 0) >= 250 ? '#dc3545' : '#6c757d' }}>
+                    {formFactura.direccionEntrega?.length || 0}/250
+                  </div>
                 </CCol>
 
                 <CCol md={3}>
