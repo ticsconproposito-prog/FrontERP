@@ -173,26 +173,23 @@ const Layout = () => {
     }
   }
 
-  // Función para cargar proveedores
+  // Función para cargar proveedores en lotes de 500 (evita errores HTTP/2 con respuestas grandes)
   const cargarProveedores = async () => {
     try {
-      const response = await fetch('/api/proveedores?size=10000')
-
-      if (!response.ok) {
-        throw new Error('Error al cargar proveedores')
+      const LOTE = 500
+      let acumulado = []
+      let pagina = 0
+      while (true) {
+        const response = await fetch(`/api/proveedores?page=${pagina}&size=${LOTE}`)
+        if (!response.ok) throw new Error('Error al cargar proveedores')
+        const data = await response.json()
+        const content = Array.isArray(data) ? data : (Array.isArray(data?.content) ? data.content : [])
+        acumulado = acumulado.concat(content)
+        const totalPages = Array.isArray(data) ? 1 : (data?.totalPages ?? 1)
+        if (pagina >= totalPages - 1 || content.length < LOTE) break
+        pagina++
       }
-
-      const data = await response.json()
-
-      // Extraer array de proveedores (puede venir como array directo o en content)
-      const proveedoresArray = Array.isArray(data)
-        ? data
-        : Array.isArray(data?.content)
-          ? data.content
-          : []
-
-      setProveedores(proveedoresArray)
-
+      setProveedores(acumulado)
     } catch (error) {
       console.error('Error al cargar proveedores:', error)
       setProveedores([])
