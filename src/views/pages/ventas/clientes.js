@@ -175,6 +175,12 @@ const Layout = () => {
     setErrorsCliente({})
   }
 
+  const handleLimpiarFiltros = () => {
+    const filtrosVacios = { nombreCliente: '', tipoDocumento: 'nit', numeroDocumento: '' }
+    setFiltros(filtrosVacios)
+    buscarClientes(0, filtrosVacios)
+  }
+
   const abrirConfirmarEliminar = (cliente) => {
     setClienteAEliminar(cliente)
     setModalConfirmarEliminar(true)
@@ -347,26 +353,8 @@ const Layout = () => {
             <strong className="fs-4">Clientes</strong>
           </CCardHeader>
           <CCardBody className="p-4">
-            <div className="mb-3 d-flex justify-content-end gap-2">
-              <CButton color="success" className="text-light" onClick={abrirModalAgregar}>
-                + Agregar
-              </CButton>
-              <CButton color="info" className="text-light" onClick={exportarAExcel}>
-                Exportar
-              </CButton>
-            </div>
-
             <CForm className="mt-3">
-              <CRow className="gy-3">
-                <CCol md={3}>
-                  <CFormLabel className="fw-bold">Nombre Cliente</CFormLabel>
-                  <CFormInput
-                    name="nombreCliente"
-                    placeholder="Buscar por nombre"
-                    value={filtros.nombreCliente}
-                    onChange={handleFiltroChange}
-                  />
-                </CCol>
+              <CRow className="gy-3 align-items-end">
                 <CCol md={2}>
                   <CFormLabel className="fw-bold">Tipo Documento</CFormLabel>
                   <CFormSelect
@@ -379,7 +367,7 @@ const Layout = () => {
                   </CFormSelect>
                 </CCol>
                 <CCol md={3}>
-                  <CFormLabel>&nbsp;</CFormLabel>
+                  <CFormLabel className="fw-bold">Documento</CFormLabel>
                   <CFormInput
                     name="numeroDocumento"
                     placeholder={filtros.tipoDocumento === 'nit' ? 'Buscar por NIT' : 'Buscar por DPI / Pasaporte'}
@@ -387,6 +375,26 @@ const Layout = () => {
                     onChange={handleFiltroChange}
                     autoComplete="off"
                   />
+                </CCol>
+                <CCol md={3}>
+                  <CFormLabel className="fw-bold">Nombre Cliente</CFormLabel>
+                  <CFormInput
+                    name="nombreCliente"
+                    placeholder="Buscar por nombre"
+                    value={filtros.nombreCliente}
+                    onChange={handleFiltroChange}
+                  />
+                </CCol>
+                <CCol className="d-flex justify-content-end gap-2">
+                  <CButton color="secondary" className="text-white" onClick={handleLimpiarFiltros}>
+                    Limpiar
+                  </CButton>
+                  <CButton color="success" className="text-light" onClick={abrirModalAgregar}>
+                    + Agregar
+                  </CButton>
+                  <CButton color="info" className="text-light" onClick={exportarAExcel}>
+                    Exportar
+                  </CButton>
                 </CCol>
               </CRow>
             </CForm>

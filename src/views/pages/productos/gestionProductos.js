@@ -582,45 +582,8 @@ const Layout = () => {
           </CCardHeader>
           <CCardBody className="p-4">
 
-            <div className="mt-2 ms-auto me-2">
-              <CCol className="d-flex justify-content-end gap-2 flex-wrap">
-                {!modoEditarPrecio ? (
-                  <>
-                    <CButton color="success" className="text-light" onClick={() => {
-                      setModoEdicion(false)
-                      setForm({
-                        codigoProducto: '',
-                        codigoProductoProveedor: '',
-                        descripcionProducto: '',
-                        unidadDeMedida: '',
-                      })
-                      setErrors({})
-                      setVisible(true)
-                    }}>+ Agregar</CButton>
-                    <CButton color="primary" className="text-light" onClick={activarModoEditarPrecio}>
-                      $ Editar Precios
-                    </CButton>
-                    <CButton color="info" className="text-light" onClick={exportarAExcel}>Exportar</CButton>
-                  </>
-                ) : (
-                  <>
-                    <small className="text-muted align-self-center">
-                      Editando precios de los productos visibles
-                    </small>
-                    <CButton color="success" className="text-light" onClick={guardarPrecios} disabled={guardandoPrecios}>
-                      {guardandoPrecios && <CSpinner size="sm" className="me-1" />}
-                      Guardar Precios
-                    </CButton>
-                    <CButton color="secondary" onClick={cancelarEditarPrecio} disabled={guardandoPrecios}>
-                      Cancelar
-                    </CButton>
-                  </>
-                )}
-              </CCol>
-            </div>
-
             <CForm>
-              <CRow className="gy-3">
+              <CRow className="gy-3 align-items-end">
                 <CCol md={6}>
                   <CFormLabel className="text-dark fw-bold" htmlFor="Buscar">Busqueda por:</CFormLabel>
                   <CFormInput
@@ -628,6 +591,40 @@ const Layout = () => {
                     value={busqueda}
                     onChange={(e) => setBusqueda(e.target.value)}
                   />
+                </CCol>
+                <CCol className="d-flex justify-content-end gap-2 flex-wrap align-items-end">
+                  {!modoEditarPrecio ? (
+                    <>
+                      <CButton color="success" className="text-light" onClick={() => {
+                        setModoEdicion(false)
+                        setForm({
+                          codigoProducto: '',
+                          codigoProductoProveedor: '',
+                          descripcionProducto: '',
+                          unidadDeMedida: '',
+                        })
+                        setErrors({})
+                        setVisible(true)
+                      }}>+ Agregar</CButton>
+                      <CButton color="primary" className="text-light" onClick={activarModoEditarPrecio}>
+                        $ Editar Precios
+                      </CButton>
+                      <CButton color="info" className="text-light" onClick={exportarAExcel}>Exportar</CButton>
+                    </>
+                  ) : (
+                    <>
+                      <small className="text-muted align-self-center">
+                        Editando precios de los productos visibles
+                      </small>
+                      <CButton color="success" className="text-light" onClick={guardarPrecios} disabled={guardandoPrecios}>
+                        {guardandoPrecios && <CSpinner size="sm" className="me-1" />}
+                        Guardar Precios
+                      </CButton>
+                      <CButton color="secondary" onClick={cancelarEditarPrecio} disabled={guardandoPrecios}>
+                        Cancelar
+                      </CButton>
+                    </>
+                  )}
                 </CCol>
               </CRow>
             </CForm>

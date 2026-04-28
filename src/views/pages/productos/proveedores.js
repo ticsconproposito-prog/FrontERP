@@ -85,6 +85,12 @@ const Layout = () => {
     debounceRef.current = setTimeout(() => cargarProveedores(0, nuevos), 300)
   }
 
+  const handleLimpiarFiltros = () => {
+    const filtrosVacios = { nombre: '', nombreDeContacto1: '' }
+    setFiltros(filtrosVacios)
+    cargarProveedores(0, filtrosVacios)
+  }
+
   const cargarProveedores = async (pagina = 0, filtrosActuales = filtros) => {
     setCargando(true)
     try {
@@ -321,36 +327,38 @@ const Layout = () => {
             <strong className="fs-4">Proveedores</strong>
           </CCardHeader>
           <CCardBody className="p-4">
-            <div className="mb-3 d-flex justify-content-end gap-2">
-              <CButton color="success" className="text-light" onClick={abrirModalAgregar}>
-                + Agregar
-              </CButton>
-              <CButton color="info" className="text-light" onClick={exportarAExcel}>
-                Exportar
-              </CButton>
-            </div>
-
             <CForm className="mt-3">
-              <CRow className="gy-3" >
-                <CCol md={4} >
-                  <CFormLabel className="fw-bold">Nombre Proveedor </CFormLabel>
+              <CRow className="gy-3 align-items-end">
+                <CCol md={4}>
+                  <CFormLabel className="fw-bold">Nombre Proveedor</CFormLabel>
                   <CFormInput name="nombre"
                     placeholder="Nombre proveedor"
                     value={filtros.nombre}
                     onChange={handleFiltroChange} />
                 </CCol>
                 <CCol md={4}>
-                  <CFormLabel className="fw-bold">Nombre Contacto No. 1 </CFormLabel>
+                  <CFormLabel className="fw-bold">Nombre Contacto No. 1</CFormLabel>
                   <CFormInput
                     name="nombreDeContacto1"
-                    placeholder="Teclee el nombre del contacto 1 para buscar"
+                    placeholder="Nombre del contacto 1"
                     value={filtros.nombreDeContacto1}
                     onChange={handleFiltroChange}
                     autoComplete="off"
                   />
                 </CCol>
+                <CCol className="d-flex justify-content-end gap-2">
+                  <CButton color="secondary" className="text-white" onClick={handleLimpiarFiltros}>
+                    Limpiar
+                  </CButton>
+                  <CButton color="success" className="text-light" onClick={abrirModalAgregar}>
+                    + Agregar
+                  </CButton>
+                  <CButton color="info" className="text-light" onClick={exportarAExcel}>
+                    Exportar
+                  </CButton>
+                </CCol>
               </CRow>
-            </CForm >
+            </CForm>
 
             <CModal visible={modalAgregarVisible} onClose={cerrarModalAgregar} backdrop="static" size="lg">
               <CModalHeader className="bg-light">

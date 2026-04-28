@@ -1075,6 +1075,18 @@ const Layout = () => {
     }
   };
 
+  // Errores DTE que NO deben limpiar el formulario (el usuario puede corregir datos y reintentar)
+  const esErrorSinLimpiar = (msg) => {
+    const m = String(msg ?? '')
+    return (
+      m.includes('NO EXISTE EL NIT') ||
+      m.includes('2-NO EXISTE EL NIT/CUI DEL CONTRIBUYENTE') ||
+      m.includes('186-NUMERO') ||
+      m.includes('DOCUMENTO DE IDENTIFICACION INVALIDO') ||
+      m.includes('El monto total en Q del documento excede del limite permitido para receptor CF')
+    )
+  }
+
   const guardarFactura = async (e) => {
     e.preventDefault();
     setErrorFactura('');
@@ -1358,7 +1370,7 @@ const Layout = () => {
           console.warn('[DTE] Error FEL:', mensajeError)
           hayErrorDte = true
           const msgStr = String(mensajeError)
-          const esNit = msgStr.includes('NO EXISTE EL NIT') || msgStr.includes('186-NUMERO') || msgStr.includes('DOCUMENTO DE IDENTIFICACION INVALIDO')
+          const esNit = esErrorSinLimpiar(msgStr)
           console.warn('[DTE] esErrorNitDteRef →', esNit, '| mensaje →', msgStr)
           esErrorNitDteRef.current = esNit
           setErrorDteModal({ visible: true, mensaje: mensajeError })
@@ -1374,7 +1386,7 @@ const Layout = () => {
         console.warn('[DTE] Error al enviar DTE:', eDte)
         hayErrorDte = true
         const msgCatch = eDte.message || 'Error al conectar con el servicio DTE'
-        const esNitCatch = String(msgCatch).includes('NO EXISTE EL NIT') || String(msgCatch).includes('186-NUMERO') || String(msgCatch).includes('DOCUMENTO DE IDENTIFICACION INVALIDO')
+        const esNitCatch = esErrorSinLimpiar(msgCatch)
         console.warn('[DTE] esErrorNitDteRef (catch) →', esNitCatch, '| mensaje →', msgCatch)
         esErrorNitDteRef.current = esNitCatch
         setErrorDteModal({ visible: true, mensaje: msgCatch })
@@ -2232,10 +2244,14 @@ const Layout = () => {
     <CModal
       visible={errorDteModal.visible}
       onClose={() => {
-        console.warn('[DTE] onClose | esErrorNitDteRef.current:', esErrorNitDteRef.current);
-        if (!esErrorNitDteRef.current) { limpiarFormulario(); setDetalleFactura([]); }
+        // X button / Escape — NO limpiar si el error requiere corrección de datos
+        if (!esErrorSinLimpiar(errorDteModal.mensaje)) { limpiarFormulario(); setDetalleFactura([]); }
         esErrorNitDteRef.current = false;
-        setErrorDteModal({ visible: false, mensaje: '' });
+        setErrorDteModal((prev) => ({ ...prev, visible: false }))
+      }}
+      onClosed={() => {
+        // Limpiar mensaje DESPUÉS de que la animación de cierre termine (evita flash del botón Generar comprobante)
+        setErrorDteModal({ visible: false, mensaje: '' })
       }}
       backdrop="static"
       alignment="center"
@@ -2250,12 +2266,14 @@ const Layout = () => {
       </CModalBody>
       <CModalFooter>
         <CButton color="secondary" onClick={() => {
-          console.warn('[DTE] Cerrar clicked | esErrorNitDteRef.current:', esErrorNitDteRef.current);
-          setErrorDteModal({ visible: false, mensaje: '' });
+          // Botón Cerrar — NO limpiar si el error requiere corrección de datos
+          if (!esErrorSinLimpiar(errorDteModal.mensaje)) { limpiarFormulario(); setDetalleFactura([]); }
+          esErrorNitDteRef.current = false;
+          setErrorDteModal((prev) => ({ ...prev, visible: false }))
         }}>
           Cerrar
         </CButton>
-        {!errorDteModal.mensaje?.includes('NO EXISTE EL NIT') && !errorDteModal.mensaje?.includes('2-NO EXISTE EL NIT/CUI DEL CONTRIBUYENTE') && !errorDteModal.mensaje?.includes('186-NUMERO DE DOCUMENTO DE IDENTIFICACION INVALIDO') && (
+        {!esErrorSinLimpiar(errorDteModal.mensaje) && (
         <CButton color="success" className="text-white" onClick={async () => {
           const r2 = (n) => parseFloat(n.toFixed(2))
           const totales = detalleFactura.reduce((acc, item) => {
