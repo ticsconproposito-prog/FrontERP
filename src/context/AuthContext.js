@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useCallback, useEffect, use
 
 const AuthContext = createContext(null)
 
-const TIMEOUT_INACTIVIDAD_MS = 4 * 60 * 60 * 1000 // 4 horas en milisegundos
+const TIMEOUT_INACTIVIDAD_MS = 30 * 60 * 1000 // 30 minutos en milisegundos
 const EVENTOS_ACTIVIDAD = ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart', 'click']
 
 const cargarSesion = (clave, porDefecto) => {
@@ -50,7 +50,7 @@ export const AuthProvider = ({ children }) => {
     }
 
     if (motivo === 'inactividad') {
-      console.info('[Auth] Sesión cerrada por inactividad (4 horas)')
+      console.info('[Auth] Sesión cerrada por inactividad (30 minutos)')
     }
 
     setUsuario(null)

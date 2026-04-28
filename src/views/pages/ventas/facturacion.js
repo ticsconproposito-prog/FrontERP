@@ -267,18 +267,31 @@ const Layout = () => {
       setMostrarSugerenciasProductos(false);
       return;
     }
+
+    // Cancelar la búsqueda anterior en vuelo para evitar acumulación de peticiones
+    if (abortBusquedaProducto.current) {
+      abortBusquedaProducto.current.abort();
+    }
+    const controller = new AbortController();
+    abortBusquedaProducto.current = controller;
+    const { signal } = controller;
+
     try {
       setCargandoProductos(true);
-      const SIZE_BUSQUEDA = 500;
+      // Códigos son únicos o casi únicos: 30 resultados es suficiente
+      const SIZE_CODIGO = 30;
+      // Descripción necesita más margen para que la intersección por palabras
+      // funcione correctamente en catálogos grandes (6000+ productos)
+      const SIZE_DESCRIPCION = 300;
       const palabras = t.split(/\s+/).filter(Boolean);
 
       const fetchDescripcion = (palabra) =>
-        fetch(`/api/inventario?descripcion=${encodeURIComponent(palabra)}&page=0&size=${SIZE_BUSQUEDA}`)
+        fetch(`/api/inventario?descripcion=${encodeURIComponent(palabra)}&page=0&size=${SIZE_DESCRIPCION}`, { signal })
           .then(r => r.json()).then(d => (Array.isArray(d) ? d : d.content || []));
 
       const [rCodigo, rProveedor, ...rDescPalabras] = await Promise.all([
-        fetch(`/api/inventario?codigoProducto=${encodeURIComponent(t)}&page=0&size=${SIZE_BUSQUEDA}`).then(r => r.json()),
-        fetch(`/api/inventario?codigoProductoProveedor=${encodeURIComponent(t)}&page=0&size=${SIZE_BUSQUEDA}`).then(r => r.json()),
+        fetch(`/api/inventario?codigoProducto=${encodeURIComponent(t)}&page=0&size=${SIZE_CODIGO}`, { signal }).then(r => r.json()),
+        fetch(`/api/inventario?codigoProductoProveedor=${encodeURIComponent(t)}&page=0&size=${SIZE_CODIGO}`, { signal }).then(r => r.json()),
         ...palabras.map(fetchDescripcion),
       ]);
 
@@ -300,15 +313,20 @@ const Layout = () => {
       setSugerenciasProductos(unicos.slice(0, 15));
       setMostrarSugerenciasProductos(unicos.length > 0);
     } catch (e) {
+      // Ignorar errores de cancelación (AbortError)
+      if (e.name === 'AbortError') return;
       console.error('Error al buscar inventario:', e);
       setSugerenciasProductos([]);
       setMostrarSugerenciasProductos(false);
     } finally {
-      setCargandoProductos(false);
+      if (!signal.aborted) {
+        setCargandoProductos(false);
+      }
     }
   };
 
   const debounceProducto = useRef(null);
+  const abortBusquedaProducto = useRef(null);
   const handleBusquedaProducto = (e) => {
     const value = e.target.value;
     setBusquedaProducto(value);
@@ -592,7 +610,6 @@ const Layout = () => {
       setClienteSeleccionado(true);
 
       cerrarModalCliente();
-      cargarClientes();
       setClienteGuardadoModal(true);
     } catch (err) {
       console.error('Error al guardar cliente:', err);

@@ -176,23 +176,21 @@ const Layout = () => {
   // Función para cargar proveedores
   const cargarProveedores = async () => {
     try {
-      const response = await fetch('/api/proveedores')
+      const response = await fetch('/api/proveedores?size=10000')
 
       if (!response.ok) {
         throw new Error('Error al cargar proveedores')
       }
 
       const data = await response.json()
-      console.log('Respuesta de proveedores:', data)
 
       // Extraer array de proveedores (puede venir como array directo o en content)
-      const proveedoresArray = Array.isArray(data) 
-        ? data 
-        : Array.isArray(data?.content) 
-          ? data.content 
+      const proveedoresArray = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.content)
+          ? data.content
           : []
 
-      console.log('Proveedores cargados:', proveedoresArray)
       setProveedores(proveedoresArray)
 
     } catch (error) {

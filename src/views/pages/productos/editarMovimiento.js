@@ -62,6 +62,7 @@ const EditarMovimiento = () => {
   const [loadingProductos, setLoadingProductos] = useState(false)
   const [errorProductos, setErrorProductos] = useState(null)
   const debounceProducto = useRef(null)
+  const abortBusquedaProducto = useRef(null)
   const [busquedaProducto, setBusquedaProducto] = useState('')
   const [proveedorTexto, setProveedorTexto] = useState('')
   const [sugerenciasProveedores, setSugerenciasProveedores] = useState([])
@@ -290,17 +291,21 @@ const EditarMovimiento = () => {
   }
 
   const actualizarCantidadModal = (index, valor) => {
+    // Solo se permiten dígitos enteros (sin punto ni coma)
+    if (valor !== '' && !/^\d+$/.test(valor)) return
     setProductosModal((prev) => {
       const lista = [...prev]
-      lista[index] = { ...lista[index], cantidad: valor === '' ? '' : Number(valor) || 0 }
+      lista[index] = { ...lista[index], cantidad: valor === '' ? '' : parseInt(valor, 10) }
       return lista
     })
   }
 
   const actualizarPrecioModal = (index, valor) => {
+    // Permite dígitos y un único punto decimal (ej: 3.50)
+    if (valor !== '' && !/^\d*\.?\d*$/.test(valor)) return
     setProductosModal((prev) => {
       const lista = [...prev]
-      lista[index] = { ...lista[index], precio: valor === '' ? '' : Number(valor) || 0 }
+      lista[index] = { ...lista[index], precio: valor }
       return lista
     })
   }
@@ -432,19 +437,32 @@ const EditarMovimiento = () => {
       setErrorProductos(null)
       return
     }
+
+    // Cancelar la búsqueda anterior en vuelo para evitar acumulación de peticiones
+    if (abortBusquedaProducto.current) {
+      abortBusquedaProducto.current.abort()
+    }
+    const controller = new AbortController()
+    abortBusquedaProducto.current = controller
+    const { signal } = controller
+
     setLoadingProductos(true)
     setErrorProductos(null)
     try {
-      const SIZE_BUSQUEDA = 500
+      // Códigos son únicos o casi únicos: 30 resultados es suficiente
+      const SIZE_CODIGO = 30
+      // Descripción necesita más margen para que la intersección por palabras
+      // funcione correctamente en catálogos grandes (6000+ productos)
+      const SIZE_DESCRIPCION = 300
       const palabras = t.split(/\s+/).filter(Boolean)
 
       const fetchDesc = (palabra) =>
-        fetch(`/api/productos?descripcionProducto=${encodeURIComponent(palabra)}&page=0&size=${SIZE_BUSQUEDA}`)
+        fetch(`/api/productos?descripcionProducto=${encodeURIComponent(palabra)}&page=0&size=${SIZE_DESCRIPCION}`, { signal })
           .then(r => r.json()).then(d => Array.isArray(d.content) ? d.content : [])
 
       const [rCodigo, rProveedor, ...rDescPalabras] = await Promise.all([
-        fetch(`/api/productos?codigoProducto=${encodeURIComponent(t)}&page=0&size=${SIZE_BUSQUEDA}`).then(r => r.json()),
-        fetch(`/api/productos?codigoProductoProveedor=${encodeURIComponent(t)}&page=0&size=${SIZE_BUSQUEDA}`).then(r => r.json()),
+        fetch(`/api/productos?codigoProducto=${encodeURIComponent(t)}&page=0&size=${SIZE_CODIGO}`, { signal }).then(r => r.json()),
+        fetch(`/api/productos?codigoProductoProveedor=${encodeURIComponent(t)}&page=0&size=${SIZE_CODIGO}`, { signal }).then(r => r.json()),
         ...palabras.map(fetchDesc),
       ])
 
@@ -468,12 +486,16 @@ const EditarMovimiento = () => {
       setSugerenciasProductos(unicos.slice(0, 15))
       setMostrarSugerencias(unicos.length > 0)
     } catch (e) {
+      // Ignorar errores de cancelación (AbortError)
+      if (e.name === 'AbortError') return
       console.error('Error al buscar productos:', e)
       setErrorProductos('Error al buscar productos')
       setSugerenciasProductos([])
       setMostrarSugerencias(false)
     } finally {
-      setLoadingProductos(false)
+      if (!signal.aborted) {
+        setLoadingProductos(false)
+      }
     }
   }
 
@@ -1030,9 +1052,9 @@ const EditarMovimiento = () => {
                       </CTableDataCell>
                       <CTableDataCell style={{ width: '90px' }}>
                         <CFormInput
-                          type="number"
+                          type="text"
+                          inputMode="numeric"
                           size="sm"
-                          min="1"
                           value={prod.cantidad}
                           onChange={(e) => actualizarCantidadModal(index, e.target.value)}
                           placeholder="0"
@@ -1040,10 +1062,9 @@ const EditarMovimiento = () => {
                       </CTableDataCell>
                       <CTableDataCell style={{ width: '120px' }}>
                         <CFormInput
-                          type="number"
+                          type="text"
+                          inputMode="decimal"
                           size="sm"
-                          min="0"
-                          step="0.01"
                           value={prod.precio}
                           onChange={(e) => actualizarPrecioModal(index, e.target.value)}
                           placeholder="0.00"
