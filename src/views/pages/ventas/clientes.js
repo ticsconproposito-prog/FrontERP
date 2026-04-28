@@ -189,15 +189,26 @@ const Layout = () => {
 
   const exportarAExcel = async () => {
     try {
-      const params = new URLSearchParams({ page: 0, size: 10000 })
-      if (filtros.nombreCliente?.trim()) params.append('nombreCliente', filtros.nombreCliente.trim())
-      if (filtros.numeroDocumento?.trim()) {
-        params.append('tipoDocumento', filtros.tipoDocumento === 'nit' ? 1 : 2)
-        params.append('documentoCliente', filtros.numeroDocumento.trim())
+      // Obtener todos los clientes en lotes de 500 para evitar errores HTTP/2 con respuestas grandes
+      const LOTE = 500
+      let lista = []
+      let pagina = 0
+      while (true) {
+        const params = new URLSearchParams({ page: pagina, size: LOTE })
+        if (filtros.nombreCliente?.trim()) params.append('nombreCliente', filtros.nombreCliente.trim())
+        if (filtros.numeroDocumento?.trim()) {
+          params.append('tipoDocumento', filtros.tipoDocumento === 'nit' ? 1 : 2)
+          params.append('documentoCliente', filtros.numeroDocumento.trim())
+        }
+        const res = await fetch(`/api/clientes?${params}`)
+        if (!res.ok) throw new Error(`Error ${res.status}`)
+        const data = await res.json()
+        const content = Array.isArray(data) ? data : (data?.content || [])
+        lista = lista.concat(content)
+        const totalPages = Array.isArray(data) ? 1 : (data?.totalPages ?? 1)
+        if (pagina >= totalPages - 1 || content.length < LOTE) break
+        pagina++
       }
-      const res = await fetch(`/api/clientes?${params}`)
-      const data = await res.json()
-      const lista = Array.isArray(data) ? data : (data?.content || [])
 
       if (!lista || lista.length === 0) {
         alert('No hay clientes para exportar')

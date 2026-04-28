@@ -74,7 +74,8 @@ const ConsultaFacturas = () => {
   const [tipoDetalle, setTipoDetalle] = useState('1')
   const [fechaInicio, setFechaInicio] = useState(HOY)
   const [fechaFin, setFechaFin] = useState(HOY)
-  const [filtroAplicado, setFiltroAplicado] = useState({ inicio: HOY, fin: HOY })
+  const [estadoFiltro, setEstadoFiltro] = useState('')
+  const [filtroAplicado, setFiltroAplicado] = useState({ inicio: HOY, fin: HOY, estado: '' })
   const [tiposDocumento, setTiposDocumento] = useState({})
 
   // ── Detalle por Factura ──────────────────────────────────────────────────
@@ -111,6 +112,27 @@ const ConsultaFacturas = () => {
     cargar()
   }, [])
 
+  // Helper: obtiene TODAS las facturas del período en lotes de 500 (evita respuestas HTTP/2 demasiado grandes)
+  const fetchTodasFacturas = async (filtrosBase) => {
+    const LOTE = 500
+    let acumulado = []
+    let pagina = 0
+    while (true) {
+      const params = new URLSearchParams({ page: pagina, size: LOTE, ...filtrosBase })
+      const res = await fetch(`/api/erpEncabezadoFacturas?${params}`)
+      if (!res.ok) throw new Error(`Error ${res.status}: ${res.statusText}`)
+      const data = await res.json()
+      const content = Array.isArray(data) ? data : data.content ?? []
+      acumulado = acumulado.concat(content)
+      const totalPages = Array.isArray(data) ? 1 : (data.totalPages ?? 1)
+      if (pagina >= totalPages - 1 || content.length < LOTE) break
+      pagina++
+    }
+    return acumulado
+      .filter((f) => String(f.facturaProcesada ?? '').toUpperCase() !== 'A')
+      .sort((a, b) => b.idEncabezadoFactura - a.idEncabezadoFactura)
+  }
+
   // Cargar Facturas (tipoDetalle === '1')
   useEffect(() => {
     if (tipoDetalle !== '1') return
@@ -124,13 +146,15 @@ const ConsultaFacturas = () => {
           tipoDocumento: '1',
         }
 
-        // Carga completa una sola vez y se pagina en cliente
-        const res = await fetch(`/api/erpEncabezadoFacturas?${new URLSearchParams({ page: 0, size: 10000, ...filtrosBase })}`)
-        if (!res.ok) throw new Error(`Error ${res.status}: ${res.statusText}`)
-        const data = await res.json()
-        const todas = (Array.isArray(data) ? data : data.content ?? [])
-          .filter((f) => f.facturaProcesada !== 'A')
-          .sort((a, b) => b.idEncabezadoFactura - a.idEncabezadoFactura)
+        let todas = await fetchTodasFacturas(filtrosBase)
+
+        // Filtro por estado (S=Procesadas, N=No Procesadas, ''=Todos S+N, nunca se muestran Anuladas)
+        todas = todas.filter((f) => {
+          const ep = String(f.facturaProcesada ?? 'N').toUpperCase()
+          if (ep === 'A') return false                          // excluir anuladas siempre
+          if (!filtroAplicado.estado) return true              // Todos: S y N
+          return ep === filtroAplicado.estado.toUpperCase()    // filtro específico
+        })
 
         setTodasFacturas(todas)
         setTotalElementos(todas.length)
@@ -164,20 +188,13 @@ const ConsultaFacturas = () => {
       setCargandoDetalle(true)
       setErrorDetalle(null)
       try {
-        // 1. Obtener todos los encabezados del rango de fechas
-        const filtrosEncBase = new URLSearchParams({
-          page: 0,
-          size: 1000,
+        // 1. Obtener todos los encabezados del rango de fechas (en lotes para evitar HTTP/2 error)
+        const filtrosBase = {
           ...(filtroAplicado.inicio && { fechaInicio: filtroAplicado.inicio }),
           ...(filtroAplicado.fin && { fechaFin: filtroAplicado.fin }),
           tipoDocumento: '1',
-        })
-        const resEnc = await fetch(`/api/erpEncabezadoFacturas?${filtrosEncBase}`)
-        if (!resEnc.ok) throw new Error(`Error ${resEnc.status}: ${resEnc.statusText}`)
-        const dataEnc = await resEnc.json()
-        const encabezados = (Array.isArray(dataEnc) ? dataEnc : dataEnc.content ?? [])
-          .filter((e) => e.facturaProcesada !== 'A')
-          .sort((a, b) => b.idEncabezadoFactura - a.idEncabezadoFactura)
+        }
+        const encabezados = await fetchTodasFacturas(filtrosBase)
 
         // 2. Para cada encabezado obtener su detalle
         const resultados = await Promise.all(
@@ -247,15 +264,29 @@ const ConsultaFacturas = () => {
   const handleBuscar = () => {
     setPaginaActual(0)
     setPaginaDetalle(0)
-    setFiltroAplicado({ inicio: fechaInicio, fin: fechaFin })
+    setFiltroAplicado({ inicio: fechaInicio, fin: fechaFin, estado: estadoFiltro })
   }
 
   const handleLimpiar = () => {
     setFechaInicio(HOY)
     setFechaFin(HOY)
+    setEstadoFiltro('')
     setPaginaActual(0)
     setPaginaDetalle(0)
-    setFiltroAplicado({ inicio: HOY, fin: HOY })
+    setFiltroAplicado({ inicio: HOY, fin: HOY, estado: '' })
+  }
+
+  // Filtro inmediato al cambiar el estado (select)
+  const handleEstadoChange = (valor) => {
+    setEstadoFiltro(valor)
+    setPaginaActual(0)
+    setPaginaDetalle(0)
+    setFiltroAplicado((prev) => ({
+      ...prev,
+      inicio: fechaInicio,
+      fin: fechaFin,
+      estado: valor,
+    }))
   }
 
   const exportarExcel = async () => {
@@ -519,10 +550,9 @@ const ConsultaFacturas = () => {
             <strong className="fs-4">Reporte de Ventas</strong>
           </CCardHeader>
           <CCardBody className="p-4">
-
-            {/* ── Barra de filtros ── */}
-            <CRow className="mb-4 align-items-end g-3">
-              <CCol md={3}>
+            {/* ── Fila 2: Filtros y acciones ── */}
+            <CRow className="mb-4 align-items-end g-2">
+            <CCol md={2}>
                 <CFormLabel htmlFor="tipoDetalle">Tipo de Consulta</CFormLabel>
                 <CFormSelect
                   id="tipoDetalle"
@@ -534,54 +564,60 @@ const ConsultaFacturas = () => {
                   <option value="2">Detalle por Producto</option>
                 </CFormSelect>
               </CCol>
-
-              <CCol className="d-flex justify-content-end align-items-end gap-3 flex-wrap">
-                <div>
-                  <CFormLabel htmlFor="fechaInicio">Fecha Inicio</CFormLabel>
-                  <CFormInput
-                    type="date"
-                    id="fechaInicio"
-                    value={fechaInicio}
-                    max={fechaFin || undefined}
-                    onChange={(e) => setFechaInicio(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <CFormLabel htmlFor="fechaFin">Fecha Fin</CFormLabel>
-                  <CFormInput
-                    type="date"
-                    id="fechaFin"
-                    value={fechaFin}
-                    min={fechaInicio || undefined}
-                    onChange={(e) => setFechaFin(e.target.value)}
-                  />
-                </div>
-                <div className="d-flex gap-2">
-                  <CButton color="primary" onClick={handleBuscar} disabled={esCargando}>
-                    {esCargando ? <CSpinner size="sm" /> : 'Buscar'}
-                  </CButton>
-                  <CButton
-                    style={{ backgroundColor: '#6c757d', borderColor: '#6c757d', color: '#fff' }}
-                    onClick={handleLimpiar}
-                    disabled={esCargando}
-                  >
-                    Limpiar
-                  </CButton>
-                  <CButton
-                    style={{ backgroundColor: '#1e8449', borderColor: '#1e8449', color: '#fff' }}
-                    onClick={exportarExcel}
-                    disabled={esCargando || (tipoDetalle === '1' ? todasFacturas.length === 0 : detalles.length === 0)}
-                  >
-                    Exportar Excel
-                  </CButton>
-                  <CButton
-                    style={{ backgroundColor: '#1a3a6b', borderColor: '#1a3a6b', color: '#fff' }}
-                    onClick={imprimirResumen}
-                    disabled={esCargando || (tipoDetalle === '1' ? resumen.cantidadFacturas === 0 : totalDetalles === 0)}
-                  >
-                    Imprimir Resumen
-                  </CButton>
-                </div>
+              <CCol md={2}>
+                <CFormLabel htmlFor="fechaInicio">Fecha Inicio</CFormLabel>
+                <CFormInput
+                  type="date"
+                  id="fechaInicio"
+                  value={fechaInicio}
+                  max={fechaFin || undefined}
+                  onChange={(e) => setFechaInicio(e.target.value)}
+                />
+              </CCol>
+              <CCol md={2}>
+                <CFormLabel htmlFor="fechaFin">Fecha Fin</CFormLabel>
+                <CFormInput
+                  type="date"
+                  id="fechaFin"
+                  value={fechaFin}
+                  min={fechaInicio || undefined}
+                  onChange={(e) => setFechaFin(e.target.value)}
+                />
+              </CCol>
+              <CCol md={2}>
+                <CFormLabel htmlFor="estadoFactura">Estado</CFormLabel>
+                <CFormSelect
+                  id="estadoFactura"
+                  value={estadoFiltro}
+                  onChange={(e) => handleEstadoChange(e.target.value)}
+                  disabled={esCargando}
+                >
+                  <option value="">Todos</option>
+                  <option value="S">Procesadas</option>
+                  <option value="N">No Procesadas</option>
+                </CFormSelect>
+              </CCol>
+              <CCol className="d-flex align-items-end gap-2 flex-wrap">
+                <CButton color="primary" onClick={handleBuscar} disabled={esCargando}>
+                  {esCargando ? <CSpinner size="sm" /> : 'Buscar'}
+                </CButton>
+                <CButton color="secondary" className="text-white" onClick={handleLimpiar} disabled={esCargando}>
+                  Limpiar
+                </CButton>
+                <CButton
+                  style={{ backgroundColor: '#1e8449', borderColor: '#1e8449', color: '#fff' }}
+                  onClick={exportarExcel}
+                  disabled={esCargando || (tipoDetalle === '1' ? todasFacturas.length === 0 : detalles.length === 0)}
+                >
+                  Exportar Excel
+                </CButton>
+                <CButton
+                  style={{ backgroundColor: '#1a3a6b', borderColor: '#1a3a6b', color: '#fff' }}
+                  onClick={imprimirResumen}
+                  disabled={esCargando || (tipoDetalle === '1' ? resumen.cantidadFacturas === 0 : totalDetalles === 0)}
+                >
+                 Resumen
+                </CButton>
               </CCol>
             </CRow>
 

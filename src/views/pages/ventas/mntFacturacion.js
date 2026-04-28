@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
+import { useAuth } from '../../../context/AuthContext'
 import logoFerreteria from 'src/assets/images/logo-ferreteria-agmner.png'
 import {
   CButton,
@@ -8,6 +9,7 @@ import {
   CCol,
   CFormInput,
   CFormLabel,
+  CFormSelect,
   CFormTextarea,
   CModal,
   CModalBody,
@@ -129,11 +131,15 @@ const Paginador = ({ paginaActual, totalPaginas, totalElementos, onCambiar }) =>
 }
 
 const MntFacturacion = () => {
+  const { usuario } = useAuth()
+  const idUsuarioActual = Number(usuario?.idUsuario ?? usuario?.id_Usuario ?? 0)
+
   const [fechaInicio, setFechaInicio] = useState(HOY)
   const [fechaFin, setFechaFin] = useState(HOY)
   const [preimpreso, setPreimpreso] = useState('')
   const [buscarCliente, setBuscarCliente] = useState('')
-  const [filtroAplicado, setFiltroAplicado] = useState({ inicio: HOY, fin: HOY, preimpreso: '', cliente: '' })
+  const [estadoFiltro, setEstadoFiltro] = useState('')
+  const [filtroAplicado, setFiltroAplicado] = useState({ inicio: HOY, fin: HOY, preimpreso: '', cliente: '', estado: '' })
 
   const [facturas, setFacturas] = useState([])
   const [cargando, setCargando] = useState(false)
@@ -165,6 +171,12 @@ const MntFacturacion = () => {
   const [anulando, setAnulando] = useState(false)
   const [msgAnular, setMsgAnular] = useState({ visible: false, ok: true, texto: '' })
 
+  // ── Modal Eliminar (solo estado N) ───────────────────────────────────────
+  const [modalEliminar, setModalEliminar] = useState(false)
+  const [facturaEliminando, setFacturaEliminando] = useState(null)
+  const [eliminando, setEliminando] = useState(false)
+  const [msgEliminar, setMsgEliminar] = useState({ visible: false, ok: true, texto: '' })
+
   // ── Diccionarios ─────────────────────────────────────────────────────────
   useEffect(() => {
     const cargarDiccionarios = async () => {
@@ -192,6 +204,27 @@ const MntFacturacion = () => {
     cargarDiccionarios()
   }, [])
 
+  // Helper: obtiene todas las facturas del período en lotes de 500 (evita respuestas HTTP/2 demasiado grandes)
+  const fetchTodasFacturas = async (fechaInicio, fechaFin) => {
+    const LOTE = 500
+    let acumulado = []
+    let pagina = 0
+    while (true) {
+      const params = new URLSearchParams({ page: pagina, size: LOTE })
+      if (fechaInicio) params.append('fechaInicio', fechaInicio)
+      if (fechaFin)    params.append('fechaFin', fechaFin)
+      const res = await fetch(`/api/erpEncabezadoFacturas?${params}`)
+      if (!res.ok) throw new Error(`Error ${res.status}`)
+      const data = await res.json()
+      const content = Array.isArray(data) ? data : data.content ?? []
+      acumulado = acumulado.concat(content)
+      const totalPages = Array.isArray(data) ? 1 : (data.totalPages ?? 1)
+      if (pagina >= totalPages - 1 || content.length < LOTE) break
+      pagina++
+    }
+    return acumulado
+  }
+
   // ── Cargar facturas ──────────────────────────────────────────────────────
   const cargarFacturas = async (pagina = 0, filtro = filtroAplicado) => {
     setCargando(true)
@@ -202,15 +235,17 @@ const MntFacturacion = () => {
       let totalPags = 0
       let totalElems = 0
 
-      if (filtro.preimpreso || filtro.cliente) {
-        // Búsqueda por texto: usar fechas en la API y filtrar client-side
-        const params = new URLSearchParams({ page: 0, size: 1000 })
-        if (filtro.inicio) params.append('fechaInicio', filtro.inicio)
-        if (filtro.fin)    params.append('fechaFin', filtro.fin)
-        const res = await fetch(`/api/erpEncabezadoFacturas?${params}`)
-        if (!res.ok) throw new Error(`Error ${res.status}`)
-        const data = await res.json()
-        let todas = Array.isArray(data) ? data : data.content ?? []
+      const filtrarPorEstado = (lista) => {
+        if (!filtro.estado) return lista
+        return lista.filter((f) => {
+          const ep = f.facturaProcesada || 'N'
+          return ep === filtro.estado
+        })
+      }
+
+      if (filtro.preimpreso || filtro.cliente || filtro.estado) {
+        // Búsqueda por texto o estado: traer todo en lotes y filtrar client-side
+        let todas = await fetchTodasFacturas(filtro.inicio, filtro.fin)
 
         if (filtro.preimpreso) {
           const term = filtro.preimpreso.toLowerCase()
@@ -223,7 +258,7 @@ const MntFacturacion = () => {
           )
         }
 
-        todasLasFacturas = todas.filter((f) => String(f.tipoDocumento) !== '4')
+        todasLasFacturas = filtrarPorEstado(todas.filter((f) => String(f.tipoDocumento) !== '4'))
         numPagina  = 0
         totalElems = todasLasFacturas.length
         totalPags  = Math.max(1, Math.ceil(totalElems / PAGE_SIZE))
@@ -258,16 +293,17 @@ const MntFacturacion = () => {
 
   const handleBuscar = () => {
     setPaginaActual(0)
-    setFiltroAplicado({ inicio: fechaInicio, fin: fechaFin, preimpreso: preimpreso.trim(), cliente: buscarCliente.trim() })
+    setFiltroAplicado({ inicio: fechaInicio, fin: fechaFin, preimpreso: preimpreso.trim(), cliente: buscarCliente.trim(), estado: estadoFiltro })
   }
 
   const handleLimpiar = () => {
     setFechaInicio(HOY)
     setFechaFin(HOY)
+    setEstadoFiltro('')
     setPreimpreso('')
     setBuscarCliente('')
     setPaginaActual(0)
-    setFiltroAplicado({ inicio: HOY, fin: HOY, preimpreso: '', cliente: '' })
+    setFiltroAplicado({ inicio: HOY, fin: HOY, preimpreso: '', cliente: '', estado: '' })
   }
 
   // Filtro en tiempo real al escribir No. Factura (debounce 400ms)
@@ -290,6 +326,18 @@ const MntFacturacion = () => {
       setPaginaActual(0)
       setFiltroAplicado((prev) => ({ ...prev, cliente: valor.trim() }))
     }, 300)
+  }
+
+  // Filtro inmediato al cambiar el estado (select)
+  const handleEstadoChange = (valor) => {
+    setEstadoFiltro(valor)
+    setPaginaActual(0)
+    setFiltroAplicado((prev) => ({
+      ...prev,
+      inicio: fechaInicio,
+      fin: fechaFin,
+      estado: valor,
+    }))
   }
 
   // ── Ver detalle ──────────────────────────────────────────────────────────
@@ -925,6 +973,41 @@ const MntFacturacion = () => {
     }
   }
 
+  // ── Eliminar (estado N) ──────────────────────────────────────────────────
+  const handleEliminar = (factura) => {
+    setFacturaEliminando(factura)
+    setMsgEliminar({ visible: false, ok: true, texto: '' })
+    setModalEliminar(true)
+  }
+
+  const confirmarEliminar = async () => {
+    if (!facturaEliminando) return
+    setEliminando(true)
+    try {
+      const res = await fetch(
+        `/api/anularFacturaCompleta/${facturaEliminando.idEncabezadoFactura}`,
+        {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ idUsuarioModificacion: idUsuarioActual }),
+        }
+      )
+      if (!res.ok) {
+        const texto = await res.text()
+        let msg = `Error ${res.status}`
+        try { msg = JSON.parse(texto)?.message || JSON.parse(texto)?.error || texto || msg } catch { msg = texto || msg }
+        setMsgEliminar({ visible: true, ok: false, texto: msg })
+      } else {
+        setMsgEliminar({ visible: true, ok: true, texto: `Factura ${facturaEliminando.idEncabezadoFactura} eliminada correctamente.` })
+        await cargarFacturas(paginaActual, filtroAplicado)
+      }
+    } catch (e) {
+      setMsgEliminar({ visible: true, ok: false, texto: `Error al eliminar: ${e.message}` })
+    } finally {
+      setEliminando(false)
+    }
+  }
+
   // ── Render ───────────────────────────────────────────────────────────────
   return (
     <>
@@ -963,6 +1046,18 @@ const MntFacturacion = () => {
                 <CCol>
                   <CFormLabel className="fw-semibold mb-1">Fecha Fin</CFormLabel>
                   <CFormInput type="date" value={fechaFin} onChange={(e) => setFechaFin(e.target.value)} />
+                </CCol>
+                <CCol>
+                  <CFormLabel className="fw-semibold mb-1">Estado</CFormLabel>
+                  <CFormSelect
+                    value={estadoFiltro}
+                    onChange={(e) => handleEstadoChange(e.target.value)}
+                  >
+                    <option value="">Todos</option>
+                    <option value="S">Procesadas</option>
+                    <option value="N">No Procesadas</option>
+                    <option value="A">Anuladas</option>
+                  </CFormSelect>
                 </CCol>
                 <CCol xs="auto" className="d-flex gap-2">
                   <CButton color="primary" onClick={handleBuscar}>Buscar</CButton>
@@ -1066,11 +1161,22 @@ const MntFacturacion = () => {
                               <CButton
                                 color="success"
                                 size="sm"
-                                className="text-white"
+                                className="text-white me-1"
                                 title="Procesar factura"
                                 onClick={() => handleProcesar(f)}
                               >
                                 Procesar
+                              </CButton>
+                            )}
+                            {(f.facturaProcesada === 'N' || !f.facturaProcesada) && (
+                              <CButton
+                                color="danger"
+                                size="sm"
+                                className="text-white"
+                                title="Eliminar factura"
+                                onClick={() => handleEliminar(f)}
+                              >
+                                Eliminar
                               </CButton>
                             )}
                           </CTableDataCell>
@@ -1106,9 +1212,6 @@ const MntFacturacion = () => {
                   <div><strong>No. Factura:</strong> {facturaSeleccionada.preimpresoResAPI || '—'}</div>
                   <div><strong>Referencia:</strong> {(facturaSeleccionada.referencia && facturaSeleccionada.referencia !== '0') ? facturaSeleccionada.referencia : (() => { const t = String(facturaSeleccionada.tipoDocumento || ''); const p = t === '1' ? 'FACT' : t === '2' ? 'NCRE' : t === '3' ? 'NDEB' : t === '4' ? 'CONS' : ''; return p ? `${p}${facturaSeleccionada.idEncabezadoFactura}` : '—'; })()}</div>
                   <div><strong>Fecha Emisión:</strong> {formatFecha(facturaSeleccionada.FechaFactura)}</div>
-                </CCol>
-                <CCol md={6}>
-                  <div><strong>Cliente:</strong> {facturaSeleccionada.idCliente?.nombreCliente || '—'}</div>
                   <div><strong>Tipo Documento:</strong> {tiposDocumento[String(facturaSeleccionada.tipoDocumento)] ?? facturaSeleccionada.tipoDocumento ?? '—'}</div>
                   <div>
                     <strong>Estado:</strong>{' '}
@@ -1125,6 +1228,22 @@ const MntFacturacion = () => {
                       {facturaSeleccionada.facturaProcesada === 'S' ? 'Procesada' : facturaSeleccionada.facturaProcesada === 'A' ? 'Anulada' : 'No Procesada'}
                     </span>
                   </div>
+                </CCol>
+                <CCol md={6}>
+                  <div><strong>Cliente:</strong> {facturaSeleccionada.idCliente?.nombreCliente || '—'}</div>
+                  <div>
+                    {(() => {
+                      const tipoRec = String(facturaSeleccionada.tipoReceptor ?? '1')
+                      const label = tipoRec === '2' ? 'DPI' : tipoRec === '3' ? 'Pasaporte' : 'NIT'
+                      const valor =
+                        tipoRec === '1'
+                          ? (facturaSeleccionada.idCliente?.nit || '—')
+                          : (facturaSeleccionada.idCliente?.documentoIdentificacion || facturaSeleccionada.idCliente?.dpiPasaporte || '—')
+                      return <><strong>{label}:</strong> {valor}</>
+                    })()}
+                  </div>
+                  <div><strong>Dirección Cliente:</strong> {facturaSeleccionada.idCliente?.direccionFisica || '—'}</div>
+                  <div><strong>Dirección Entrega:</strong> {facturaSeleccionada.direccionEntrega || '—'}</div>
                 </CCol>
               </CRow>
 
@@ -1215,6 +1334,42 @@ const MntFacturacion = () => {
               </CButton>
               <CButton color="danger" className="text-white" onClick={confirmarAnular} disabled={anulando}>
                 {anulando ? <><CSpinner size="sm" className="me-1" />Anulando...</> : 'Confirmar Anulación'}
+              </CButton>
+            </>
+          )}
+        </CModalFooter>
+      </CModal>
+
+      {/* ── Modal Eliminar ────────────────────────────────────────────────── */}
+      <CModal visible={modalEliminar} onClose={() => { if (!eliminando) setModalEliminar(false) }} alignment="center">
+        <CModalHeader className="bg-danger text-white">
+          <CModalTitle>Eliminar Factura</CModalTitle>
+        </CModalHeader>
+        <CModalBody>
+          {msgEliminar.visible ? (
+            <div className={`alert ${msgEliminar.ok ? 'alert-success' : 'alert-danger'} mb-0`}>
+              {msgEliminar.texto}
+            </div>
+          ) : (
+            <>
+              <p className="mb-2">
+                ¿Está seguro que desea <strong>eliminar</strong> la factura{' '}
+                <strong>{facturaEliminando?.referencia || facturaEliminando?.idEncabezadoFactura}</strong>?
+              </p>
+              <p className="text-danger small mb-0">Esta acción no se puede deshacer.</p>
+            </>
+          )}
+        </CModalBody>
+        <CModalFooter>
+          {msgEliminar.visible ? (
+            <CButton color="primary" onClick={() => setModalEliminar(false)}>Aceptar</CButton>
+          ) : (
+            <>
+              <CButton color="secondary" onClick={() => setModalEliminar(false)} disabled={eliminando}>
+                Cancelar
+              </CButton>
+              <CButton color="danger" className="text-white" onClick={confirmarEliminar} disabled={eliminando}>
+                {eliminando ? <><CSpinner size="sm" className="me-1" />Eliminando...</> : 'Confirmar Eliminación'}
               </CButton>
             </>
           )}
