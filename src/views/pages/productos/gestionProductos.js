@@ -63,8 +63,14 @@ const Layout = () => {
 
   // Edición masiva de Precio Venta
   const [modoEditarPrecio, setModoEditarPrecio] = useState(false)
-  const [preciosEditados, setPreciosEditados] = useState({})  // { idProducto: 'valor' }
+  const [preciosEditados, setPreciosEditados] = useState({})
   const [guardandoPrecios, setGuardandoPrecios] = useState(false)
+
+  // Estados para búsqueda con debounce
+  const [busqueda, setBusqueda] = useState('')
+  const [debouncedBusqueda, setDebouncedBusqueda] = useState('')
+  const [loadingProductos, setLoadingProductos] = useState(false)
+  const [errorProductos, setErrorProductos] = useState(null)
 
   // Función para obtener el nombre de la unidad de medida por su ID
   const obtenerNombreUnidad = (idUnidad) => {
@@ -90,24 +96,19 @@ const Layout = () => {
       const dataUnidadMedida = await responseUnidadMedida.json()
       const dataEstado = await responseEstado.json()
 
-      // Extraer arrays de unidades de medida (puede venir como array directo o en content)
       const unidades = Array.isArray(dataUnidadMedida) 
         ? dataUnidadMedida 
         : Array.isArray(dataUnidadMedida?.content) 
           ? dataUnidadMedida.content 
           : []
      
-      // Extraer arrays de estados (puede venir como array directo o en content)
       const nombreEstado = Array.isArray(dataEstado) 
         ? dataEstado 
         : Array.isArray(dataEstado?.content) 
           ? dataEstado.content 
           : []
 
-      console.log('Estados filtrados:', nombreEstado)
       setEstado(nombreEstado)
-
-      console.log('Unidades filtradas:', unidades)
       setUnidadesMedida(unidades)
 
     } catch (error) {
@@ -146,18 +147,11 @@ const Layout = () => {
   }
 
   const abrirEditar = (producto) => {
-    console.log('Producto a editar:', producto)
-    console.log('Unidad de medida del producto (ID):', producto.unidadDeMedida)
-
-    // Buscar el valor correspondiente al ID de la unidad de medida
     const unidadEncontrada = unidadesMedida.find(
       unidad => unidad.indice === producto.unidadDeMedida
     )
 
     const valorUnidad = unidadEncontrada ? unidadEncontrada.valor : producto.unidadDeMedida
-
-    console.log('Unidad encontrada:', unidadEncontrada)
-    console.log('Valor de la unidad:', valorUnidad)
 
     setForm({
       idProducto: producto.idProducto,
@@ -186,7 +180,6 @@ const Layout = () => {
   }
 
   const eliminarProducto = async () => {
-    // Validación: verificar que hay un ID válido
     if (!idEliminar) {
       setModalMsgTitle('Error')
       setModalMsgBody('No se ha seleccionado ningún producto para eliminar')
@@ -195,7 +188,6 @@ const Layout = () => {
     }
 
     try {
-      // Realizar la petición DELETE
       const response = await fetch(
         `/api/eliminarProducto/${idEliminar}`,
         {
@@ -205,19 +197,14 @@ const Layout = () => {
         }
       )
 
-      // Manejo de diferentes códigos de respuesta
       if (!response.ok) {
         let errorMessage = 'No se pudo eliminar el producto'
 
-        // Intentar obtener el mensaje de error del servidor
         try {
           const errorData = await response.json()
           errorMessage = errorData.message || errorMessage
-        } catch (e) {
-          // Si no hay JSON, usar mensaje por defecto
-        }
+        } catch (e) {}
 
-        // Mensajes específicos según el código de estado
         if (response.status === 404) {
           errorMessage = 'El producto no existe o ya fue eliminado'
         } else if (response.status === 403) {
@@ -231,29 +218,22 @@ const Layout = () => {
         throw new Error(errorMessage)
       }
 
-      // Cerrar modal de confirmación
       setModalMsgVisible(false)
       setIdEliminar(null)
 
-      // Verificar si debemos cambiar de página (si eliminamos el último elemento de la página actual)
       const nuevaPagina = productos.length === 1 && page > 0 ? page - 1 : page
+      await cargarProductos(nuevaPagina, debouncedBusqueda)
 
-      // Recargar productos
-      await cargarProductos(nuevaPagina)
-
-      // Mostrar mensaje de éxito
       setModalMsgTitle('Éxito')
       setModalMsgBody(`Producto eliminado correctamente`)
       setModalMsgColor('success')
       setModalMsgVisible(true)
 
     } catch (error) {
-      // Manejo de errores
       console.error('Error al eliminar producto:', error)
 
       let mensajeError = error.message || 'Error desconocido al eliminar el producto'
 
-      // Si es un error de red
       if (error.name === 'TypeError' || error.message.includes('Failed to fetch')) {
         mensajeError = 'Error de conexión. Verifique su conexión a internet e intente nuevamente'
       }
@@ -283,19 +263,15 @@ const Layout = () => {
     const method = modoEdicion ? 'PUT' : 'POST'
 
     try {
-      // Buscar el ID de la unidad de medida basado en el valor seleccionado
       const unidadEncontrada = unidadesMedida.find(
         unidad => unidad.valor === form.unidadDeMedida
       )
 
-      // Preparar los datos para enviar al backend
       const datosAEnviar = {
         ...form,
         unidadDeMedida: unidadEncontrada ? unidadEncontrada.indice : form.unidadDeMedida,
         idUsuarioModificacion: idUsuarioActual,
       }
-
-      console.log('Datos a enviar al backend:', datosAEnviar)
 
       const response = await fetch(url, {
         method,
@@ -305,8 +281,7 @@ const Layout = () => {
 
       if (!response.ok) throw new Error('Error al guardar')
 
-      //refrescar tabla
-      await cargarProductos(page)
+      await cargarProductos(page, debouncedBusqueda)
 
       quitarFoco()
       setVisible(false)
@@ -327,7 +302,6 @@ const Layout = () => {
         precioVenta: '',
       })
 
-
     } catch (error) {
       setModalMsgTitle('Error')
       setModalMsgBody(error.message)
@@ -335,93 +309,68 @@ const Layout = () => {
       setModalMsgVisible(true)
     }
   }
-  const [busqueda, setBusqueda] = useState('')
-  const [todosProductos, setTodosProductos] = useState([])
-  const [loadingProductos, setLoadingProductos] = useState(false)
-  const [errorProductos, setErrorProductos] = useState(null)
 
-  const cargarProductos = async (pagina = 0, busquedaActual = busqueda) => {
+  // 🔥 Cargar productos con paginación server-side (sin cruce en frontend)
+  const cargarProductos = async (pagina = 0, termino = debouncedBusqueda) => {
     try {
       setLoadingProductos(true)
       setErrorProductos(null)
-      const termino = (busquedaActual || '').trim()
+      const t = (termino || '').trim()
 
-      if (!termino) {
-        const params = new URLSearchParams({ page: pagina })
-        const response = await fetch(`/api/productos?${params.toString()}`)
-        if (!response.ok) throw new Error(`Error ${response.status}`)
-        const data = await response.json()
-        setProductos(Array.isArray(data) ? data : data.content || [])
-        setTodosProductos([])
-        setPage(data.number ?? pagina)
-        setTotalPages(data.totalPages ?? 1)
-        return
+      const params = new URLSearchParams({ page: pagina, size: PAGE_SIZE })
+      if (t) {
+        params.append('descripcionProducto', t)
       }
 
-      const SIZE_BUSQUEDA = 500
-      const palabras = termino.split(/\s+/).filter(Boolean)
+      const response = await fetch(`/api/productos?${params.toString()}`)
+      if (!response.ok) throw new Error(`Error ${response.status}`)
+      const data = await response.json()
+      const arr = Array.isArray(data) ? data : data.content || []
 
-      const fetchDesc = (palabra) =>
-        fetch(`/api/productos?descripcionProducto=${encodeURIComponent(palabra)}&page=0&size=${SIZE_BUSQUEDA}`)
-          .then(r => r.json()).then(d => (Array.isArray(d) ? d : d.content || []))
-
-      const [rCodigo, rProveedor, ...rDescPalabras] = await Promise.all([
-        fetch(`/api/productos?codigoProducto=${encodeURIComponent(termino)}&page=0&size=${SIZE_BUSQUEDA}`).then(r => r.json()),
-        fetch(`/api/productos?codigoProductoProveedor=${encodeURIComponent(termino)}&page=0&size=${SIZE_BUSQUEDA}`).then(r => r.json()),
-        ...palabras.map(fetchDesc),
-      ])
-
-      let porDescripcion = rDescPalabras[0] || []
-      for (let i = 1; i < rDescPalabras.length; i++) {
-        const ids = new Set(rDescPalabras[i].map(p => p.idProducto))
-        porDescripcion = porDescripcion.filter(p => ids.has(p.idProducto))
-      }
-
-      const combinados = [
-        ...(Array.isArray(rCodigo) ? rCodigo : rCodigo.content || []),
-        ...(Array.isArray(rProveedor) ? rProveedor : rProveedor.content || []),
-        ...porDescripcion,
-      ]
-      const unicos = combinados.filter((p, idx, arr) =>
-        arr.findIndex(x => x.idProducto === p.idProducto) === idx
-      )
-      const inicio = pagina * PAGE_SIZE
-      setTodosProductos(unicos)
-      setProductos(unicos.slice(inicio, inicio + PAGE_SIZE))
-      setPage(pagina)
-      setTotalPages(Math.ceil(unicos.length / PAGE_SIZE))
+      setProductos(arr)
+      setPage(data.number ?? pagina)
+      setTotalPages(data.totalPages ?? 1)
     } catch (err) {
       setErrorProductos(err.message)
+      setProductos([])
     } finally {
       setLoadingProductos(false)
     }
   }
 
+  // 🔥 Debounce para búsqueda
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedBusqueda(busqueda)
+    }, 500)
+    return () => clearTimeout(timer)
+  }, [busqueda])
+
+  // 🔥 Cargar datos cuando cambia la búsqueda debounced o la página
+  useEffect(() => {
+    cargarProductos(0, debouncedBusqueda)
+  }, [debouncedBusqueda])
+
+  // Función para cambiar de página
+  const cambiarPagina = (nuevaPagina) => {
+    cargarProductos(nuevaPagina, debouncedBusqueda)
+  }
+
   // Función para exportar productos a Excel
   const exportarAExcel = async () => {
     try {
-      // Obtener TODOS los productos sin paginación
       let todosLosProductos = []
-      const termino = busqueda.trim()
+      const termino = debouncedBusqueda.trim()
+      
+      const params = new URLSearchParams({ page: 0, size: 10000 })
       if (termino) {
-        const SIZE_BUSQUEDA = 10000
-        const [r1, r2, r3] = await Promise.all([
-          fetch(`/api/productos?codigoProducto=${encodeURIComponent(termino)}&page=0&size=${SIZE_BUSQUEDA}`),
-          fetch(`/api/productos?codigoProductoProveedor=${encodeURIComponent(termino)}&page=0&size=${SIZE_BUSQUEDA}`),
-          fetch(`/api/productos?descripcionProducto=${encodeURIComponent(termino)}&page=0&size=${SIZE_BUSQUEDA}`),
-        ])
-        const [d1, d2, d3] = await Promise.all([r1.json(), r2.json(), r3.json()])
-        const combinados = [...(d1.content || []), ...(d2.content || []), ...(d3.content || [])]
-        todosLosProductos = combinados.filter((p, idx, arr) =>
-          arr.findIndex(x => x.idProducto === p.idProducto) === idx
-        )
-      } else {
-        const params = new URLSearchParams({ page: 0, size: 10000 })
-        const response = await fetch(`/api/productos?${params.toString()}`)
-        if (!response.ok) throw new Error('Error al obtener los productos')
-        const data = await response.json()
-        todosLosProductos = data.content
+        params.append('descripcionProducto', termino)
       }
+
+      const response = await fetch(`/api/productos?${params.toString()}`)
+      if (!response.ok) throw new Error('Error al obtener los productos')
+      const data = await response.json()
+      todosLosProductos = Array.isArray(data) ? data : data.content || []
 
       if (!todosLosProductos || todosLosProductos.length === 0) {
         setModalMsgTitle('Información')
@@ -431,47 +380,30 @@ const Layout = () => {
         return
       }
 
-      // Preparar los datos para el Excel
       const datosExcel = [...todosLosProductos]
         .sort((a, b) => (a.idProducto ?? 0) - (b.idProducto ?? 0))
         .map((producto, index) => ({
-        'No.': index + 1,
-        'Código Producto': producto.codigoProducto || '',
-        'Código Producto Proveedor': producto.codigoProductoProveedor || '',
-        'Descripción': producto.descripcionProducto || '',
-        'Precio Compra': producto.precioCompra != null ? Number(producto.precioCompra).toFixed(2) : '',
-        'Precio Venta': producto.precioVenta != null ? Number(producto.precioVenta).toFixed(2) : '',
-        'Unidad de Medida': obtenerNombreUnidad(producto.unidadDeMedida),
-        'Estado': obtenerNombreEstado(producto.estado)
-      }))
+          'No.': index + 1,
+          'Código Producto': producto.codigoProducto || '',
+          'Código Producto Proveedor': producto.codigoProductoProveedor || '',
+          'Descripción': producto.descripcionProducto || '',
+          'Precio Compra': producto.precioCompra != null ? Number(producto.precioCompra).toFixed(2) : '',
+          'Precio Venta': producto.precioVenta != null ? Number(producto.precioVenta).toFixed(2) : '',
+          'Unidad de Medida': obtenerNombreUnidad(producto.unidadDeMedida),
+          'Estado': obtenerNombreEstado(producto.estado)
+        }))
 
-      // Crear el libro de trabajo
       const ws = XLSX.utils.json_to_sheet(datosExcel)
-
-      // Ajustar el ancho de las columnas
-      const columnWidths = [
-        { wch: 5 },  // No.
-        { wch: 20 }, // Código Producto
-        { wch: 25 }, // Código Producto Proveedor
-        { wch: 50 }, // Descripción
-        { wch: 15 }, // Precio Compra
-        { wch: 15 }, // Precio Venta
-        { wch: 20 }, // Unidad de Medida
-        { wch: 15 }, // Estado
-      ]
-      ws['!cols'] = columnWidths
+      ws['!cols'] = [{ wch: 5 }, { wch: 20 }, { wch: 25 }, { wch: 50 }, { wch: 15 }, { wch: 15 }, { wch: 20 }, { wch: 15 }]
 
       const wb = XLSX.utils.book_new()
       XLSX.utils.book_append_sheet(wb, ws, 'Productos')
 
-      // Generar el nombre del archivo con fecha y hora
       const fecha = new Date()
       const nombreArchivo = `Productos_${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}-${String(fecha.getDate()).padStart(2, '0')}_${String(fecha.getHours()).padStart(2, '0')}${String(fecha.getMinutes()).padStart(2, '0')}.xlsx`
 
-      // Descargar el archivo
       XLSX.writeFile(wb, nombreArchivo)
 
-      // Mostrar mensaje de éxito
       setModalMsgTitle('Éxito')
       setModalMsgBody(`Se exportaron ${todosLosProductos.length} productos correctamente`)
       setModalMsgColor('success')
@@ -490,7 +422,7 @@ const Layout = () => {
     const inicial = {}
     productos.forEach(p => {
       inicial[p.idProducto] = {
-        venta:  p.precioVenta  != null ? String(p.precioVenta)  : '',
+        venta: p.precioVenta != null ? String(p.precioVenta) : '',
         compra: p.precioCompra != null ? String(p.precioCompra) : '',
       }
     })
@@ -508,7 +440,7 @@ const Layout = () => {
     const cambios = productos.filter(p => {
       const ed = preciosEditados[p.idProducto]
       if (!ed) return false
-      const ventaCambio  = ed.venta?.trim()  && regexDecimal.test(ed.venta.trim())  && Number(ed.venta)  !== Number(p.precioVenta)
+      const ventaCambio = ed.venta?.trim() && regexDecimal.test(ed.venta.trim()) && Number(ed.venta) !== Number(p.precioVenta)
       const compraCambio = ed.compra?.trim() && regexDecimal.test(ed.compra.trim()) && Number(ed.compra) !== Number(p.precioCompra)
       return ventaCambio || compraCambio
     })
@@ -527,25 +459,25 @@ const Layout = () => {
       await Promise.all(
         cambios.map(p => {
           const ed = preciosEditados[p.idProducto]
-          const nuevaVenta  = ed.venta?.trim()  && regexDecimal.test(ed.venta.trim())  ? Number(ed.venta)  : p.precioVenta
+          const nuevaVenta = ed.venta?.trim() && regexDecimal.test(ed.venta.trim()) ? Number(ed.venta) : p.precioVenta
           const nuevaCompra = ed.compra?.trim() && regexDecimal.test(ed.compra.trim()) ? Number(ed.compra) : p.precioCompra
           return fetch(`/api/editarProducto/${p.idProducto}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              idProducto:                p.idProducto,
-              codigoProducto:            p.codigoProducto,
-              codigoProductoProveedor:   p.codigoProductoProveedor,
-              descripcionProducto:       p.descripcionProducto,
-              unidadDeMedida:            p.unidadDeMedida,
-              precioCompra:              nuevaCompra,
-              precioVenta:               nuevaVenta,
-              idUsuarioModificacion:     idUsuarioActual,
+              idProducto: p.idProducto,
+              codigoProducto: p.codigoProducto,
+              codigoProductoProveedor: p.codigoProductoProveedor,
+              descripcionProducto: p.descripcionProducto,
+              unidadDeMedida: p.unidadDeMedida,
+              precioCompra: nuevaCompra,
+              precioVenta: nuevaVenta,
+              idUsuarioModificacion: idUsuarioActual,
             }),
           }).then(r => { if (!r.ok) throw new Error(`Error al actualizar ${p.codigoProducto}`) })
         })
       )
-      await cargarProductos(page)
+      await cargarProductos(page, debouncedBusqueda)
       cancelarEditarPrecio()
       setModalMsgTitle('Éxito')
       setModalMsgBody(`${cambios.length} precio(s) actualizado(s) correctamente.`)
@@ -561,13 +493,6 @@ const Layout = () => {
     }
   }
 
-  useEffect(() => {
-    const delayDebounce = setTimeout(() => {
-      cargarProductos(0, busqueda)
-    }, 300)
-    return () => clearTimeout(delayDebounce)
-  }, [busqueda])
-
   // Cargar diccionario para unidades de medida y Estado
   useEffect(() => {
     cargarDiccionario()
@@ -576,8 +501,8 @@ const Layout = () => {
   return (
     <CRow>
       <CCol xs={12}>
-        <CCard className="w-100 shadow-sm border-0" >
-          <CCardHeader >
+        <CCard className="w-100 shadow-sm border-0">
+          <CCardHeader>
             <strong className="fs-4">Gestión de Productos</strong>
           </CCardHeader>
           <CCardBody className="p-4">
@@ -585,12 +510,16 @@ const Layout = () => {
             <CForm>
               <CRow className="gy-3 align-items-end">
                 <CCol md={6}>
-                  <CFormLabel className="text-dark fw-bold" htmlFor="Buscar">Busqueda por:</CFormLabel>
+                  <CFormLabel className="text-dark fw-bold" htmlFor="Buscar">Búsqueda por:</CFormLabel>
                   <CFormInput
                     placeholder="Buscar por código, código proveedor o descripción..."
                     value={busqueda}
                     onChange={(e) => setBusqueda(e.target.value)}
                   />
+                  <small className="text-muted">
+                    {busqueda && !debouncedBusqueda && "Buscando..."}
+                    {debouncedBusqueda && `Resultados para: "${debouncedBusqueda}"`}
+                  </small>
                 </CCol>
                 <CCol className="d-flex justify-content-end gap-2 flex-wrap align-items-end">
                   {!modoEditarPrecio ? (
@@ -631,11 +560,10 @@ const Layout = () => {
 
             <CModal visible={visible} onClose={() => { quitarFoco(); setVisible(false) }} size="lg" backdrop="static">
               <CModalHeader className="bg-light">
-                <CModalTitle className='text-dark' >{modoEdicion ? 'Editar Producto' : 'Agregar Producto'}</CModalTitle>
+                <CModalTitle className='text-dark'>{modoEdicion ? 'Editar Producto' : 'Agregar Producto'}</CModalTitle>
               </CModalHeader>
               <CModalBody>
                 <CForm>
-                 
                   <CRow className="mb-3">
                     <CCol xs={12} md={8}>
                       <CFormLabel className="text-dark fw-bold" htmlFor="AgregarCodigo">Código Producto</CFormLabel>
@@ -650,10 +578,6 @@ const Layout = () => {
                         </div>
                       )}
                     </CCol>
-                    {!modoEdicion && (
-                      <CCol className="d-flex justify-content-end">
-                      </CCol>
-                    )}
                   </CRow>
                   <CRow className="mb-3">
                     <CCol xs={12} md={8}>
@@ -697,7 +621,7 @@ const Layout = () => {
                       )}
                     </CCol>
                   </CRow>
-                    <CRow className="mb-3">
+                  <CRow className="mb-3">
                     <CCol xs={8}>
                       <CFormLabel className="text-dark fw-bold" htmlFor="precioVenta">Precio de Venta</CFormLabel>
                       <CFormInput
@@ -721,7 +645,6 @@ const Layout = () => {
                         value={form.unidadDeMedida}
                         onChange={handleChange}
                         invalid={!!errors.unidadDeMedida}>
-
                         <option value="">Seleccione una opción</option>
                         {unidadesMedida.map((unidad) => {
                           return (
@@ -738,7 +661,6 @@ const Layout = () => {
                       )}
                     </CCol>
                   </CRow>
-                 
                 </CForm>
               </CModalBody>
               <CModalFooter>
@@ -750,6 +672,7 @@ const Layout = () => {
                 </CButton>
               </CModalFooter>
             </CModal>
+
             <CModal
               visible={modalMsgVisible}
               onClose={() => { quitarFoco(); setModalMsgVisible(false) }}
@@ -885,17 +808,15 @@ const Layout = () => {
                 ))}
               </CTableBody>
             </CTable>
-            <CPagination className="justify-content-end mt-3 flex-wrap align-items-center">
-              {/* Primera */}
-              <CPaginationItem disabled={page === 0} onClick={() => cargarProductos(0)} title="Primera página">«</CPaginationItem>
-              {/* Anterior */}
-              <CPaginationItem disabled={page === 0} onClick={() => cargarProductos(page - 1)}>Anterior</CPaginationItem>
 
-              {/* Ventana de páginas */}
+            <CPagination className="justify-content-end mt-3 flex-wrap align-items-center">
+              <CPaginationItem disabled={page === 0} onClick={() => cambiarPagina(0)} title="Primera página">«</CPaginationItem>
+              <CPaginationItem disabled={page === 0} onClick={() => cambiarPagina(page - 1)}>Anterior</CPaginationItem>
+
               {(() => {
                 if (totalPages <= 7) {
                   return [...Array(totalPages)].map((_, i) => (
-                    <CPaginationItem key={i} active={i === page} onClick={() => cargarProductos(i)}>{i + 1}</CPaginationItem>
+                    <CPaginationItem key={i} active={i === page} onClick={() => cambiarPagina(i)}>{i + 1}</CPaginationItem>
                   ))
                 }
                 const items = []
@@ -905,31 +826,28 @@ const Layout = () => {
                 const fin = Math.min(totalPages - 1, page + 2)
 
                 if (mostrarPrimera) {
-                  items.push(<CPaginationItem key={0} onClick={() => cargarProductos(0)}>1</CPaginationItem>)
+                  items.push(<CPaginationItem key={0} onClick={() => cambiarPagina(0)}>1</CPaginationItem>)
                   if (page > 3) items.push(<CPaginationItem key="e1" disabled>…</CPaginationItem>)
                 }
                 for (let i = inicio; i <= fin; i++) {
                   items.push(
-                    <CPaginationItem key={i} active={i === page} onClick={() => cargarProductos(i)}>{i + 1}</CPaginationItem>
+                    <CPaginationItem key={i} active={i === page} onClick={() => cambiarPagina(i)}>{i + 1}</CPaginationItem>
                   )
                 }
                 if (mostrarUltima) {
                   if (page < totalPages - 4) items.push(<CPaginationItem key="e2" disabled>…</CPaginationItem>)
-                  items.push(<CPaginationItem key={totalPages - 1} onClick={() => cargarProductos(totalPages - 1)}>{totalPages}</CPaginationItem>)
+                  items.push(<CPaginationItem key={totalPages - 1} onClick={() => cambiarPagina(totalPages - 1)}>{totalPages}</CPaginationItem>)
                 }
                 return items
               })()}
 
-              {/* Siguiente */}
-              <CPaginationItem disabled={page === totalPages - 1} onClick={() => cargarProductos(page + 1)}>Siguiente</CPaginationItem>
-              {/* Última */}
-              <CPaginationItem disabled={page === totalPages - 1} onClick={() => cargarProductos(totalPages - 1)} title="Última página">»</CPaginationItem>
+              <CPaginationItem disabled={page === totalPages - 1} onClick={() => cambiarPagina(page + 1)}>Siguiente</CPaginationItem>
+              <CPaginationItem disabled={page === totalPages - 1} onClick={() => cambiarPagina(totalPages - 1)} title="Última página">»</CPaginationItem>
             </CPagination>
           </CCardBody>
         </CCard>
       </CCol>
     </CRow>
-
   )
 }
 export default Layout

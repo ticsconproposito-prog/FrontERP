@@ -428,7 +428,7 @@ const EditarMovimiento = () => {
     }
   }
 
-  // Búsqueda server-side paralela por campo en /api/productos
+  // 🔥 Búsqueda de productos simplificada - Usando el endpoint con paginación server-side
   const buscarProductos = async (termino) => {
     const t = (termino || '').trim()
     if (t.length < 1) {
@@ -438,7 +438,7 @@ const EditarMovimiento = () => {
       return
     }
 
-    // Cancelar la búsqueda anterior en vuelo para evitar acumulación de peticiones
+    // Cancelar la búsqueda anterior en vuelo
     if (abortBusquedaProducto.current) {
       abortBusquedaProducto.current.abort()
     }
@@ -449,42 +449,21 @@ const EditarMovimiento = () => {
     setLoadingProductos(true)
     setErrorProductos(null)
     try {
-      // Códigos son únicos o casi únicos: 30 resultados es suficiente
-      const SIZE_CODIGO = 30
-      // Descripción necesita más margen para que la intersección por palabras
-      // funcione correctamente en catálogos grandes (6000+ productos)
-      const SIZE_DESCRIPCION = 300
-      const palabras = t.split(/\s+/).filter(Boolean)
-
-      const fetchDesc = (palabra) =>
-        fetch(`/api/productos?descripcionProducto=${encodeURIComponent(palabra)}&page=0&size=${SIZE_DESCRIPCION}`, { signal })
-          .then(r => r.json()).then(d => Array.isArray(d.content) ? d.content : [])
-
-      const [rCodigo, rProveedor, ...rDescPalabras] = await Promise.all([
-        fetch(`/api/productos?codigoProducto=${encodeURIComponent(t)}&page=0&size=${SIZE_CODIGO}`, { signal }).then(r => r.json()),
-        fetch(`/api/productos?codigoProductoProveedor=${encodeURIComponent(t)}&page=0&size=${SIZE_CODIGO}`, { signal }).then(r => r.json()),
-        ...palabras.map(fetchDesc),
-      ])
-
-      // Intersección por descripción (el producto debe aparecer en TODAS las palabras)
-      let porDescripcion = Array.isArray(rDescPalabras[0]) ? rDescPalabras[0] : []
-      for (let i = 1; i < rDescPalabras.length; i++) {
-        const ids = new Set((Array.isArray(rDescPalabras[i]) ? rDescPalabras[i] : []).map(p => p.idProducto))
-        porDescripcion = porDescripcion.filter(p => ids.has(p.idProducto))
-      }
-
-      const combinados = [
-        ...(Array.isArray(rCodigo.content) ? rCodigo.content : []),
-        ...(Array.isArray(rProveedor.content) ? rProveedor.content : []),
-        ...porDescripcion,
-      ]
-      const unicos = combinados.filter((p, idx, arr) =>
-        arr.findIndex(x => x.idProducto === p.idProducto) === idx
+      // 🔥 Usar directamente el endpoint con búsqueda por descripción
+      // El backend ya maneja la búsqueda con palabras separadas
+      const SIZE = 50
+      const response = await fetch(
+        `/api/productos?descripcionProducto=${encodeURIComponent(t)}&page=0&size=${SIZE}`,
+        { signal }
       )
-
-      setProductosDisponibles(unicos)
-      setSugerenciasProductos(unicos.slice(0, 15))
-      setMostrarSugerencias(unicos.length > 0)
+      
+      if (!response.ok) throw new Error('Error al buscar productos')
+      const data = await response.json()
+      const productos = Array.isArray(data) ? data : (data.content || [])
+      
+      setProductosDisponibles(productos)
+      setSugerenciasProductos(productos)
+      setMostrarSugerencias(productos.length > 0)
     } catch (e) {
       // Ignorar errores de cancelación (AbortError)
       if (e.name === 'AbortError') return

@@ -28,7 +28,7 @@ import {
 } from '@coreui/react'
 import * as XLSX from 'xlsx'
 
-const PAGE_SIZE  = 20
+const PAGE_SIZE = 20
 const SIZE_TODOS = 10000
 
 const ReporteInventario = () => {
@@ -41,53 +41,55 @@ const ReporteInventario = () => {
 
   // Búsqueda
   const [busqueda, setBusqueda] = useState('')
+  const [debouncedBusqueda, setDebouncedBusqueda] = useState('')
 
   // ── Reporte General ──
   const [inventarioAgrupado, setInventarioAgrupado] = useState([])
-  const [todosAgrupado, setTodosAgrupado]           = useState([])   // todos los resultados al buscar
-  const [pageAgrupado, setPageAgrupado]             = useState(0)
+  const [pageAgrupado, setPageAgrupado] = useState(0)
   const [totalPagesAgrupado, setTotalPagesAgrupado] = useState(0)
   const [totalElemsAgrupado, setTotalElemsAgrupado] = useState(0)
-  const [loadingAgrupado, setLoadingAgrupado]       = useState(false)
-  const [errorAgrupado, setErrorAgrupado]           = useState(null)
+  const [loadingAgrupado, setLoadingAgrupado] = useState(false)
+  const [errorAgrupado, setErrorAgrupado] = useState(null)
 
   // ── Reporte por Ubicación ──
-  const [inventario, setInventario]         = useState([])
-  const [todosInventario, setTodosInventario] = useState([])         // todos los resultados al buscar
-  const [pageInv, setPageInv]               = useState(0)
-  const [totalPagesInv, setTotalPagesInv]   = useState(0)
-  const [totalElemsInv, setTotalElemsInv]   = useState(0)
-  const [loading, setLoading]               = useState(false)
-  const [error, setError]                   = useState(null)
+  const [inventario, setInventario] = useState([])
+  const [pageInv, setPageInv] = useState(0)
+  const [totalPagesInv, setTotalPagesInv] = useState(0)
+  const [totalElemsInv, setTotalElemsInv] = useState(0)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
 
   // Filtro de ubicación (solo para reporte por ubicación)
   const [ubicacionFiltro, setUbicacionFiltro] = useState('')
+  const [debouncedUbicacion, setDebouncedUbicacion] = useState('')
 
   // Edición de existencias (solo para reporte por ubicación)
   const [modoEditarExistencias, setModoEditarExistencias] = useState(false)
-  const [existenciasEditadas, setExistenciasEditadas] = useState({}) // { idInventario: { existencias, danados } }
+  const [existenciasEditadas, setExistenciasEditadas] = useState({})
   const [guardandoExistencias, setGuardandoExistencias] = useState(false)
 
   // Modal de mensajes
   const [modalMsgVisible, setModalMsgVisible] = useState(false)
-  const [modalMsgTitle, setModalMsgTitle]     = useState('')
-  const [modalMsgBody, setModalMsgBody]       = useState('')
-  const [modalMsgColor, setModalMsgColor]     = useState('info')
+  const [modalMsgTitle, setModalMsgTitle] = useState('')
+  const [modalMsgBody, setModalMsgBody] = useState('')
+  const [modalMsgColor, setModalMsgColor] = useState('info')
 
   // Diccionarios y ubicaciones
   const [unidadesMedida, setUnidadesMedida] = useState([])
-  const [estados, setEstados]               = useState([])
-  const [ubicaciones, setUbicaciones]       = useState([])
+  const [estados, setEstados] = useState([])
+  const [ubicaciones, setUbicaciones] = useState([])
 
   // ── Helpers ──
   const obtenerNombreUnidad = (id) => {
     const u = unidadesMedida.find((u) => Number(u.indice) === Number(id))
     return u ? u.valor : String(id ?? '')
   }
+
   const obtenerNombreEstado = (id) => {
     const e = estados.find((e) => Number(e.indice) === Number(id))
     return e ? e.valor : String(id ?? '')
   }
+
   const obtenerNombreUbicacion = (id) => {
     const u = ubicaciones.find((u) => Number(u.idUbicacion) === Number(id))
     return u ? (u.nombreUbicacion || String(id)) : String(id ?? '')
@@ -111,72 +113,38 @@ const ReporteInventario = () => {
   // Formatea items de /api/inventario (anida campos de idProducto)
   const formatearInventario = (arr) =>
     arr.map((item) => ({
-        idInventario:            item.idInventario,
-        codigoProducto:          item.idProducto?.codigoProducto          || 'N/A',
-        codigoProductoProveedor: item.idProducto?.codigoProductoProveedor || 'N/A',
-        descripcionProducto:     item.idProducto?.descripcionProducto     || 'N/A',
-        precioCompra:            item.idProducto?.precioCompra            || 0,
-        estado:                  item.idProducto?.estado                  ?? item.estado,
-        idUbicacion:             item.idUbicacion                         ?? '—',
-        cantidadExistencias:     item.cantidadExistencias                 || 0,
-        cantidadDanados:         item.cantidadDanados                     || 0,
-      }))
+      idInventario: item.idInventario,
+      codigoProducto: item.idProducto?.codigoProducto || 'N/A',
+      codigoProductoProveedor: item.idProducto?.codigoProductoProveedor || 'N/A',
+      descripcionProducto: item.idProducto?.descripcionProducto || 'N/A',
+      precioCompra: item.idProducto?.precioCompra || 0,
+      estado: item.idProducto?.estado ?? item.estado,
+      idUbicacion: item.idUbicacion ?? '—',
+      cantidadExistencias: item.cantidadExistencias || 0,
+      cantidadDanados: item.cantidadDanados || 0,
+    }))
 
-  // ── Reporte General ──
-  // Con búsqueda: llamadas paralelas por campo server-side (descripcion, codigoProducto, codigoProductoProveedor)
-  const cargarInventarioAgrupado = async (pagina = 0, termino = busqueda) => {
+  // 🔥 Reporte General - Usando el endpoint agrupado con paginación server-side
+  const cargarInventarioAgrupado = async (pagina = 0, termino = debouncedBusqueda) => {
     try {
       setLoadingAgrupado(true)
       setErrorAgrupado(null)
       const t = (termino || '').trim()
 
-      if (!t) {
-        const params = new URLSearchParams({ page: pagina, size: PAGE_SIZE })
-        const res = await fetch(`/api/inventarioAgrupado?${params}`)
-        if (!res.ok) throw new Error(`Error ${res.status}`)
-        const data = await res.json()
-        const arrAgrupado = Array.isArray(data) ? data : data.content || []
-        setTodosAgrupado([])
-        setInventarioAgrupado(arrAgrupado)
-        setPageAgrupado(data.number ?? 0)
-        setTotalPagesAgrupado(data.totalPages ?? 0)
-        setTotalElemsAgrupado(data.totalElements ?? 0)
-      } else {
-        const SIZE_BUSQUEDA = 500
-        const palabras = t.split(/\s+/).filter(Boolean)
-
-        const fetchDescripcion = (palabra) =>
-          fetch(`/api/inventarioAgrupado?descripcion=${encodeURIComponent(palabra)}&page=0&size=${SIZE_BUSQUEDA}`)
-            .then(r => r.json()).then(d => (Array.isArray(d) ? d : d.content || []))
-
-        const [rCodigo, rProveedor, ...rDescPalabras] = await Promise.all([
-          fetch(`/api/inventarioAgrupado?codigoProducto=${encodeURIComponent(t)}&page=0&size=${SIZE_BUSQUEDA}`).then(r => r.json()),
-          fetch(`/api/inventarioAgrupado?codigoProductoProveedor=${encodeURIComponent(t)}&page=0&size=${SIZE_BUSQUEDA}`).then(r => r.json()),
-          ...palabras.map(fetchDescripcion),
-        ])
-
-        // Intersección por descripción (el producto debe aparecer en TODAS las palabras)
-        let porDescripcion = rDescPalabras[0] || []
-        for (let i = 1; i < rDescPalabras.length; i++) {
-          const ids = new Set(rDescPalabras[i].map(p => p.producto?.idProducto))
-          porDescripcion = porDescripcion.filter(p => ids.has(p.producto?.idProducto))
-        }
-
-        const combinados = [
-          ...(Array.isArray(rCodigo) ? rCodigo : rCodigo.content || []),
-          ...(Array.isArray(rProveedor) ? rProveedor : rProveedor.content || []),
-          ...porDescripcion,
-        ]
-        const unicos = [...combinados.filter((p, idx, arr) =>
-          arr.findIndex(x => x.producto?.idProducto === p.producto?.idProducto) === idx
-        )].sort((a, b) => (a.producto?.idProducto ?? 0) - (b.producto?.idProducto ?? 0))
-        const inicio = pagina * PAGE_SIZE
-        setTodosAgrupado(unicos)
-        setInventarioAgrupado(unicos.slice(inicio, inicio + PAGE_SIZE))
-        setPageAgrupado(pagina)
-        setTotalPagesAgrupado(Math.ceil(unicos.length / PAGE_SIZE))
-        setTotalElemsAgrupado(unicos.length)
+      const params = new URLSearchParams({ page: pagina, size: PAGE_SIZE })
+      if (t) {
+        params.append('descripcion', t)
       }
+
+      const res = await fetch(`/api/inventarioAgrupado?${params}`)
+      if (!res.ok) throw new Error(`Error ${res.status}`)
+      const data = await res.json()
+      const arr = Array.isArray(data) ? data : data.content || []
+
+      setInventarioAgrupado(arr)
+      setPageAgrupado(data.number ?? 0)
+      setTotalPagesAgrupado(data.totalPages ?? 0)
+      setTotalElemsAgrupado(data.totalElements ?? 0)
     } catch (err) {
       setErrorAgrupado(err.message)
       setInventarioAgrupado([])
@@ -185,66 +153,26 @@ const ReporteInventario = () => {
     }
   }
 
-  // ── Reporte por Ubicación ──
-  const cargarInventario = async (pagina = 0, termino = busqueda, ubicacion = ubicacionFiltro) => {
+  // 🔥 Reporte por Ubicación - Usando el endpoint con paginación server-side
+  const cargarInventario = async (pagina = 0, termino = debouncedBusqueda, ubicacion = debouncedUbicacion) => {
     try {
       setLoading(true)
       setError(null)
       const t = (termino || '').trim()
 
-      if (!t) {
-        // Sin búsqueda: carga paginada con idUbicacion como parámetro server-side
-        const params = new URLSearchParams({ page: pagina, size: PAGE_SIZE })
-        if (ubicacion) params.append('idUbicacion', ubicacion)
-        const res = await fetch(`/api/inventario?${params}`)
-        if (!res.ok) throw new Error(`Error ${res.status}`)
-        const data = await res.json()
-        const arr = Array.isArray(data) ? data : data.content || []
-        setTodosInventario([])
-        setInventario(formatearInventario(arr))
-        setPageInv(data.number ?? 0)
-        setTotalPagesInv(data.totalPages ?? 0)
-        setTotalElemsInv(data.totalElements ?? 0)
-        return
-      }
+      const params = new URLSearchParams({ page: pagina, size: PAGE_SIZE })
+      if (t) params.append('descripcion', t)
+      if (ubicacion) params.append('idUbicacion', ubicacion)
 
-      // Con búsqueda: llamadas paralelas server-side incluyendo idUbicacion
-      const SIZE_BUSQUEDA = 500
-      const palabras = t.split(/\s+/).filter(Boolean)
-      const ubParam = ubicacion ? `&idUbicacion=${encodeURIComponent(ubicacion)}` : ''
+      const res = await fetch(`/api/inventario?${params}`)
+      if (!res.ok) throw new Error(`Error ${res.status}`)
+      const data = await res.json()
+      const arr = Array.isArray(data) ? data : data.content || []
 
-      const fetchDescripcion = (palabra) =>
-        fetch(`/api/inventario?descripcion=${encodeURIComponent(palabra)}&page=0&size=${SIZE_BUSQUEDA}${ubParam}`)
-          .then(r => r.json()).then(d => (Array.isArray(d) ? d : d.content || []))
-
-      const [rCodigo, rProveedor, ...rDescPalabras] = await Promise.all([
-        fetch(`/api/inventario?codigoProducto=${encodeURIComponent(t)}&page=0&size=${SIZE_BUSQUEDA}${ubParam}`).then(r => r.json()),
-        fetch(`/api/inventario?codigoProductoProveedor=${encodeURIComponent(t)}&page=0&size=${SIZE_BUSQUEDA}${ubParam}`).then(r => r.json()),
-        ...palabras.map(fetchDescripcion),
-      ])
-
-      let porDescripcion = rDescPalabras[0] || []
-      for (let i = 1; i < rDescPalabras.length; i++) {
-        const ids = new Set(rDescPalabras[i].map(p => p.idInventario))
-        porDescripcion = porDescripcion.filter(p => ids.has(p.idInventario))
-      }
-
-      const combinados = [
-        ...(Array.isArray(rCodigo) ? rCodigo : rCodigo.content || []),
-        ...(Array.isArray(rProveedor) ? rProveedor : rProveedor.content || []),
-        ...porDescripcion,
-      ]
-      const unicos = combinados
-        .filter((p, idx, arr) => arr.findIndex(x => x.idInventario === p.idInventario) === idx)
-        .sort((a, b) => (a.idInventario ?? 0) - (b.idInventario ?? 0))
-      const formateados = formatearInventario(unicos)
-
-      const inicio = pagina * PAGE_SIZE
-      setTodosInventario(formateados)
-      setInventario(formateados.slice(inicio, inicio + PAGE_SIZE))
-      setPageInv(pagina)
-      setTotalPagesInv(Math.ceil(formateados.length / PAGE_SIZE))
-      setTotalElemsInv(formateados.length)
+      setInventario(formatearInventario(arr))
+      setPageInv(data.number ?? 0)
+      setTotalPagesInv(data.totalPages ?? 0)
+      setTotalElemsInv(data.totalElements ?? 0)
     } catch (err) {
       setError(err.message)
       setInventario([])
@@ -253,26 +181,25 @@ const ReporteInventario = () => {
     }
   }
 
-  // ── Paginación (client-side cuando hay búsqueda, server-side cuando no) ──
-  const irPaginaAgrupado = (p) => {
-    if (busqueda.trim() && todosAgrupado.length > 0) {
-      const inicio = p * PAGE_SIZE
-      setInventarioAgrupado(todosAgrupado.slice(inicio, inicio + PAGE_SIZE))
-      setPageAgrupado(p)
-    } else {
-      cargarInventarioAgrupado(p, busqueda)
-    }
-  }
+  // ── Paginación ──
+  const irPaginaAgrupado = (p) => cargarInventarioAgrupado(p, debouncedBusqueda)
+  const irPaginaInv = (p) => cargarInventario(p, debouncedBusqueda, debouncedUbicacion)
 
-  const irPaginaInv = (p) => {
-    if ((busqueda.trim() || ubicacionFiltro) && todosInventario.length > 0) {
-      const inicio = p * PAGE_SIZE
-      setInventario(todosInventario.slice(inicio, inicio + PAGE_SIZE))
-      setPageInv(p)
-    } else {
-      cargarInventario(p, busqueda)
-    }
-  }
+  // ── Debounce para búsqueda ──
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedBusqueda(busqueda)
+    }, 500)
+    return () => clearTimeout(timer)
+  }, [busqueda])
+
+  // Debounce para ubicación
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedUbicacion(ubicacionFiltro)
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [ubicacionFiltro])
 
   // ── Editar Existencias ──
   const activarModoEditarExistencias = () => {
@@ -280,7 +207,7 @@ const ReporteInventario = () => {
     inventario.forEach(item => {
       inicial[item.idInventario] = {
         existencias: item.cantidadExistencias != null ? String(item.cantidadExistencias) : '0',
-        danados:     item.cantidadDanados     != null ? String(item.cantidadDanados)     : '0',
+        danados: item.cantidadDanados != null ? String(item.cantidadDanados) : '0',
       }
     })
     setExistenciasEditadas(inicial)
@@ -297,8 +224,8 @@ const ReporteInventario = () => {
     const cambios = inventario.filter(item => {
       const ed = existenciasEditadas[item.idInventario]
       if (!ed) return false
-      const exCambio  = ed.existencias?.trim() && regexEntero.test(ed.existencias.trim()) && Number(ed.existencias) !== Number(item.cantidadExistencias)
-      const danCambio = ed.danados?.trim()     && regexEntero.test(ed.danados.trim())     && Number(ed.danados)     !== Number(item.cantidadDanados)
+      const exCambio = ed.existencias?.trim() && regexEntero.test(ed.existencias.trim()) && Number(ed.existencias) !== Number(item.cantidadExistencias)
+      const danCambio = ed.danados?.trim() && regexEntero.test(ed.danados.trim()) && Number(ed.danados) !== Number(item.cantidadDanados)
       return exCambio || danCambio
     })
 
@@ -316,15 +243,13 @@ const ReporteInventario = () => {
       await Promise.all(
         cambios.map(item => {
           const ed = existenciasEditadas[item.idInventario]
-          const nuevasEx  = ed.existencias?.trim() && regexEntero.test(ed.existencias.trim()) ? Number(ed.existencias) : item.cantidadExistencias
-          const nuevosDan = ed.danados?.trim()     && regexEntero.test(ed.danados.trim())     ? Number(ed.danados)     : item.cantidadDanados
+          const nuevasEx = ed.existencias?.trim() && regexEntero.test(ed.existencias.trim()) ? Number(ed.existencias) : item.cantidadExistencias
+          const nuevosDan = ed.danados?.trim() && regexEntero.test(ed.danados.trim()) ? Number(ed.danados) : item.cantidadDanados
           const payload = {
-            idInventario:          item.idInventario,
-            cantidadExistencias:   nuevasEx,
-            cantidadDanados:       nuevosDan,
+            cantidadExistencias: nuevasEx,
+            cantidadDanados: nuevosDan,
             idUsuarioModificacion: idUsuarioActual,
           }
-          console.log(`[editarInventario] PUT /api/editarInventario/${item.idInventario}`, payload)
           return fetch(`/api/editarInventario/${item.idInventario}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
@@ -332,7 +257,7 @@ const ReporteInventario = () => {
           }).then(r => { if (!r.ok) throw new Error(`Error al actualizar inventario ${item.idInventario}`) })
         })
       )
-      await cargarInventario(pageInv, busqueda, ubicacionFiltro)
+      await cargarInventario(pageInv, debouncedBusqueda, debouncedUbicacion)
       cancelarEditarExistencias()
       setModalMsgTitle('Éxito')
       setModalMsgBody(`${cambios.length} registro(s) actualizado(s) correctamente.`)
@@ -352,158 +277,121 @@ const ReporteInventario = () => {
   const limpiarBusqueda = () => {
     setBusqueda('')
     setUbicacionFiltro('')
-    if (tipoReporte === '1') cargarInventarioAgrupado(0, '')
-    else cargarInventario(0, '', '')
+    setDebouncedBusqueda('')
+    setDebouncedUbicacion('')
   }
 
-  // ── Exportar a Excel (todos los registros según filtros activos) ──
+  // ── Exportar a Excel ──
   const exportarAExcel = async () => {
-    const t = busqueda.trim()
-
     if (tipoReporte === '1') {
-      let todos = []
-      if (t && todosAgrupado.length > 0) {
-        todos = todosAgrupado
-      } else if (t) {
-        try {
-          const SIZE_BUSQUEDA = 500
-          const palabras = t.split(/\s+/).filter(Boolean)
-          const fetchDescripcion = (palabra) =>
-            fetch(`/api/inventarioAgrupado?descripcion=${encodeURIComponent(palabra)}&page=0&size=${SIZE_BUSQUEDA}`)
-              .then(r => r.json()).then(d => (Array.isArray(d) ? d : d.content || []))
-          const [rCodigo, rProveedor, ...rDescPalabras] = await Promise.all([
-            fetch(`/api/inventarioAgrupado?codigoProducto=${encodeURIComponent(t)}&page=0&size=${SIZE_BUSQUEDA}`).then(r => r.json()),
-            fetch(`/api/inventarioAgrupado?codigoProductoProveedor=${encodeURIComponent(t)}&page=0&size=${SIZE_BUSQUEDA}`).then(r => r.json()),
-            ...palabras.map(fetchDescripcion),
-          ])
-          let porDescripcion = rDescPalabras[0] || []
-          for (let i = 1; i < rDescPalabras.length; i++) {
-            const ids = new Set(rDescPalabras[i].map(p => p.producto?.idProducto))
-            porDescripcion = porDescripcion.filter(p => ids.has(p.producto?.idProducto))
-          }
-          const combinados = [
-            ...(Array.isArray(rCodigo) ? rCodigo : rCodigo.content || []),
-            ...(Array.isArray(rProveedor) ? rProveedor : rProveedor.content || []),
-            ...porDescripcion,
-          ]
-          todos = combinados.filter((p, idx, arr) =>
-            arr.findIndex(x => x.producto?.idProducto === p.producto?.idProducto) === idx
-          )
-        } catch { return }
-      } else {
-        try {
-          const res = await fetch(`/api/inventarioAgrupado?page=0&size=${SIZE_TODOS}`)
-          if (!res.ok) throw new Error(`Error ${res.status}`)
-          const data = await res.json()
-          todos = Array.isArray(data) ? data : data.content || []
-        } catch { return }
-      }
+      try {
+        const params = new URLSearchParams({ page: 0, size: SIZE_TODOS })
+        if (debouncedBusqueda.trim()) params.append('descripcion', debouncedBusqueda)
 
-      const datosExcel = [...todos]
-        .sort((a, b) => (a.producto?.idProducto ?? 0) - (b.producto?.idProducto ?? 0))
-        .map((item, i) => ({
-          'No.':                 i + 1,
-          'Código Producto':   item.producto?.codigoProducto          || '',
-          'Código Proveedor':  item.producto?.codigoProductoProveedor || '',
-          'Descripción':       item.producto?.descripcionProducto     || '',
-          'Precio Compra':     item.producto?.precioCompra != null ? Number(item.producto.precioCompra).toFixed(2) : '',
+        const res = await fetch(`/api/inventarioAgrupado?${params}`)
+        if (!res.ok) throw new Error('Error al exportar')
+        const data = await res.json()
+        const todos = Array.isArray(data) ? data : data.content || []
+
+        const datosExcel = todos.map((item, i) => ({
+          'No.': i + 1,
+          'Código Producto': item.producto?.codigoProducto || '',
+          'Código Proveedor': item.producto?.codigoProductoProveedor || '',
+          'Descripción': item.producto?.descripcionProducto || '',
+          'Precio Compra': item.producto?.precioCompra != null ? Number(item.producto.precioCompra).toFixed(2) : '',
           'Total Existencias': item.totalExistencias ?? 0,
-          'Total Dañados':     item.totalDanados     ?? 0,
-          'Unidad de Medida':  obtenerNombreUnidad(item.producto?.unidadDeMedida),
-          'Estado':            obtenerNombreEstado(item.producto?.estado),
+          'Total Dañados': item.totalDanados ?? 0,
+          'Unidad de Medida': obtenerNombreUnidad(item.producto?.unidadDeMedida),
+          'Estado': obtenerNombreEstado(item.producto?.estado),
         }))
-      const ws = XLSX.utils.json_to_sheet(datosExcel)
-      ws['!cols'] = [{ wch:5 },{ wch:20 },{ wch:20 },{ wch:50 },{ wch:15 },{ wch:18 },{ wch:15 },{ wch:20 },{ wch:15 }]
-      const wb = XLSX.utils.book_new()
-      XLSX.utils.book_append_sheet(wb, ws, 'Reporte General')
-      XLSX.writeFile(wb, `ReporteGeneral_${new Date().toISOString().slice(0,10)}.xlsx`)
 
-    } else {
-      let todos = []
-      if (t && todosInventario.length > 0) {
-        todos = todosInventario
-      } else if (t) {
-        try {
-          const SIZE_BUSQUEDA = 500
-          const palabras = t.split(/\s+/).filter(Boolean)
-          const fetchDescripcion = (palabra) =>
-            fetch(`/api/inventario?descripcion=${encodeURIComponent(palabra)}&page=0&size=${SIZE_BUSQUEDA}`)
-              .then(r => r.json()).then(d => (Array.isArray(d) ? d : d.content || []))
-          const [rCodigo, rProveedor, ...rDescPalabras] = await Promise.all([
-            fetch(`/api/inventario?codigoProducto=${encodeURIComponent(t)}&page=0&size=${SIZE_BUSQUEDA}`).then(r => r.json()),
-            fetch(`/api/inventario?codigoProductoProveedor=${encodeURIComponent(t)}&page=0&size=${SIZE_BUSQUEDA}`).then(r => r.json()),
-            ...palabras.map(fetchDescripcion),
-          ])
-          let porDescripcion = rDescPalabras[0] || []
-          for (let i = 1; i < rDescPalabras.length; i++) {
-            const ids = new Set(rDescPalabras[i].map(p => p.idInventario))
-            porDescripcion = porDescripcion.filter(p => ids.has(p.idInventario))
-          }
-          const combinados = [
-            ...(Array.isArray(rCodigo) ? rCodigo : rCodigo.content || []),
-            ...(Array.isArray(rProveedor) ? rProveedor : rProveedor.content || []),
-            ...porDescripcion,
-          ]
-          const unicos = combinados
-            .filter((p, idx, arr) => arr.findIndex(x => x.idInventario === p.idInventario) === idx)
-            .sort((a, b) => (a.idInventario ?? 0) - (b.idInventario ?? 0))
-          todos = formatearInventario(unicos)
-        } catch { return }
-      } else {
-        try {
-          const res = await fetch(`/api/inventario?page=0&size=${SIZE_TODOS}`)
-          if (!res.ok) throw new Error(`Error ${res.status}`)
-          const data = await res.json()
-          const arr = Array.isArray(data) ? data : data.content || []
-          todos = formatearInventario(arr)
-        } catch { return }
+        const ws = XLSX.utils.json_to_sheet(datosExcel)
+        ws['!cols'] = [{ wch: 5 }, { wch: 20 }, { wch: 20 }, { wch: 50 }, { wch: 15 }, { wch: 18 }, { wch: 15 }, { wch: 20 }, { wch: 15 }]
+        const wb = XLSX.utils.book_new()
+        XLSX.utils.book_append_sheet(wb, ws, 'Reporte General')
+        XLSX.writeFile(wb, `ReporteGeneral_${new Date().toISOString().slice(0, 10)}.xlsx`)
+
+        setModalMsgTitle('Éxito')
+        setModalMsgBody(`Se exportaron ${todos.length} registros correctamente.`)
+        setModalMsgColor('success')
+        setModalMsgVisible(true)
+      } catch (err) {
+        setModalMsgTitle('Error')
+        setModalMsgBody('Error al exportar: ' + err.message)
+        setModalMsgColor('danger')
+        setModalMsgVisible(true)
       }
+    } else {
+      try {
+        const params = new URLSearchParams({ page: 0, size: SIZE_TODOS })
+        if (debouncedBusqueda.trim()) params.append('descripcion', debouncedBusqueda)
+        if (debouncedUbicacion) params.append('idUbicacion', debouncedUbicacion)
 
-      const datosExcel = [...todos]
-        .sort((a, b) => (a.idInventario ?? 0) - (b.idInventario ?? 0))
-        .map((item, i) => ({
-          'No.':                i + 1,
-          'Código Producto':  item.codigoProducto          || '',
+        const res = await fetch(`/api/inventario?${params}`)
+        if (!res.ok) throw new Error('Error al exportar')
+        const data = await res.json()
+        const arr = Array.isArray(data) ? data : data.content || []
+        const todos = formatearInventario(arr)
+
+        const datosExcel = todos.map((item, i) => ({
+          'No.': i + 1,
+          'Código Producto': item.codigoProducto || '',
           'Código Proveedor': item.codigoProductoProveedor || '',
-          'Descripción':      item.descripcionProducto     || '',
-          'Precio Compra':    Number(item.precioCompra || 0).toFixed(2),
-          'Existencias':      item.cantidadExistencias,
-          'Dañados':          item.cantidadDanados,
-          'Ubicación':        obtenerNombreUbicacion(item.idUbicacion),
-          'Estado':           obtenerNombreEstado(item.estado),
+          'Descripción': item.descripcionProducto || '',
+          'Precio Compra': Number(item.precioCompra || 0).toFixed(2),
+          'Existencias': item.cantidadExistencias,
+          'Dañados': item.cantidadDanados,
+          'Ubicación': obtenerNombreUbicacion(item.idUbicacion),
+          'Estado': obtenerNombreEstado(item.estado),
         }))
-      const ws = XLSX.utils.json_to_sheet(datosExcel)
-      ws['!cols'] = [{ wch:5 },{ wch:20 },{ wch:20 },{ wch:50 },{ wch:15 },{ wch:12 },{ wch:12 },{ wch:20 },{ wch:15 }]
-      const wb = XLSX.utils.book_new()
-      XLSX.utils.book_append_sheet(wb, ws, 'Reporte por Ubicación')
-      XLSX.writeFile(wb, `ReporteUbicacion_${new Date().toISOString().slice(0,10)}.xlsx`)
+
+        const ws = XLSX.utils.json_to_sheet(datosExcel)
+        ws['!cols'] = [{ wch: 5 }, { wch: 20 }, { wch: 20 }, { wch: 50 }, { wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 20 }, { wch: 15 }]
+        const wb = XLSX.utils.book_new()
+        XLSX.utils.book_append_sheet(wb, ws, 'Reporte por Ubicación')
+        XLSX.writeFile(wb, `ReporteUbicacion_${new Date().toISOString().slice(0, 10)}.xlsx`)
+
+        setModalMsgTitle('Éxito')
+        setModalMsgBody(`Se exportaron ${todos.length} registros correctamente.`)
+        setModalMsgColor('success')
+        setModalMsgVisible(true)
+      } catch (err) {
+        setModalMsgTitle('Error')
+        setModalMsgBody('Error al exportar: ' + err.message)
+        setModalMsgColor('danger')
+        setModalMsgVisible(true)
+      }
     }
   }
 
   // ── Effects ──
-  useEffect(() => { cargarDiccionarios() }, [])
+  useEffect(() => {
+    cargarDiccionarios()
+  }, [])
 
   // Al cambiar tipo de reporte: resetear búsqueda y filtro de ubicación
   useEffect(() => {
     setBusqueda('')
     setUbicacionFiltro('')
+    setDebouncedBusqueda('')
+    setDebouncedUbicacion('')
   }, [tipoReporte])
 
-  // Único efecto de carga — cubre: carga inicial, cambio de busqueda, tipoReporte y ubicacionFiltro
+  // Cargar datos cuando cambian los filtros debounced
   useEffect(() => {
-    const timer = setTimeout(() => {
-      if (tipoReporte === '1') cargarInventarioAgrupado(0, busqueda)
-      else cargarInventario(0, busqueda, ubicacionFiltro)
-    }, 300)
-    return () => clearTimeout(timer)
-  }, [busqueda, tipoReporte, ubicacionFiltro])
+    if (tipoReporte === '1') {
+      cargarInventarioAgrupado(0, debouncedBusqueda)
+    } else {
+      cargarInventario(0, debouncedBusqueda, debouncedUbicacion)
+    }
+  }, [debouncedBusqueda, tipoReporte, debouncedUbicacion])
 
   // ── Componente de paginación reutilizable ──
   const Paginacion = ({ page, totalPages, onIr }) => {
     if (totalPages <= 1) return null
     const items = []
     const inicio = Math.max(0, page - 2)
-    const fin    = Math.min(totalPages - 1, page + 2)
+    const fin = Math.min(totalPages - 1, page + 2)
 
     if (page > 2) {
       items.push(<CPaginationItem key={0} onClick={() => onIr(0)}>1</CPaginationItem>)
@@ -531,7 +419,7 @@ const ReporteInventario = () => {
   }
 
   const isLoading = tipoReporte === '1' ? loadingAgrupado : loading
-  const isError   = tipoReporte === '1' ? errorAgrupado   : error
+  const isError = tipoReporte === '1' ? errorAgrupado : error
 
   return (
     <>
@@ -576,6 +464,10 @@ const ReporteInventario = () => {
                     onChange={(e) => setBusqueda(e.target.value)}
                     autoComplete="off"
                   />
+                  <small className="text-muted">
+                    {busqueda && !debouncedBusqueda && "Buscando..."}
+                    {debouncedBusqueda && `Resultados para: "${debouncedBusqueda}"`}
+                  </small>
                 </CCol>
                 <CCol md={tipoReporte === '2' ? 4 : 3} className="d-flex align-items-end justify-content-end gap-2">
                   {tipoReporte === '2' && !modoEditarExistencias && (
@@ -722,6 +614,7 @@ const ReporteInventario = () => {
           </CCard>
         </CCol>
       </CRow>
+
       <CModal visible={modalMsgVisible} onClose={() => setModalMsgVisible(false)} alignment="center">
         <CModalHeader className={`bg-${modalMsgColor} text-white`}>
           <CModalTitle>{modalMsgTitle}</CModalTitle>

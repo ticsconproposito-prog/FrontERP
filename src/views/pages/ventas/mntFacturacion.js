@@ -1198,7 +1198,7 @@ const MntFacturacion = () => {
       </CRow>
 
       {/* ── Modal Ver detalle ─────────────────────────────────────────────── */}
-      <CModal size="lg" visible={modalVer} onClose={() => setModalVer(false)}>
+      <CModal size="lg" visible={modalVer} onClose={() => { document.activeElement?.blur(); setModalVer(false) }}>
         <CModalHeader>
           <CModalTitle>
             Detalle — Factura {facturaSeleccionada?.preimpresoResAPI || ''}
@@ -1292,7 +1292,7 @@ const MntFacturacion = () => {
       </CModal>
 
       {/* ── Modal Anular ──────────────────────────────────────────────────── */}
-      <CModal visible={modalAnular} onClose={() => { if (!anulando) setModalAnular(false) }}>
+      <CModal visible={modalAnular} onClose={() => { if (!anulando) { document.activeElement?.blur(); setModalAnular(false) } }}>
         <CModalHeader>
           <CModalTitle>Anular Factura</CModalTitle>
         </CModalHeader>
@@ -1341,7 +1341,7 @@ const MntFacturacion = () => {
       </CModal>
 
       {/* ── Modal Eliminar ────────────────────────────────────────────────── */}
-      <CModal visible={modalEliminar} onClose={() => { if (!eliminando) setModalEliminar(false) }} alignment="center">
+      <CModal visible={modalEliminar} onClose={() => { if (!eliminando) { document.activeElement?.blur(); setModalEliminar(false) } }} alignment="center">
         <CModalHeader className="bg-danger text-white">
           <CModalTitle>Eliminar Factura</CModalTitle>
         </CModalHeader>
@@ -1377,7 +1377,7 @@ const MntFacturacion = () => {
       </CModal>
 
       {/* ── Modal Procesar ────────────────────────────────────────────────── */}
-      <CModal visible={modalProcesar} onClose={() => { if (!procesando) setModalProcesar(false) }}>
+      <CModal visible={modalProcesar} onClose={() => { if (!procesando) { document.activeElement?.blur(); setModalProcesar(false) } }}>
         <CModalHeader>
           <CModalTitle>Procesar Factura</CModalTitle>
         </CModalHeader>

@@ -268,7 +268,6 @@ const Layout = () => {
       return;
     }
 
-    // Cancelar la búsqueda anterior en vuelo para evitar acumulación de peticiones
     if (abortBusquedaProducto.current) {
       abortBusquedaProducto.current.abort();
     }
@@ -278,42 +277,31 @@ const Layout = () => {
 
     try {
       setCargandoProductos(true);
-      // Códigos son únicos o casi únicos: 30 resultados es suficiente
-      const SIZE_CODIGO = 30;
-      // Descripción necesita más margen para que la intersección por palabras
-      // funcione correctamente en catálogos grandes (6000+ productos)
-      const SIZE_DESCRIPCION = 300;
-      const palabras = t.split(/\s+/).filter(Boolean);
+      const SIZE = 500;
 
-      const fetchDescripcion = (palabra) =>
-        fetch(`/api/inventario?descripcion=${encodeURIComponent(palabra)}&page=0&size=${SIZE_DESCRIPCION}`, { signal })
-          .then(r => r.json()).then(d => (Array.isArray(d) ? d : d.content || []));
-
-      const [rCodigo, rProveedor, ...rDescPalabras] = await Promise.all([
-        fetch(`/api/inventario?codigoProducto=${encodeURIComponent(t)}&page=0&size=${SIZE_CODIGO}`, { signal }).then(r => r.json()),
-        fetch(`/api/inventario?codigoProductoProveedor=${encodeURIComponent(t)}&page=0&size=${SIZE_CODIGO}`, { signal }).then(r => r.json()),
-        ...palabras.map(fetchDescripcion),
+      const [rCodigo, rProveedor, rDescripcion] = await Promise.all([
+        fetch(`/api/inventario?codigoProducto=${encodeURIComponent(t)}&page=0&size=${SIZE}`, { signal }).then(r => r.json()),
+        fetch(`/api/inventario?codigoProductoProveedor=${encodeURIComponent(t)}&page=0&size=${SIZE}`, { signal }).then(r => r.json()),
+        fetch(`/api/inventario?descripcion=${encodeURIComponent(t)}&page=0&size=${SIZE}`, { signal }).then(r => r.json()),
       ]);
 
-      // Intersección por descripción (el producto debe aparecer en TODAS las palabras)
-      let porDescripcion = rDescPalabras[0] || [];
-      for (let i = 1; i < rDescPalabras.length; i++) {
-        const ids = new Set(rDescPalabras[i].map(p => p.idInventario));
-        porDescripcion = porDescripcion.filter(p => ids.has(p.idInventario));
-      }
+      console.log('[inventario] término:', t);
+      console.log('[inventario] por codigoProducto:', rCodigo);
+      console.log('[inventario] por codigoProductoProveedor:', rProveedor);
+      console.log('[inventario] por descripcion:', rDescripcion);
 
       const combinados = [
-        ...(Array.isArray(rCodigo) ? rCodigo : rCodigo.content || []),
-        ...(Array.isArray(rProveedor) ? rProveedor : rProveedor.content || []),
-        ...porDescripcion,
+        ...(Array.isArray(rCodigo)      ? rCodigo      : rCodigo.content      || []),
+        ...(Array.isArray(rProveedor)   ? rProveedor   : rProveedor.content   || []),
+        ...(Array.isArray(rDescripcion) ? rDescripcion : rDescripcion.content || []),
       ];
       const unicos = combinados.filter((p, idx, arr) =>
         arr.findIndex(x => x.idInventario === p.idInventario) === idx
       );
-      setSugerenciasProductos(unicos.slice(0, 15));
+      console.log('[inventario] resultados únicos finales:', unicos);
+      setSugerenciasProductos(unicos);
       setMostrarSugerenciasProductos(unicos.length > 0);
     } catch (e) {
-      // Ignorar errores de cancelación (AbortError)
       if (e.name === 'AbortError') return;
       console.error('Error al buscar inventario:', e);
       setSugerenciasProductos([]);
@@ -1123,7 +1111,7 @@ const Layout = () => {
     setGuardandoFactura(true);
     try {
       // Calcular valores por línea (redondeados a 2 decimales) y acumular totales del encabezado
-      const r2 = (n) => parseFloat(n.toFixed(2))
+      const r2 = (n) => parseFloat(parseFloat(n || 0).toFixed(2))
       const lineasDetalle = detalleFactura.map((item) => {
         const cantItem     = Number(item.cantidad) || 0
         const descItem     = r2(item.descuento || 0)
@@ -1145,6 +1133,8 @@ const Layout = () => {
 
       console.log('[lineasDetalle]', lineasDetalle)
       console.log('[totalesDetalle]', totalesDetalle)
+
+      console.log('[FechaFactura] valor de formFactura.fecha:', formFactura.fecha, '| tipo:', typeof formFactura.fecha);
 
       const body = {
         tipoDocumento: formFactura.tipoDocumento,
@@ -1174,19 +1164,21 @@ const Layout = () => {
         idUsuarioModificacion: idUsuarioActual,
       };
 
-      console.log('[grabarEncabezadoFacturas] Body enviado:', body);
+      console.log('[grabarEncabezadoFacturas] Body enviado:', JSON.stringify(body, null, 2));
       const response = await fetch('/api/grabarEncabezadoFacturas', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
 
+      const responseText = await response.text();
+      console.log('[grabarEncabezadoFacturas] Respuesta del backend (status', response.status, '):', responseText);
+
       if (!response.ok) {
-        const text = await response.text();
-        throw new Error(text || 'Error al guardar la factura');
+        throw new Error(responseText || 'Error al guardar la factura');
       }
 
-      const idEncabezadoFactura = await response.text();
+      const idEncabezadoFactura = responseText;
 
       // Guardar el detalle de la factura usando los valores ya calculados en lineasDetalle
       const detallePromises = lineasDetalle.map(({ item, cantItem, descItem, precioItem, impBruto, totalConDesc, impNeto, impIva }) => {
@@ -1378,7 +1370,7 @@ const Layout = () => {
           if (fel?.referencia) referenciaRes = fel.referencia
           if (fel?.numeroAutorizacion) numeroAutorizacion = fel.numeroAutorizacion
           if (fel?.serie) serieRes = fel.serie
-          if (fel?.Preimpreso) preimpresoRes = fel.Preimpreso
+          if (fel?.preimpreso) preimpresoRes = fel.preimpreso
           if (fel?.nombre) nombreDte = fel.nombre
           console.log('[DTE] DTE exitoso. Referencia:', referenciaRes, '| Autorización:', numeroAutorizacion, '| Serie:', serieRes, '| Preimpreso:', preimpresoRes, '| Nombre:', nombreDte)
         }
@@ -2275,7 +2267,7 @@ const Layout = () => {
         </CButton>
         {!esErrorSinLimpiar(errorDteModal.mensaje) && (
         <CButton color="success" className="text-white" onClick={async () => {
-          const r2 = (n) => parseFloat(n.toFixed(2))
+          const r2 = (n) => parseFloat(parseFloat(n || 0).toFixed(2))
           const totales = detalleFactura.reduce((acc, item) => {
             const cantItem     = Number(item.cantidad) || 0
             const descItem     = r2(item.descuento || 0)
