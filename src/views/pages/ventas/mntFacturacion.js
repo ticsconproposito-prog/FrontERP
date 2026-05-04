@@ -373,7 +373,10 @@ const MntFacturacion = () => {
               }
             } catch (_) { /* silencioso */ }
           }
-          return { ...item, codigoProducto, codigoProductoProveedor, descripcionProducto }
+          const totalLinea =
+            Number(item.ImpTotal ?? item.impTotal ?? 0) ||
+            Number(item.cantidad || 0) * Number(item.precioVenta || 0) - Number(item.cantidadDeDescuento || 0)
+          return { ...item, codigoProducto, codigoProductoProveedor, descripcionProducto, ImpTotal: totalLinea }
         })
       )
       setDetalleFactura(lineasEnriquecidas)
