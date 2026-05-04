@@ -489,7 +489,7 @@ const AgregarMovimiento = () => {
   // Función para grabar la orden de productos
   const grabarOrdenProducto = async (datosOrden) => {
     try {
-      console.log('[grabarOrdenProducto] Enviando:', JSON.stringify(datosOrden, null, 2))
+     /* console.log('[grabarOrdenProducto] Enviando:', JSON.stringify(datosOrden, null, 2)) */
       const response = await fetch('/api/grabarOrdenProducto', {
         method: 'POST',
         headers: {
@@ -549,7 +549,7 @@ const AgregarMovimiento = () => {
 
       const resultados = []
       for (const movimiento of movimientos) {
-        console.log('[grabarMovimientosProductos] Enviando:', JSON.stringify(movimiento, null, 2))
+        /* console.log('[grabarMovimientosProductos] Enviando:', JSON.stringify(movimiento, null, 2)) */
         const response = await fetch(`/api/grabarMovimientosProductos?tipoDeMovimiento=${tipoMovimiento}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

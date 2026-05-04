@@ -43,7 +43,7 @@ const esMesAnulable = (fechaFactura) => {
   const mesFact    = y * 12 + (m - 1)                               // mes de la factura (0-indexado)
   const anulable   = mesHoy <= mesFact + 1
   const limiteStr  = (() => { const l = new Date(y, m, 1); return `${l.getFullYear()}-${String(l.getMonth() + 1).padStart(2, '0')}` })()
-  console.log('[esMesAnulable]', { fechaFactura, 'hoy.getFullYear()': hoy.getFullYear(), 'hoy.getMonth()': hoy.getMonth(), mesHoy, mesFact, anulable, limiteStr })
+  /* console.log('[esMesAnulable]', { fechaFactura, 'hoy.getFullYear()': hoy.getFullYear(), 'hoy.getMonth()': hoy.getMonth(), mesHoy, mesFact, anulable, limiteStr }) */
   return anulable
 }
 
@@ -887,7 +887,7 @@ const MntFacturacion = () => {
         },
       }
 
-      console.log('[DTE] Enviando a /api/fel/dtes:', JSON.stringify(bodyDte, null, 2))
+      /* console.log('[DTE] Enviando a /api/fel/dtes:', JSON.stringify(bodyDte, null, 2)) */
       const resDte = await fetch('/api/fel/dtes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -896,7 +896,7 @@ const MntFacturacion = () => {
       const rawDte = await resDte.text()
       let responseDte = null
       try { responseDte = JSON.parse(rawDte) } catch (_) { responseDte = rawDte }
-      console.log('[DTE] Respuesta:', responseDte)
+      /* console.log('[DTE] Respuesta:', responseDte) */
 
       const fel = responseDte?.fel ?? responseDte
       if (fel?.ok === false) {
@@ -951,7 +951,7 @@ const MntFacturacion = () => {
       }
 
       const params = new URLSearchParams(paramObj)
-      console.log('[Anular Factura] POST /api/fel/anularFactura?' + params.toString())
+      /* console.log('[Anular Factura] POST /api/fel/anularFactura?' + params.toString()) */
       const res = await fetch(`/api/fel/anularFactura?${params}`, {
         method: 'POST',
       })

@@ -285,10 +285,10 @@ const Layout = () => {
         fetch(`/api/inventario?descripcion=${encodeURIComponent(t)}&page=0&size=${SIZE}`, { signal }).then(r => r.json()),
       ]);
 
-      console.log('[inventario] término:', t);
+    /*console.log('[inventario] término:', t);
       console.log('[inventario] por codigoProducto:', rCodigo);
       console.log('[inventario] por codigoProductoProveedor:', rProveedor);
-      console.log('[inventario] por descripcion:', rDescripcion);
+      console.log('[inventario] por descripcion:', rDescripcion);*/
 
       const combinados = [
         ...(Array.isArray(rCodigo)      ? rCodigo      : rCodigo.content      || []),
@@ -298,7 +298,7 @@ const Layout = () => {
       const unicos = combinados.filter((p, idx, arr) =>
         arr.findIndex(x => x.idInventario === p.idInventario) === idx
       );
-      console.log('[inventario] resultados únicos finales:', unicos);
+     /* console.log('[inventario] resultados únicos finales:', unicos);*/
       setSugerenciasProductos(unicos);
       setMostrarSugerenciasProductos(unicos.length > 0);
     } catch (e) {
@@ -558,10 +558,10 @@ const Layout = () => {
       }
 
       const rawCliente = await response.text();
-      console.log('[grabarCliente] Respuesta raw:', rawCliente);
+      /* console.log('[grabarCliente] Respuesta raw:', rawCliente); */
       const numCliente = parseInt(rawCliente.trim(), 10);
       const idClienteNuevo = !isNaN(numCliente) ? numCliente : null;
-      console.log('[grabarCliente] idClienteNuevo:', idClienteNuevo);
+      /* console.log('[grabarCliente] idClienteNuevo:', idClienteNuevo); */
 
       const tieneNit = !!formCliente.nit?.trim();
       const tieneDpi = !!formCliente.dpiPasaporte?.trim();
@@ -1131,10 +1131,10 @@ const Layout = () => {
         total:               r2(acc.total               + l.totalConDesc),
       }), { totalBruto: 0.00, cantidadDeDescuento: 0.00, totalNeto: 0.00, iva: 0.00, total: 0.00 })
 
-      console.log('[lineasDetalle]', lineasDetalle)
-      console.log('[totalesDetalle]', totalesDetalle)
+     /* console.log('[lineasDetalle]', lineasDetalle)*/
+     /* console.log('[totalesDetalle]', totalesDetalle) */
 
-      console.log('[FechaFactura] valor de formFactura.fecha:', formFactura.fecha, '| tipo:', typeof formFactura.fecha);
+     /* console.log('[FechaFactura] valor de formFactura.fecha:', formFactura.fecha, '| tipo:', typeof formFactura.fecha); */
 
       const body = {
         tipoDocumento: formFactura.tipoDocumento,
@@ -1164,7 +1164,7 @@ const Layout = () => {
         idUsuarioModificacion: idUsuarioActual,
       };
 
-      console.log('[grabarEncabezadoFacturas] Body enviado:', JSON.stringify(body, null, 2));
+     /* console.log('[grabarEncabezadoFacturas] Body enviado:', JSON.stringify(body, null, 2)); */
       const response = await fetch('/api/grabarEncabezadoFacturas', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1172,7 +1172,7 @@ const Layout = () => {
       });
 
       const responseText = await response.text();
-      console.log('[grabarEncabezadoFacturas] Respuesta del backend (status', response.status, '):', responseText);
+      /* console.log('[grabarEncabezadoFacturas] Respuesta del backend (status', response.status, '):', responseText); */
 
       if (!response.ok) {
         throw new Error(responseText || 'Error al guardar la factura');
@@ -1343,7 +1343,7 @@ const Layout = () => {
           },
         }
 
-        console.log('[DTE] Enviando a /fel/dtes:', bodyDte)
+       /* console.log('[DTE] Enviando a /fel/dtes:', bodyDte) */
         const resDte = await fetch('/api/fel/dtes', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1352,7 +1352,7 @@ const Layout = () => {
         const rawDte = await resDte.text()
         let responseDte = null
         try { responseDte = JSON.parse(rawDte) } catch (_) { responseDte = rawDte }
-        console.log('[DTE] Response completo:', responseDte)
+        /* console.log('[DTE] Response completo:', responseDte) */
 
         // La respuesta viene envuelta en { mensaje, fel: { ok, error, referencia, ... } }
         const fel = responseDte?.fel ?? responseDte
@@ -1372,7 +1372,7 @@ const Layout = () => {
           if (fel?.serie) serieRes = fel.serie
           if (fel?.preimpreso) preimpresoRes = fel.preimpreso
           if (fel?.nombre) nombreDte = fel.nombre
-          console.log('[DTE] DTE exitoso. Referencia:', referenciaRes, '| Autorización:', numeroAutorizacion, '| Serie:', serieRes, '| Preimpreso:', preimpresoRes, '| Nombre:', nombreDte)
+          /* console.log('[DTE] DTE exitoso. Referencia:', referenciaRes, '| Autorización:', numeroAutorizacion, '| Serie:', serieRes, '| Preimpreso:', preimpresoRes, '| Nombre:', nombreDte) */
         }
       } catch (eDte) {
         console.warn('[DTE] Error al enviar DTE:', eDte)

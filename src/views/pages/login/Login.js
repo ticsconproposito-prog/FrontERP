@@ -95,7 +95,7 @@ const Login = () => {
               registroExistente.idSegLogin ??
               null
 
-            console.log('[Login] Registro existente encontrado, actualizando:', idLoginExistente)
+           /* console.log('[Login] Registro existente encontrado, actualizando:', idLoginExistente)*/
 
             const resEditar = await fetch(`/api/editarSegLogin/${idLoginExistente}`, {
               method: 'PUT',
@@ -107,7 +107,7 @@ const Login = () => {
             }
           } else {
             // No existe: insertar nuevo registro
-            console.log('[Login] No existe registro, insertando nuevo para idUsuario:', idUsuario)
+            /* console.log('[Login] No existe registro, insertando nuevo para idUsuario:', idUsuario) */
 
             const resGrabar = await fetch('/api/grabarSegLogin', {
               method: 'POST',
