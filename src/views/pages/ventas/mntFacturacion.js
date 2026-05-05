@@ -436,11 +436,18 @@ const MntFacturacion = () => {
                 } catch (_) { /* silencioso */ }
               }
 
+              const cantidad            = Number(item.cantidad)            || 0
+              const precioVenta         = Number(item.precioVenta)         || 0
+              const cantidadDeDescuento = Number(item.cantidadDeDescuento) || 0
+              const ImpTotal =
+                Number(item.ImpTotal ?? item.impTotal ?? 0) ||
+                (cantidad * precioVenta - cantidadDeDescuento)
+
               return {
-                cantidad:            Number(item.cantidad)            || 0,
-                precioVenta:         Number(item.precioVenta)         || 0,
-                cantidadDeDescuento: Number(item.cantidadDeDescuento) || 0,
-                ImpTotal:            Number(item.ImpTotal)            || 0,
+                cantidad,
+                precioVenta,
+                cantidadDeDescuento,
+                ImpTotal,
                 descripcion,
               }
             })
