@@ -1071,7 +1071,9 @@ const Layout = () => {
       m.includes('2-NO EXISTE EL NIT/CUI DEL CONTRIBUYENTE') ||
       m.includes('186-NUMERO') ||
       m.includes('DOCUMENTO DE IDENTIFICACION INVALIDO') ||
-      m.includes('El monto total en Q del documento excede del limite permitido para receptor CF')
+      m.includes('El monto total en Q del documento excede del limite permitido para receptor CF')||
+      m.includes('<Resultado><ERROR-1569>[ID del Receptor:CF]El monto total en Q del documento excede del limite permitido para receptor CF.</ERROR-1569>')||
+      m.includes('[ID del Receptor:CF]El monto total en Q del documento excede del limite permitido para receptor CF.')
     )
   }
 
