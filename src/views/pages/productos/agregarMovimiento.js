@@ -661,13 +661,14 @@ const AgregarMovimiento = () => {
     setLoadingProductos(true)
     setErrorProductos(null)
     try {
-      // 🔥 Usar el endpoint de productos con búsqueda por descripción
-      // El backend ya maneja la búsqueda con palabras separadas
       const SIZE = 50
-      const response = await fetch(
-        `/api/productos?descripcionProducto=${encodeURIComponent(t)}&page=0&size=${SIZE}`,
-        { signal }
-      )
+      const params = new URLSearchParams({ page: 0, size: SIZE })
+      if (t) {
+        params.append('codigoProducto', t)
+        params.append('codigoProductoProveedor', t)
+        params.append('descripcionProducto', t)
+      }
+      const response = await fetch(`/api/productos?${params.toString()}`, { signal })
       
       if (!response.ok) throw new Error('Error al buscar productos')
       const data = await response.json()

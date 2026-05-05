@@ -133,6 +133,8 @@ const ReporteInventario = () => {
 
       const params = new URLSearchParams({ page: pagina, size: PAGE_SIZE })
       if (t) {
+        params.append('codigoProducto', t)
+        params.append('codigoProductoProveedor', t)
         params.append('descripcion', t)
       }
 
@@ -161,7 +163,11 @@ const ReporteInventario = () => {
       const t = (termino || '').trim()
 
       const params = new URLSearchParams({ page: pagina, size: PAGE_SIZE })
-      if (t) params.append('descripcion', t)
+      if (t) {
+        params.append('codigoProducto', t)
+        params.append('codigoProductoProveedor', t)
+        params.append('descripcion', t)
+      }
       if (ubicacion) params.append('idUbicacion', ubicacion)
 
       const res = await fetch(`/api/inventario?${params}`)
@@ -286,7 +292,11 @@ const ReporteInventario = () => {
     if (tipoReporte === '1') {
       try {
         const params = new URLSearchParams({ page: 0, size: SIZE_TODOS })
-        if (debouncedBusqueda.trim()) params.append('descripcion', debouncedBusqueda)
+        if (debouncedBusqueda.trim()) {
+          params.append('codigoProducto', debouncedBusqueda)
+          params.append('codigoProductoProveedor', debouncedBusqueda)
+          params.append('descripcion', debouncedBusqueda)
+        }
 
         const res = await fetch(`/api/inventarioAgrupado?${params}`)
         if (!res.ok) throw new Error('Error al exportar')
@@ -324,7 +334,11 @@ const ReporteInventario = () => {
     } else {
       try {
         const params = new URLSearchParams({ page: 0, size: SIZE_TODOS })
-        if (debouncedBusqueda.trim()) params.append('descripcion', debouncedBusqueda)
+        if (debouncedBusqueda.trim()) {
+          params.append('codigoProducto', debouncedBusqueda)
+          params.append('codigoProductoProveedor', debouncedBusqueda)
+          params.append('descripcion', debouncedBusqueda)
+        }
         if (debouncedUbicacion) params.append('idUbicacion', debouncedUbicacion)
 
         const res = await fetch(`/api/inventario?${params}`)

@@ -449,13 +449,14 @@ const EditarMovimiento = () => {
     setLoadingProductos(true)
     setErrorProductos(null)
     try {
-      // 🔥 Usar directamente el endpoint con búsqueda por descripción
-      // El backend ya maneja la búsqueda con palabras separadas
       const SIZE = 50
-      const response = await fetch(
-        `/api/productos?descripcionProducto=${encodeURIComponent(t)}&page=0&size=${SIZE}`,
-        { signal }
-      )
+      const params = new URLSearchParams({ page: 0, size: SIZE })
+      if (t) {
+        params.append('codigoProducto', t)
+        params.append('codigoProductoProveedor', t)
+        params.append('descripcionProducto', t)
+      }
+      const response = await fetch(`/api/productos?${params.toString()}`, { signal })
       
       if (!response.ok) throw new Error('Error al buscar productos')
       const data = await response.json()
@@ -655,7 +656,7 @@ const EditarMovimiento = () => {
             idUbicacion: det.idUbicacion || 1,
             idUsuarioModificacion: idUsuarioActual
           }
-          console.log('[grabarMovimientosProductos] Enviando:', JSON.stringify(body, null, 2))
+         /* console.log('[grabarMovimientosProductos] Enviando:', JSON.stringify(body, null, 2))*/
           const resNew = await fetch(`/api/grabarMovimientosProductos?tipoDeMovimiento=${parseInt(formData.tipoMovimiento, 10)}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },

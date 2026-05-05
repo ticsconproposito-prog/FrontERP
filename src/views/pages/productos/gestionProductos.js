@@ -319,12 +319,20 @@ const Layout = () => {
 
       const params = new URLSearchParams({ page: pagina, size: PAGE_SIZE })
       if (t) {
+        params.append('codigoProducto', t)
+        params.append('codigoProductoProveedor', t)
         params.append('descripcionProducto', t)
       }
 
-      const response = await fetch(`/api/productos?${params.toString()}`)
+      const url = `/api/productos?${params.toString()}`
+     /* console.log('[cargarProductos] URL enviada:', url)
+      console.log('[cargarProductos] Parámetros:', Object.fromEntries(params.entries()))*/
+
+      const response = await fetch(url)
       if (!response.ok) throw new Error(`Error ${response.status}`)
       const data = await response.json()
+     /* console.log('[cargarProductos] Respuesta del API:', data)*/
+
       const arr = Array.isArray(data) ? data : data.content || []
 
       setProductos(arr)
@@ -364,6 +372,8 @@ const Layout = () => {
       
       const params = new URLSearchParams({ page: 0, size: 10000 })
       if (termino) {
+        params.append('codigoProducto', termino)
+        params.append('codigoProductoProveedor', termino)
         params.append('descripcionProducto', termino)
       }
 

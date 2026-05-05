@@ -1876,6 +1876,7 @@ const Layout = () => {
                             </div>
                             {sugerenciasProductos.map((prod) => {
                               const codigo = prod.idProducto?.codigoProducto || prod.codigoProducto || '';
+                              const codigoProveedor = prod.idProducto?.codigoProductoProveedor || prod.codigoProductoProveedor || '';
                               const descripcion = prod.idProducto?.descripcionProducto || prod.descripcionProducto || prod.descripcion || '';
                               const key = prod.idInventario ?? prod.idProductoInventario ?? prod.idProducto?.idProducto ?? prod.id;
                               const precio = prod.idProducto?.precioVenta ?? prod.precioVenta ?? 0;
@@ -1889,7 +1890,11 @@ const Layout = () => {
                                 >
                                   <div className="d-flex justify-content-between">
                                     <div>
-                                      <strong>{codigo}</strong> - {descripcion}
+                                      <strong>{codigo}</strong>
+                                      {codigoProveedor && (
+                                        <span className="text-muted ms-2">| Prov: {codigoProveedor}</span>
+                                      )}
+                                      {' '}- {descripcion}
                                     </div>
                                     <div>
                                       <span className="badge bg-success">
