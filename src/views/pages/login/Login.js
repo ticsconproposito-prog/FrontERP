@@ -166,23 +166,20 @@ const Login = () => {
         <CRow className="justify-content-center">
           <CCol md={5} lg={4}>
             <CCard className="shadow-lg border-0" style={{ borderRadius: '16px', overflow: 'hidden' }}>
-              {/* Header de la tarjeta */}
-              <div
-                className="text-center py-4 px-4"
-                style={{ background: 'linear-gradient(135deg, #1a237e, #1565c0)' }}
-              >
+              {/* Header blanco con logo circular */}
+              <div className="text-center pt-3 pb-0" style={{ background: '#fff' }}>
                 <img
                   src={logo}
-                  alt="Logo"
-                  style={{ maxWidth: '180px', width: '100%', height: 'auto' }}
+                  alt="Logo AGMNER"
+                  style={{ maxWidth: '320px', width: '100%', height: 'auto' }}
                 />
               </div>
 
-              <CCardBody className="p-4 p-md-5">
+              <CCardBody className="px-4 px-md-5 pb-4 pb-md-5 pt-1">
                 <h4 className="text-center mb-1 fw-bold" style={{ color: '#1a237e' }}>
                   Iniciar Sesión
                 </h4>
-                <p className="text-center text-muted small mb-4">
+                <p className="text-center text-muted small mb-3">
                   Ingrese sus credenciales para continuar
                 </p>
 

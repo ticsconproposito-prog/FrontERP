@@ -22,15 +22,13 @@ import navigation from '../_nav'
 const RUTAS_PUBLICAS = ['/dashboard', '/']
 
 const filtrarNavegacion = (items, urlsPermitidas, permisosCargados, tienePerfiles) => {
-  // Mientras los permisos no se hayan cargado, no mostrar nada
   if (!permisosCargados) return []
 
-  // Si el usuario NO tiene perfiles asignados, mostrar todo el menú sin restricciones
-  // Si SÍ tiene perfiles, filtrar estrictamente por las URLs permitidas
   const filtrarEstrictamente = tienePerfiles
 
-  return items.reduce((acc, item) => {
-    // Títulos de sección y elementos sin ruta: siempre incluir
+  // Primera pasada: filtrar items normales (los CNavTitle pasan siempre)
+  const filtrados = items.reduce((acc, item) => {
+    // CNavTitle: incluir provisionalmente (se depuran luego)
     if (!item.to && !item.items) {
       return [...acc, item]
     }
@@ -57,6 +55,19 @@ const filtrarNavegacion = (items, urlsPermitidas, permisosCargados, tienePerfile
 
     return acc
   }, [])
+
+  // Segunda pasada: quitar CNavTitle que no tengan items visibles debajo
+  return filtrados.filter((item, idx) => {
+    const esTitle = !item.to && !item.items
+    if (!esTitle) return true
+    // Buscar si hay al menos un item no-title antes del siguiente title
+    for (let i = idx + 1; i < filtrados.length; i++) {
+      const siguiente = filtrados[i]
+      if (!siguiente.to && !siguiente.items) break // otro title → no hay items
+      return true // hay al menos un item visible
+    }
+    return false
+  })
 }
 
 const AppSidebar = () => {

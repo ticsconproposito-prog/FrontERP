@@ -470,7 +470,7 @@ const Layout = () => {
 
               <CRow className="mt-3 gy-3">
                 <CCol md={3}>
-                  <CFormLabel htmlFor="numeroDocumento">Número de documento:</CFormLabel>
+                  <CFormLabel htmlFor="numeroDocumento" className="fw-bold">Número de Documento</CFormLabel>
                   <CFormInput 
                     type="text" 
                     id="numeroDocumento" 
@@ -481,7 +481,7 @@ const Layout = () => {
                 </CCol>
 
                 <CCol md={3}>
-                  <CFormLabel htmlFor="proveedor">Proveedor:</CFormLabel>
+                  <CFormLabel htmlFor="proveedor" className="fw-bold">Proveedor</CFormLabel>
                   <CFormInput 
                     type="text" 
                     id="proveedor" 
@@ -492,7 +492,7 @@ const Layout = () => {
                 </CCol>
 
                 <CCol md={3}>
-                  <CFormLabel htmlFor="tipoMovimiento">Tipo de Movimiento:</CFormLabel>
+                  <CFormLabel htmlFor="tipoMovimiento" className="fw-bold">Tipo Movimiento</CFormLabel>
                   <CFormSelect 
                     id="tipoMovimiento"
                     name="tipoMovimiento"
@@ -511,7 +511,7 @@ const Layout = () => {
 
               <CRow className="mt-3 gy-3">
                 <CCol md={3}>
-                  <CFormLabel htmlFor="fechaInicio">Fecha Inicio:</CFormLabel>
+                  <CFormLabel htmlFor="fechaInicio" className="fw-bold">Fecha Inicio</CFormLabel>
                   <CFormInput 
                     type="date" 
                     id="fechaInicio"
@@ -521,7 +521,7 @@ const Layout = () => {
                 </CCol>
 
                 <CCol md={3}>
-                  <CFormLabel htmlFor="fechaFin">Fecha Fin:</CFormLabel>
+                  <CFormLabel htmlFor="fechaFin" className="fw-bold">Fecha Fin</CFormLabel>
                   <CFormInput 
                     type="date" 
                     id="fechaFin"
@@ -704,7 +704,7 @@ const Layout = () => {
           <CButton color="secondary" onClick={cancelarEliminar} disabled={eliminando}>
             Cancelar
           </CButton>
-          <CButton color="danger" onClick={confirmarEliminar} disabled={eliminando}>
+          <CButton color="danger" onClick={confirmarEliminar} disabled={eliminando} style={{ color: '#fff' }}>
             {eliminando ? (
               <>
                 <CSpinner size="sm" className="me-2" />

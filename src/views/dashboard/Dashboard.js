@@ -45,22 +45,33 @@ const Dashboard = () => {
   return (
     <>
       {/* Hero con logotipo */}
-      <CCard
-        className="mb-4 border-0 shadow-sm"
-        style={{ background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 60%, #0f3460 100%)' }}
-      >
-        <CCardBody className="py-5 text-center">
-          <img
-            src={logo}
-            alt="Ferreteria y Blockera Agmner"
-            style={{
-              maxWidth: '280px',
-              width: '70%',
-              height: 'auto',
-              marginBottom: '1.5rem',
-              filter: 'drop-shadow(0 4px 12px rgba(0,0,0,0.4))',
-            }}
-          />
+      <CCard className="mb-4 border-0 shadow-sm" style={{ background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 60%, #0f3460 100%)' }}>
+        <CCardBody className="py-3 text-center">
+          <div style={{
+            display: 'inline-flex',
+            padding: '5px',
+            borderRadius: '50%',
+            background: 'rgba(255,255,255,0.15)',
+            marginBottom: '1rem',
+            boxShadow: '0 12px 36px rgba(0,0,0,0.5)',
+          }}>
+            <div style={{
+              width: '250px',
+              height: '250px',
+              borderRadius: '50%',
+              background: '#fff',
+              overflow: 'hidden',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}>
+              <img
+                src={logo}
+                alt="Ferreteria y Blockera Agmner"
+                style={{ width: '238px', height: '238px', objectFit: 'cover' }}
+              />
+            </div>
+          </div>
           <h2 className="text-white fw-bold mb-1" style={{ letterSpacing: '0.5px' }}>
             Ferretería y Blockera Agmner
           </h2>
@@ -71,9 +82,13 @@ const Dashboard = () => {
       </CCard>
 
       {/* Accesos rápidos */}
-      <CRow className="mb-4 g-3">
+      <CRow className={`mb-4 g-3${accesos.length === 1 ? ' justify-content-center' : ''}`}>
         {accesos.map((item, idx) => (
-          <CCol xs={12} sm={6} key={idx}>
+          <CCol
+            xs={12}
+            sm={accesos.length === 1 ? 12 : 6}
+            key={idx}
+          >
             <CCard
               className="border-0 shadow-sm h-100"
               style={{ cursor: 'pointer', transition: 'transform 0.18s, box-shadow 0.18s' }}

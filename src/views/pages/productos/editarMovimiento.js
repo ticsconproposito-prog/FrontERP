@@ -722,15 +722,15 @@ const EditarMovimiento = () => {
                 <h6 className="text-primary mb-3">Información de la orden</h6>
                 <CRow className="mb-3">
                   <CCol md={4}>
-                    <CFormLabel>Número de documento</CFormLabel>
+                    <CFormLabel className="fw-bold">Número de Documento</CFormLabel>
                     <CFormInput name="numeroDocumento" value={formData.numeroDocumento} onChange={handleChange} />
                   </CCol>
                   <CCol md={4}>
-                    <CFormLabel>Fecha de orden</CFormLabel>
+                    <CFormLabel className="fw-bold">Fecha de Orden</CFormLabel>
                     <CFormInput type="date" name="fechaIngreso" value={formData.fechaIngreso} onChange={handleChange} />
                   </CCol>
                   <CCol md={4}>
-                    <CFormLabel>Proveedor</CFormLabel>
+                    <CFormLabel className="fw-bold">Proveedor</CFormLabel>
                     <div style={{ position: 'relative' }}>
                       <CFormInput
                         type="text"
@@ -780,7 +780,7 @@ const EditarMovimiento = () => {
                 </CRow>
                 <CRow className="mb-3">
                   <CCol md={4}>
-                    <CFormLabel>Tipo de movimiento</CFormLabel>
+                    <CFormLabel className="fw-bold">Tipo de Movimiento</CFormLabel>
                     <CFormSelect name="tipoMovimiento" value={formData.tipoMovimiento} onChange={handleChange}>
                       <option value="">Seleccione</option>
                       {tipoMovimiento.map(t => (
@@ -789,7 +789,7 @@ const EditarMovimiento = () => {
                     </CFormSelect>
                   </CCol>
                   <CCol md={4}>
-                    <CFormLabel>Tipo de orden</CFormLabel>
+                    <CFormLabel className="fw-bold">Tipo de Orden</CFormLabel>
                     <CFormSelect name="tipoOrden" value={formData.tipoOrden} onChange={handleChange}>
                       <option value="">Seleccione</option>
                       {tipoOrden.map(t => (
@@ -798,7 +798,7 @@ const EditarMovimiento = () => {
                     </CFormSelect>
                   </CCol>
                   <CCol md={4}>
-                    <CFormLabel>Estado de factura</CFormLabel>
+                    <CFormLabel className="fw-bold">Estado de Factura</CFormLabel>
                     <CFormSelect name="estadoFactura" value={formData.estadoFactura} onChange={handleChange}>
                       <option value="">Seleccione</option>
                       {estadoFactura.map(t => (
@@ -809,11 +809,11 @@ const EditarMovimiento = () => {
                 </CRow>
                 <CRow className="mb-3">
                   <CCol md={4}>
-                    <CFormLabel>Valor cancelado</CFormLabel>
+                    <CFormLabel className="fw-bold">Valor Cancelado</CFormLabel>
                     <CFormInput type="number" step="0.01" name="valorCancelado" value={formData.valorCancelado} onChange={handleChange} />
                   </CCol>
                   <CCol md={8}>
-                    <CFormLabel>Comentarios</CFormLabel>
+                    <CFormLabel className="fw-bold">Comentarios</CFormLabel>
                     <CFormTextarea name="comentarios" value={formData.comentarios} onChange={handleChange} rows={2} />
                   </CCol>
                 </CRow>
@@ -1008,13 +1008,15 @@ const EditarMovimiento = () => {
                           value={ubicacionModalTexto[index] ?? prod.ubicacionTexto ?? ''}
                           onChange={(e) => handleUbicacionModalChange(index, e.target.value)}
                           autoComplete="off"
+                          style={{ color: '#212529', backgroundColor: '#fff' }}
                         />
                         {ubicacionModalMostrar[index] && (ubicacionModalSugerencias[index] || []).length > 0 && (
                           <div style={{
-                            position: 'absolute', top: '100%', left: 0, right: 0,
+                            position: 'absolute', bottom: '100%', left: 0, right: 0,
                             zIndex: 1060, maxHeight: '180px', overflowY: 'auto',
                             border: '1px solid #dee2e6', borderRadius: '4px',
-                            backgroundColor: '#fff', boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                            backgroundColor: '#fff', boxShadow: '0 -4px 12px rgba(0,0,0,0.15)',
+                            marginBottom: '2px',
                           }} className="list-group">
                             {(ubicacionModalSugerencias[index] || []).map((u) => (
                               <button

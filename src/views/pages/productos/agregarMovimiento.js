@@ -711,7 +711,7 @@ const AgregarMovimiento = () => {
                 <h6 className="text-primary mb-3">Información del Movimiento</h6>
                 <CRow className="mb-3">
                   <CCol xs={12} md={4}>
-                    <CFormLabel htmlFor="proveedor">Proveedor</CFormLabel>
+                    <CFormLabel htmlFor="proveedor" className="fw-bold">Proveedor</CFormLabel>
                     <div style={{ position: 'relative' }}>
                       <CFormInput
                         id="proveedor"
@@ -764,7 +764,7 @@ const AgregarMovimiento = () => {
                   </CCol>
 
                   <CCol xs={12} md={4}>
-                    <CFormLabel htmlFor="tipoMovimiento">Tipo de Movimiento</CFormLabel>
+                    <CFormLabel htmlFor="tipoMovimiento" className="fw-bold">Tipo de Movimiento</CFormLabel>
                     <CFormSelect
                       id="tipoMovimiento"
                       name="tipoMovimiento"
@@ -781,7 +781,7 @@ const AgregarMovimiento = () => {
                   </CCol>
 
                   <CCol xs={12} md={4}>
-                    <CFormLabel htmlFor="tipoOrden">Tipo de Orden</CFormLabel>
+                    <CFormLabel htmlFor="tipoOrden" className="fw-bold">Tipo de Orden</CFormLabel>
                     <CFormSelect
                       id="tipoOrden"
                       name="tipoOrden"
@@ -800,7 +800,7 @@ const AgregarMovimiento = () => {
 
                 <CRow className="mb-3">
                   <CCol xs={12} md={4}>
-                    <CFormLabel htmlFor="numeroDocumento">Número de Documento</CFormLabel>
+                    <CFormLabel htmlFor="numeroDocumento" className="fw-bold">Número de Documento</CFormLabel>
                     <CFormInput
                       type="text"
                       id="numeroDocumento"
@@ -813,7 +813,7 @@ const AgregarMovimiento = () => {
                   </CCol>
 
                   <CCol xs={12} md={4}>
-                    <CFormLabel htmlFor="fechaIngreso">Fecha de Ingreso</CFormLabel>
+                    <CFormLabel htmlFor="fechaIngreso" className="fw-bold">Fecha de Ingreso</CFormLabel>
                     <CFormInput
                       type="date"
                       id="fechaIngreso"
@@ -825,7 +825,7 @@ const AgregarMovimiento = () => {
                   </CCol>
 
                   <CCol xs={12} md={4}>
-                    <CFormLabel htmlFor="estadoFactura">Estado de Factura</CFormLabel>
+                    <CFormLabel htmlFor="estadoFactura" className="fw-bold">Estado de Factura</CFormLabel>
                     <CFormSelect
                       id="estadoFactura"
                       name="estadoFactura"
@@ -847,7 +847,7 @@ const AgregarMovimiento = () => {
               <div className="mb-4">
                 <CRow className="mb-3">
                   <CCol xs={12} md={4}>
-                    <CFormLabel htmlFor="valorCancelado">Valor Cancelado de la Orden</CFormLabel>
+                    <CFormLabel htmlFor="valorCancelado" className="fw-bold">Valor Cancelado de la Orden</CFormLabel>
                     <CFormInput
                       type="number"
                       id="valorCancelado"
@@ -861,7 +861,7 @@ const AgregarMovimiento = () => {
                   </CCol>
 
                   <CCol xs={12} md={8}>
-                    <CFormLabel htmlFor="comentarios">Comentarios</CFormLabel>
+                    <CFormLabel htmlFor="comentarios" className="fw-bold">Comentarios</CFormLabel>
                     <CFormTextarea
                       id="comentarios"
                       name="comentarios"
@@ -1140,10 +1140,11 @@ const AgregarMovimiento = () => {
                       />
                       {ubicacionModalMostrar[index] && (ubicacionModalSugerencias[index] || []).length > 0 && (
                         <div style={{
-                          position: 'absolute', top: '100%', left: 0, right: 0,
+                          position: 'absolute', bottom: '100%', left: 0, right: 0,
                           zIndex: 1060, maxHeight: '180px', overflowY: 'auto',
                           border: '1px solid #dee2e6', borderRadius: '4px',
-                          backgroundColor: '#fff', boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                          backgroundColor: '#fff', boxShadow: '0 -4px 12px rgba(0,0,0,0.15)',
+                          marginBottom: '2px',
                         }} className="list-group">
                           {(ubicacionModalSugerencias[index] || []).map((u) => (
                             <button
