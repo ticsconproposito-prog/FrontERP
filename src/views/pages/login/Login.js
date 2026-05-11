@@ -20,6 +20,20 @@ import { useAuth } from '../../../context/AuthContext'
 
 import logo from 'src/assets/images/logo-ferreteria-agmner.png'
 
+// Timeout máximo para cualquier petición del flujo de login.
+// Si el backend tarda más, la UI no se queda colgada indefinidamente.
+const LOGIN_TIMEOUT_MS = 15_000
+
+const fetchConTimeout = async (url, opciones = {}, timeoutMs = LOGIN_TIMEOUT_MS) => {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    return await fetch(url, { ...opciones, signal: controller.signal })
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 const Login = () => {
   const navigate = useNavigate()
   const { login } = useAuth()
@@ -45,21 +59,32 @@ const Login = () => {
     setError('')
 
     try {
-      // 1. Obtener lista de usuarios y validar credenciales
-      const resUsuarios = await fetch('/api/usuarios')
+      // 1. Validar credenciales y obtener idUsuario
+      // NOTA DE SEGURIDAD: Idealmente esto debería ser POST /api/login que valide
+      // en el servidor y devuelva un token. La validación en cliente expone
+      // todas las contraseñas en el panel Network del navegador.
+      // Mientras eso se implementa en backend, intentamos pedir el menor
+      // volumen de datos posible.
+      const resUsuarios = await fetchConTimeout('/api/usuarios?size=1000')
       if (!resUsuarios.ok) {
         setError('No se pudo conectar con el servidor. Intente nuevamente.')
         return
       }
 
-      const listaUsuarios = await resUsuarios.json()
-      const usuarioEncontrado = Array.isArray(listaUsuarios)
-        ? listaUsuarios.find(
-            (u) =>
-              String(u.usuario || '').toLowerCase() === form.usuario.trim().toLowerCase() &&
-              String(u.contrasena || '') === form.contrasena.trim(),
-          )
-        : null
+      const listaUsuariosRaw = await resUsuarios.json()
+      const listaUsuarios = Array.isArray(listaUsuariosRaw)
+        ? listaUsuariosRaw
+        : Array.isArray(listaUsuariosRaw?.content)
+          ? listaUsuariosRaw.content
+          : []
+
+      const usuarioInput = form.usuario.trim().toLowerCase()
+      const contrasenaInput = form.contrasena.trim()
+      const usuarioEncontrado = listaUsuarios.find(
+        (u) =>
+          String(u.usuario || '').toLowerCase() === usuarioInput &&
+          String(u.contrasena || '') === contrasenaInput,
+      )
 
       if (!usuarioEncontrado) {
         setError('Usuario o contraseña incorrectos.')
@@ -70,34 +95,30 @@ const Login = () => {
         usuarioEncontrado.idUsuario ?? usuarioEncontrado.id_Usuario ?? 0
       )
 
-      // 2. Verificar si el usuario ya existe en /api/segLogins
+      // 2. Marcar la sesión como activa en segLogins (no bloqueamos el login si falla)
       let idLoginNuevo = null
       try {
-        const resSegLogins = await fetch('/api/segLogins')
+        const resSegLogins = await fetchConTimeout('/api/segLogins?size=1000')
         if (resSegLogins.ok) {
-          const segLogins = await resSegLogins.json()
-          const lista = Array.isArray(segLogins)
-            ? segLogins
-            : Array.isArray(segLogins?.content)
-              ? segLogins.content
+          const segLoginsRaw = await resSegLogins.json()
+          const lista = Array.isArray(segLoginsRaw)
+            ? segLoginsRaw
+            : Array.isArray(segLoginsRaw?.content)
+              ? segLoginsRaw.content
               : []
 
-          // Buscar registro existente para este usuario
           const registroExistente = lista.find(
             (r) => Number(r.idUsuario ?? r.id_Usuario ?? -1) === idUsuario
           )
 
           if (registroExistente) {
-            // Ya existe: actualizar estadoConexion a Activo
             const idLoginExistente =
               registroExistente.idLogin ??
               registroExistente.id_Login ??
               registroExistente.idSegLogin ??
               null
 
-           /* console.log('[Login] Registro existente encontrado, actualizando:', idLoginExistente)*/
-
-            const resEditar = await fetch(`/api/editarSegLogin/${idLoginExistente}`, {
+            const resEditar = await fetchConTimeout(`/api/editarSegLogin/${idLoginExistente}`, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ idLogin: idLoginExistente, idUsuario, estadoConexion: 'Activo' }),
@@ -106,10 +127,7 @@ const Login = () => {
               idLoginNuevo = idLoginExistente
             }
           } else {
-            // No existe: insertar nuevo registro
-            /* console.log('[Login] No existe registro, insertando nuevo para idUsuario:', idUsuario) */
-
-            const resGrabar = await fetch('/api/grabarSegLogin', {
+            const resGrabar = await fetchConTimeout('/api/grabarSegLogin', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ idUsuario, estadoConexion: 'Activo' }),
@@ -121,14 +139,19 @@ const Login = () => {
           }
         }
       } catch (e) {
+        // Si segLogins falla por timeout o red, continuamos sin bloquear el login
         console.warn('[Login] No se pudo gestionar el registro de sesión:', e)
       }
 
-      // 3. Guardar sesión y cargar permisos
+      // 3. Guardar sesión y cargar permisos (paralelo dentro de AuthContext.login)
       await login(usuarioEncontrado, idLoginNuevo)
       navigate('/dashboard')
     } catch (err) {
-      setError('No se pudo conectar con el servidor. Intente nuevamente.')
+      if (err?.name === 'AbortError') {
+        setError('El servidor está tardando demasiado en responder. Intente de nuevo en unos segundos.')
+      } else {
+        setError('No se pudo conectar con el servidor. Intente nuevamente.')
+      }
     } finally {
       setCargando(false)
     }

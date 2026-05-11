@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useMemo } from 'react'
 import { useSelector, useDispatch } from 'react-redux'
 
 import {
@@ -65,7 +65,11 @@ const AppSidebar = () => {
   const sidebarShow = useSelector((state) => state.sidebarShow)
   const { paginasPermitidas, permisosCargados, tienePerfiles } = useAuth()
 
-  const navFiltrado = filtrarNavegacion(navigation, paginasPermitidas, permisosCargados, tienePerfiles)
+  // Memoizamos el filtrado para evitar recomputarlo en cada render del sidebar
+  const navFiltrado = useMemo(
+    () => filtrarNavegacion(navigation, paginasPermitidas, permisosCargados, tienePerfiles),
+    [paginasPermitidas, permisosCargados, tienePerfiles],
+  )
 
   return (
     <CSidebar

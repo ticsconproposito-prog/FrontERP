@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../../../context/AuthContext'
+import { mapConLimite, fetchConCache } from '../../../utils/fetchHelpers'
 import logoFerreteria from 'src/assets/images/logo-ferreteria-agmner.png'
 import {
   CButton,
@@ -235,11 +236,14 @@ const MntFacturacion = () => {
       let totalPags = 0
       let totalElems = 0
 
+      // Normaliza facturaProcesada: cualquier valor que no sea 'S' o 'A' (null, '', espacios, etc.) cuenta como 'N'
       const filtrarPorEstado = (lista) => {
         if (!filtro.estado) return lista
+        const objetivo = String(filtro.estado).trim().toUpperCase()
         return lista.filter((f) => {
-          const ep = f.facturaProcesada || 'N'
-          return ep === filtro.estado
+          const raw = String(f.facturaProcesada ?? '').trim().toUpperCase()
+          const ep = raw === 'S' || raw === 'A' ? raw : 'N'
+          return ep === objetivo
         })
       }
 
@@ -259,10 +263,11 @@ const MntFacturacion = () => {
         }
 
         todasLasFacturas = filtrarPorEstado(todas.filter((f) => String(f.tipoDocumento) !== '4'))
-        numPagina  = 0
         totalElems = todasLasFacturas.length
         totalPags  = Math.max(1, Math.ceil(totalElems / PAGE_SIZE))
-        const inicio = pagina * PAGE_SIZE
+        // Si la página pedida quedó fuera de rango (por ej. el filtro redujo resultados), volver a 0
+        numPagina  = pagina >= totalPags ? 0 : pagina
+        const inicio = numPagina * PAGE_SIZE
         todasLasFacturas = todasLasFacturas.slice(inicio, inicio + PAGE_SIZE)
       } else {
         const params = new URLSearchParams({ page: pagina, size: PAGE_SIZE })
@@ -352,33 +357,33 @@ const MntFacturacion = () => {
       const data = await res.json()
       const lineas = Array.isArray(data) ? data : data.content ?? []
 
-      // Enriquecer cada línea con datos del producto en paralelo
-      const lineasEnriquecidas = await Promise.all(
-        lineas.map(async (item) => {
-          const idProd = item.idProducto
-          let codigoProducto = '—'
-          let codigoProductoProveedor = '—'
-          let descripcionProducto = '—'
-          if (idProd) {
-            try {
+      // Enriquecer cada línea con datos del producto, limitado a 6 fetch simultáneos
+      // y cacheando productos repetidos para no pedir el mismo dos veces.
+      const lineasEnriquecidas = await mapConLimite(lineas, 6, async (item) => {
+        const idProd = item.idProducto
+        let codigoProducto = '—'
+        let codigoProductoProveedor = '—'
+        let descripcionProducto = '—'
+        if (idProd) {
+          try {
+            const lista = await fetchConCache(`producto:${idProd}`, async () => {
               const rp = await fetch(`/api/productos?idProducto=${idProd}&page=0&size=1`)
-              if (rp.ok) {
-                const prod = await rp.json()
-                const lista = Array.isArray(prod) ? prod : prod.content ?? []
-                if (lista.length > 0) {
-                  codigoProducto          = lista[0].codigoProducto          || '—'
-                  codigoProductoProveedor = lista[0].codigoProductoProveedor || '—'
-                  descripcionProducto     = lista[0].descripcionProducto     || '—'
-                }
-              }
-            } catch (_) { /* silencioso */ }
-          }
-          const totalLinea =
-            Number(item.ImpTotal ?? item.impTotal ?? 0) ||
-            Number(item.cantidad || 0) * Number(item.precioVenta || 0) - Number(item.cantidadDeDescuento || 0)
-          return { ...item, codigoProducto, codigoProductoProveedor, descripcionProducto, ImpTotal: totalLinea }
-        })
-      )
+              if (!rp.ok) return []
+              const prod = await rp.json()
+              return Array.isArray(prod) ? prod : prod.content ?? []
+            })
+            if (lista.length > 0) {
+              codigoProducto          = lista[0].codigoProducto          || '—'
+              codigoProductoProveedor = lista[0].codigoProductoProveedor || '—'
+              descripcionProducto     = lista[0].descripcionProducto     || '—'
+            }
+          } catch (_) { /* silencioso */ }
+        }
+        const totalLinea =
+          Number(item.impTotal ?? item.ImpTotal ?? 0) ||
+          Number(item.cantidad || 0) * Number(item.precioVenta || 0) - Number(item.cantidadDeDescuento || 0)
+        return { ...item, codigoProducto, codigoProductoProveedor, descripcionProducto, ImpTotal: totalLinea }
+      })
       setDetalleFactura(lineasEnriquecidas)
     } catch {
       setDetalleFactura([])
@@ -420,38 +425,38 @@ const MntFacturacion = () => {
           const lineas = Array.isArray(data) ? data : data.content ?? []
 
           // idProducto llega como número plano; buscar descripción con query param
-          const lineasConDesc = await Promise.all(
-            lineas.map(async (item) => {
-              const idProd = item.idProducto
-              let descripcion = ''
+          // Limitamos concurrencia y cacheamos productos repetidos
+          const lineasConDesc = await mapConLimite(lineas, 6, async (item) => {
+            const idProd = item.idProducto
+            let descripcion = ''
 
-              if (idProd) {
-                try {
+            if (idProd) {
+              try {
+                const lista = await fetchConCache(`producto:${idProd}`, async () => {
                   const rp = await fetch(`/api/productos?idProducto=${idProd}&page=0&size=1`)
-                  if (rp.ok) {
-                    const prod = await rp.json()
-                    const lista = Array.isArray(prod) ? prod : prod.content ?? []
-                    descripcion = lista[0]?.descripcionProducto || ''
-                  }
-                } catch (_) { /* silencioso */ }
-              }
+                  if (!rp.ok) return []
+                  const prod = await rp.json()
+                  return Array.isArray(prod) ? prod : prod.content ?? []
+                })
+                descripcion = lista[0]?.descripcionProducto || ''
+              } catch (_) { /* silencioso */ }
+            }
 
-              const cantidad            = Number(item.cantidad)            || 0
-              const precioVenta         = Number(item.precioVenta)         || 0
-              const cantidadDeDescuento = Number(item.cantidadDeDescuento) || 0
-              const ImpTotal =
-                Number(item.ImpTotal ?? item.impTotal ?? 0) ||
-                (cantidad * precioVenta - cantidadDeDescuento)
+            const cantidad            = Number(item.cantidad)            || 0
+            const precioVenta         = Number(item.precioVenta)         || 0
+            const cantidadDeDescuento = Number(item.cantidadDeDescuento) || 0
+            const ImpTotal =
+              Number(item.impTotal ?? item.ImpTotal ?? 0) ||
+              (cantidad * precioVenta - cantidadDeDescuento)
 
-              return {
-                cantidad,
-                precioVenta,
-                cantidadDeDescuento,
-                ImpTotal,
-                descripcion,
-              }
-            })
-          )
+            return {
+              cantidad,
+              precioVenta,
+              cantidadDeDescuento,
+              ImpTotal,
+              descripcion,
+            }
+          })
           detalle = lineasConDesc
         }
       } catch (_) { detalle = [] }
@@ -819,41 +824,40 @@ const MntFacturacion = () => {
       const resDetalle = await fetch(`/api/detalleFactura?idEncabezadoFactura=${enc.idEncabezadoFactura}`)
       const lineas = resDetalle.ok ? await resDetalle.json() : []
 
-      // Enriquecer con descripción y código de producto en paralelo
-      const itemsDte = await Promise.all(
-        lineas.map(async (item) => {
-          let descripcion = ''
-          let codigoProducto = String(item.idProducto || '')
-          if (item.idProducto) {
-            try {
+      // Enriquecer con descripción y código de producto, máx. 6 fetch simultáneos
+      const itemsDte = await mapConLimite(lineas, 6, async (item) => {
+        let descripcion = ''
+        let codigoProducto = String(item.idProducto || '')
+        if (item.idProducto) {
+          try {
+            const lista = await fetchConCache(`producto:${item.idProducto}`, async () => {
               const rp = await fetch(`/api/productos?idProducto=${item.idProducto}&page=0&size=1`)
-              if (rp.ok) {
-                const prod = await rp.json()
-                const lista = Array.isArray(prod) ? prod : prod.content ?? []
-                descripcion    = lista[0]?.descripcionProducto || ''
-                codigoProducto = lista[0]?.codigoProducto || codigoProducto
-              }
-            } catch (_) { /* silencioso */ }
-          }
-          return {
-            producto:     codigoProducto,
-            descripcion,
-            medida:       Number(item.idUnidadDeMedida) || 1,
-            cantidad:     Number(item.cantidad) || 0,
-            precio:       Number(item.precioVenta) || 0,
-            porcDesc:     0.00,
-            impBruto:     parseFloat((Number(item.ImpBruto)  || 0).toFixed(2)),
-            impDescuento: parseFloat((Number(item.cantidadDeDescuento) || 0).toFixed(2)),
-            impExento:    parseFloat((Number(item.ImpExento) || 0).toFixed(2)),
-            impOtros:     parseFloat((Number(item.ImpOtros) || 0).toFixed(2)),
-            impNeto:      parseFloat((Number(item.ImpNeto)  || 0).toFixed(2)),
-            impIsr:       parseFloat((Number(item.isr)      || 0).toFixed(2)),
-            impIva:       parseFloat((Number(item.iva)      || 0).toFixed(2)),
-            impTotal:     parseFloat((Number(item.ImpTotal) || 0).toFixed(2)),
-            TipoVentaDet: 'B',
-          }
-        })
-      )
+              if (!rp.ok) return []
+              const prod = await rp.json()
+              return Array.isArray(prod) ? prod : prod.content ?? []
+            })
+            descripcion    = lista[0]?.descripcionProducto || ''
+            codigoProducto = lista[0]?.codigoProducto || codigoProducto
+          } catch (_) { /* silencioso */ }
+        }
+        return {
+          producto:     codigoProducto,
+          descripcion,
+          medida:       Number(item.idUnidadDeMedida) || 1,
+          cantidad:     Number(item.cantidad) || 0,
+          precio:       Number(item.precioVenta) || 0,
+          porcDesc:     0.00,
+          impBruto:     parseFloat((Number(item.impBruto  ?? item.ImpBruto)  || 0).toFixed(2)),
+          impDescuento: parseFloat((Number(item.cantidadDeDescuento) || 0).toFixed(2)),
+          impExento:    parseFloat((Number(item.impExento ?? item.ImpExento) || 0).toFixed(2)),
+          impOtros:     parseFloat((Number(item.impOtros  ?? item.ImpOtros)  || 0).toFixed(2)),
+          impNeto:      parseFloat((Number(item.impNeto   ?? item.ImpNeto)   || 0).toFixed(2)),
+          impIsr:       parseFloat((Number(item.isr)      || 0).toFixed(2)),
+          impIva:       parseFloat((Number(item.iva)      || 0).toFixed(2)),
+          impTotal:     parseFloat((Number(item.impTotal  ?? item.ImpTotal)  || 0).toFixed(2)),
+          TipoVentaDet: 'B',
+        }
+      })
 
       // Calcular referencia igual que en facturacion.js
       const tipoDocRef  = String(enc.tipoDocumento || enc.idTipoDocumento || '1')
@@ -897,7 +901,7 @@ const MntFacturacion = () => {
         },
       }
 
-      /* console.log('[DTE] Enviando a /api/fel/dtes:', JSON.stringify(bodyDte, null, 2)) */
+       console.log('[DTE] Enviando a /api/fel/dtes:', JSON.stringify(bodyDte, null, 2))
       const resDte = await fetch('/api/fel/dtes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1302,7 +1306,7 @@ const MntFacturacion = () => {
       </CModal>
 
       {/* ── Modal Anular ──────────────────────────────────────────────────── */}
-      <CModal visible={modalAnular} onClose={() => { if (!anulando) { document.activeElement?.blur(); setModalAnular(false) } }}>
+      <CModal visible={modalAnular} backdrop="static" keyboard={false} onClose={() => { if (!anulando) { document.activeElement?.blur(); setModalAnular(false) } }}>
         <CModalHeader>
           <CModalTitle>Anular Factura</CModalTitle>
         </CModalHeader>

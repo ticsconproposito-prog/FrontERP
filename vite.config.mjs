@@ -8,6 +8,23 @@ export default defineConfig(() => {
     base: './',
     build: {
       outDir: 'build',
+      // Avisa cuando un chunk supere ~700 KB (no falla, solo lo reporta)
+      chunkSizeWarningLimit: 700,
+      rollupOptions: {
+        output: {
+          // Separamos las librerías pesadas en chunks propios para que se
+          // descarguen sólo cuando se usan y se cacheen aparte del código
+          // de la aplicación. Mejora arranque y navegación.
+          manualChunks: {
+            'vendor-react': ['react', 'react-dom', 'react-router-dom', 'react-redux', 'redux'],
+            'vendor-coreui': ['@coreui/react', '@coreui/coreui', '@coreui/icons', '@coreui/icons-react', '@coreui/utils'],
+            'vendor-charts': ['chart.js', '@coreui/chartjs', '@coreui/react-chartjs'],
+            'vendor-excel': ['exceljs', 'xlsx'],
+            'vendor-pdf': ['jspdf'],
+            'vendor-datepicker': ['react-datepicker', 'date-fns'],
+          },
+        },
+      },
     },
     css: {
       postcss: {

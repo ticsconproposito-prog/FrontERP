@@ -65,6 +65,7 @@ const Layout = () => {
   const esErrorNitDteRef = useRef(false);
   const [errorValidacionModal, setErrorValidacionModal] = useState({ visible: false, mensaje: '' });
   const [alertaCantidadModal, setAlertaCantidadModal] = useState(false);
+  const [productosSinPrecioModal, setProductosSinPrecioModal] = useState({ visible: false, productos: [] });
   const [referenciaParaComprobante, setReferenciaParaComprobante] = useState('');
   const [clienteGuardadoModal, setClienteGuardadoModal] = useState(false);
 
@@ -321,7 +322,7 @@ const Layout = () => {
     clearTimeout(debounceProducto.current);
     debounceProducto.current = setTimeout(() => {
       buscarEnInventario(value);
-    }, 300);
+    }, 500);
   };
 
   const agregarProductoDetalle = (producto) => {
@@ -337,6 +338,16 @@ const Layout = () => {
     const codigo = producto.idProducto?.codigoProducto || producto.codigoProducto || '';
     const descripcion = producto.idProducto?.descripcionProducto || producto.descripcionProducto || producto.descripcion || '';
     const precioVenta = producto.idProducto?.precioVenta ?? producto.precioVenta ?? 0;
+
+    // Validar que el producto tenga precio de venta > 0 antes de agregarlo al detalle
+    if (!Number(precioVenta) || Number(precioVenta) <= 0) {
+      setProductosSinPrecioModal({
+        visible: true,
+        productos: [{ codigo, descripcion }],
+      });
+      return;
+    }
+
     const cantidad = 1;
     const precio = precioVenta * cantidad;
     const descuento = 0;
@@ -1156,7 +1167,7 @@ const Layout = () => {
         porcentajeDeDescuento: 0,
         exento: '0.00',
         otro: '0.00',
-        totalNeto: totalesDetalle.totalNeto,
+        totalNeto: totalesDetalle.totalNeto.toFixed(2),
         isr: '0.00',
         iva: totalesDetalle.iva.toFixed(2),
         total: totalesDetalle.total.toFixed(2),
@@ -1186,20 +1197,20 @@ const Layout = () => {
       // Guardar el detalle de la factura usando los valores ya calculados en lineasDetalle
       const detallePromises = lineasDetalle.map(({ item, cantItem, descItem, precioItem, impBruto, totalConDesc, impNeto, impIva }) => {
         const bodyDetalle = {
-          idEncabezadoFactura: String(idEncabezadoFactura),
+          idEncabezadoFactura: String(idEncabezadoFactura).trim(),
           idProducto: String(item.idProducto),
           idUnidadDeMedida: String(item.idUnidadMedida ?? '1'),
           cantidad: String(cantItem),
           precioVenta: precioItem.toFixed(2),
           cantidadDeDescuento: descItem.toFixed(2),
           porcentajeDeDescuento: '0.00',
-          ImpBruto: impBruto.toFixed(2),
-          ImpExento: '0.00',
-          ImpOtros: '0.00',
-          ImpNeto: impNeto.toFixed(2),
+          impBruto: impBruto.toFixed(2),
+          impExento: '0.00',
+          impOtros: '0.00',
+          impNeto: impNeto.toFixed(2),
           iva: impIva.toFixed(2),
           isr: '0.00',
-          ImpTotal: totalConDesc.toFixed(2),
+          impTotal: totalConDesc.toFixed(2),
           consignacionFacturada: '0',
           idUsuarioModificacion: String(idUsuarioActual),
         };
@@ -1247,7 +1258,7 @@ const Layout = () => {
             porcentajeDeDescuento: 0,
             exento: '0.00',
             otro: '0.00',
-            totalNeto: totalesDetalle.totalNeto,
+            totalNeto: totalesDetalle.totalNeto.toFixed(2),
             isr: '0.00',
             iva: totalesDetalle.iva.toFixed(2),
             total: totalesDetalle.total.toFixed(2),
@@ -2216,6 +2227,38 @@ const Layout = () => {
       </CModalBody>
       <CModalFooter>
         <CButton color="warning" className="text-dark" onClick={() => setAlertaCantidadModal(false)}>
+          Entendido
+        </CButton>
+      </CModalFooter>
+    </CModal>
+
+    {/* Modal: productos sin precio de venta */}
+    <CModal
+      visible={productosSinPrecioModal.visible}
+      onClose={() => setProductosSinPrecioModal({ visible: false, productos: [] })}
+      alignment="center"
+      backdrop="static"
+    >
+      <CModalHeader className="bg-danger text-white">
+        <CModalTitle>⚠️ Productos sin precio de venta</CModalTitle>
+      </CModalHeader>
+      <CModalBody>
+        <p className="mb-2">
+          No se puede generar la factura porque los siguientes productos no tienen un <strong>precio de venta</strong> válido:
+        </p>
+        <ul className="mb-2">
+          {productosSinPrecioModal.productos.map((p, i) => (
+            <li key={i}>
+              <strong>{p.codigo || '—'}</strong> — {p.descripcion || 'Sin descripción'}
+            </li>
+          ))}
+        </ul>
+        <p className="mb-0 text-muted small">
+          Por favor, actualice el precio de venta de estos productos en el inventario o elimínelos del detalle de la factura.
+        </p>
+      </CModalBody>
+      <CModalFooter>
+        <CButton color="danger" className="text-white" onClick={() => setProductosSinPrecioModal({ visible: false, productos: [] })}>
           Entendido
         </CButton>
       </CModalFooter>

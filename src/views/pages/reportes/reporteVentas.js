@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import {
   CButton,
   CCard,
@@ -71,7 +71,6 @@ const Paginador = ({ paginaActual, totalPaginas, totalElementos, onCambiar }) =>
 }
 
 const ConsultaFacturas = () => {
-  const [tipoDetalle, setTipoDetalle] = useState('1')
   const [fechaInicio, setFechaInicio] = useState(HOY)
   const [fechaFin, setFechaFin] = useState(HOY)
   const [estadoFiltro, setEstadoFiltro] = useState('')
@@ -87,14 +86,6 @@ const ConsultaFacturas = () => {
   const [totalElementos, setTotalElementos] = useState(0)
   const [resumen, setResumen] = useState({ cantidadFacturas: 0, totalVenta: 0 })
   const [todasFacturas, setTodasFacturas] = useState([])
-
-  // ── Detalle por Producto ─────────────────────────────────────────────────
-  const [detalles, setDetalles] = useState([])
-  const [cargandoDetalle, setCargandoDetalle] = useState(false)
-  const [errorDetalle, setErrorDetalle] = useState(null)
-  const [paginaDetalle, setPaginaDetalle] = useState(0)
-  const [totalPaginasDetalle, setTotalPaginasDetalle] = useState(0)
-  const [totalDetalles, setTotalDetalles] = useState(0)
 
   // Diccionario Tipo Documento
   useEffect(() => {
@@ -112,14 +103,18 @@ const ConsultaFacturas = () => {
     cargar()
   }, [])
 
+  // Ref para cancelar peticiones en curso al cambiar filtros o desmontar el componente
+  const abortReporteRef = useRef(null)
+
   // Helper: obtiene TODAS las facturas del período en lotes de 500 (evita respuestas HTTP/2 demasiado grandes)
-  const fetchTodasFacturas = async (filtrosBase) => {
+  const fetchTodasFacturas = async (filtrosBase, signal) => {
     const LOTE = 500
     let acumulado = []
     let pagina = 0
     while (true) {
+      if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
       const params = new URLSearchParams({ page: pagina, size: LOTE, ...filtrosBase })
-      const res = await fetch(`/api/erpEncabezadoFacturas?${params}`)
+      const res = await fetch(`/api/erpEncabezadoFacturas?${params}`, { signal })
       if (!res.ok) throw new Error(`Error ${res.status}: ${res.statusText}`)
       const data = await res.json()
       const content = Array.isArray(data) ? data : data.content ?? []
@@ -133,9 +128,13 @@ const ConsultaFacturas = () => {
       .sort((a, b) => b.idEncabezadoFactura - a.idEncabezadoFactura)
   }
 
-  // Cargar Facturas (tipoDetalle === '1')
+  // Cargar Facturas
   useEffect(() => {
-    if (tipoDetalle !== '1') return
+    if (abortReporteRef.current) abortReporteRef.current.abort()
+    const controller = new AbortController()
+    abortReporteRef.current = controller
+    const { signal } = controller
+
     const cargarFacturas = async () => {
       setCargando(true)
       setError(null)
@@ -146,11 +145,13 @@ const ConsultaFacturas = () => {
           tipoDocumento: '1',
         }
 
-        let todas = await fetchTodasFacturas(filtrosBase)
+        let todas = await fetchTodasFacturas(filtrosBase, signal)
 
         // Filtro por estado (S=Procesadas, N=No Procesadas, ''=Todos S+N, nunca se muestran Anuladas)
+        // Cualquier valor que no sea 'S' ni 'A' (incluido null, undefined o string vacío) cuenta como 'N'
         todas = todas.filter((f) => {
-          const ep = String(f.facturaProcesada ?? 'N').toUpperCase()
+          const raw = String(f.facturaProcesada ?? '').toUpperCase()
+          const ep = raw === 'S' || raw === 'A' ? raw : 'N'
           if (ep === 'A') return false                          // excluir anuladas siempre
           if (!filtroAplicado.estado) return true              // Todos: S y N
           return ep === filtroAplicado.estado.toUpperCase()    // filtro específico
@@ -167,103 +168,23 @@ const ConsultaFacturas = () => {
         // Paginación en cliente
         setFacturas(todas.slice(paginaActual * PAGE_SIZE, (paginaActual + 1) * PAGE_SIZE))
       } catch (err) {
+        if (err.name === 'AbortError') return
         setError(err.message)
       } finally {
-        setCargando(false)
+        if (!signal.aborted) setCargando(false)
       }
     }
     cargarFacturas()
-  }, [filtroAplicado, tipoDetalle])
+    return () => controller.abort()
+  }, [filtroAplicado])
 
   // Re-paginar en cliente cuando cambia la página (sin re-fetch)
   useEffect(() => {
-    if (tipoDetalle !== '1') return
     setFacturas(todasFacturas.slice(paginaActual * PAGE_SIZE, (paginaActual + 1) * PAGE_SIZE))
   }, [paginaActual])
 
-  // Cargar Detalles por Producto (tipoDetalle === '2')
-  useEffect(() => {
-    if (tipoDetalle !== '2') return
-    const cargarDetalles = async () => {
-      setCargandoDetalle(true)
-      setErrorDetalle(null)
-      try {
-        // 1. Obtener todos los encabezados del rango de fechas (en lotes para evitar HTTP/2 error)
-        const filtrosBase = {
-          ...(filtroAplicado.inicio && { fechaInicio: filtroAplicado.inicio }),
-          ...(filtroAplicado.fin && { fechaFin: filtroAplicado.fin }),
-          tipoDocumento: '1',
-        }
-        const encabezados = await fetchTodasFacturas(filtrosBase)
-
-        // 2. Para cada encabezado obtener su detalle
-        const resultados = await Promise.all(
-          encabezados.map(async (enc) => {
-            try {
-              const res = await fetch(`/api/detalleFactura?idEncabezadoFactura=${enc.idEncabezadoFactura}`)
-              if (!res.ok) return []
-              const data = await res.json()
-              const items = Array.isArray(data) ? data : data.content ?? []
-              return items.map((item) => ({
-                ...item,
-                _noFactura: enc.preimpresoResAPI,
-                _referencia: enc.referencia,
-                _fecha: enc.FechaFactura,
-              }))
-            } catch {
-              return []
-            }
-          }),
-        )
-
-        const todos = resultados.flat()
-
-        // 3. Obtener datos de producto desde /api/productos/{idProducto}
-        const idsUnicos = [...new Set(
-          todos.map((d) => (typeof d.idProducto === 'object' ? d.idProducto?.idProducto : d.idProducto)).filter(Boolean),
-        )]
-
-        const productosMap = {}
-        await Promise.all(
-          idsUnicos.map(async (id) => {
-            try {
-              const res = await fetch(`/api/productos?idProducto=${id}&page=0&size=1`)
-              if (!res.ok) return
-              const data = await res.json()
-              const lista = Array.isArray(data) ? data : data.content ?? []
-              if (lista.length > 0) productosMap[id] = lista[0]
-            } catch { /* ignora si falla un producto */ }
-          }),
-        )
-
-        const todosConProducto = todos.map((d) => {
-          const idProd = typeof d.idProducto === 'object' ? d.idProducto?.idProducto : d.idProducto
-          const prod = productosMap[idProd] ?? {}
-          return { ...d, _producto: prod }
-        })
-
-        setDetalles(todosConProducto)
-        setTotalDetalles(todosConProducto.length)
-        setTotalPaginasDetalle(Math.ceil(todosConProducto.length / PAGE_SIZE))
-        setPaginaDetalle(0)
-      } catch (err) {
-        setErrorDetalle(err.message)
-      } finally {
-        setCargandoDetalle(false)
-      }
-    }
-    cargarDetalles()
-  }, [filtroAplicado, tipoDetalle])
-
-  const handleCambiarTipo = (valor) => {
-    setTipoDetalle(valor)
-    setPaginaActual(0)
-    setPaginaDetalle(0)
-  }
-
   const handleBuscar = () => {
     setPaginaActual(0)
-    setPaginaDetalle(0)
     setFiltroAplicado({ inicio: fechaInicio, fin: fechaFin, estado: estadoFiltro })
   }
 
@@ -272,7 +193,6 @@ const ConsultaFacturas = () => {
     setFechaFin(HOY)
     setEstadoFiltro('')
     setPaginaActual(0)
-    setPaginaDetalle(0)
     setFiltroAplicado({ inicio: HOY, fin: HOY, estado: '' })
   }
 
@@ -280,7 +200,6 @@ const ConsultaFacturas = () => {
   const handleEstadoChange = (valor) => {
     setEstadoFiltro(valor)
     setPaginaActual(0)
-    setPaginaDetalle(0)
     setFiltroAplicado((prev) => ({
       ...prev,
       inicio: fechaInicio,
@@ -315,166 +234,84 @@ const ConsultaFacturas = () => {
     }
 
     const wb = new ExcelJS.Workbook()
+    const ws = wb.addWorksheet('Detalle por Factura')
+    ws.columns = [
+      { width: 6 }, { width: 18 }, { width: 22 }, { width: 14 }, { width: 32 },
+      { width: 18 }, { width: 13 }, { width: 11 }, { width: 13 }, { width: 13 },
+    ]
 
-    if (tipoDetalle === '1') {
-      const ws = wb.addWorksheet('Detalle por Factura')
-      ws.columns = [
-        { width: 6 }, { width: 18 }, { width: 22 }, { width: 14 }, { width: 32 },
-        { width: 18 }, { width: 13 }, { width: 11 }, { width: 13 }, { width: 13 },
-      ]
+    // ── Título del reporte ──
+    const filaTitulo = ws.addRow(['Reporte: Detalle por Factura'])
+    filaTitulo.getCell(1).font = { bold: true, size: 11, color: { argb: 'FF000000' } }
+    filaTitulo.getCell(1).fill = fillGris
+    filaTitulo.getCell(1).alignment = { vertical: 'middle' }
+    filaTitulo.height = 22
 
-      // ── Título del reporte ──
-      const filaTitulo = ws.addRow(['Reporte: Detalle por Factura'])
-      filaTitulo.getCell(1).font = { bold: true, size: 11, color: { argb: 'FF000000' } }
-      filaTitulo.getCell(1).fill = fillGris
-      filaTitulo.getCell(1).alignment = { vertical: 'middle' }
-      filaTitulo.height = 22
+    // ── Resumen en 3 filas — fila vacía superior + solo bordes externos ──
+    ws.addRow([])
 
-      // ── Resumen en 3 filas — fila vacía superior + solo bordes externos ──
-      ws.addRow([])
-
-      const thin = { style: 'thin' }
-      const agregarFilaResumen = (etiqueta, valor, esPrimera, esUltima) => {
-        const fila = ws.addRow([etiqueta, valor])
-        fila.getCell(1).border = { top: esPrimera ? thin : undefined, bottom: esUltima ? thin : undefined, left: thin }
-        fila.getCell(2).border = { top: esPrimera ? thin : undefined, bottom: esUltima ? thin : undefined, right: thin }
-        fila.getCell(1).font = { bold: true }
-        fila.getCell(1).fill = fillGris
-        fila.getCell(2).fill = fillGris
-        fila.getCell(1).alignment = { vertical: 'middle' }
-        fila.getCell(2).alignment = { vertical: 'middle' }
-        fila.height = 18
-        return fila
-      }
-      agregarFilaResumen('Período consultado:', periodo, true, false)
-      agregarFilaResumen('Cantidad de Facturas:', resumen.cantidadFacturas, false, false)
-      agregarFilaResumen('Total de Venta:', formatMoneda(resumen.totalVenta), false, true)
-
-      ws.addRow([]) // fila vacía
-
-      // ── Encabezados de columna ──
-      const filaEncabezado = ws.addRow([
-        '#', 'No. Factura', 'Referencia', 'Fecha Emisión', 'Cliente',
-        'Tipo Documento', 'Subtotal', 'IVA', 'Total', 'Estado',
-      ])
-      aplicarEstiloEncabezado(filaEncabezado)
-      filaEncabezado.height = 20
-
-      // ── Datos ──
-      todasFacturas.forEach((f, idx) => {
-        const fila = ws.addRow([
-          idx + 1,
-          f.preimpresoResAPI ?? '',
-          f.referencia ?? '',
-          f.FechaFactura ? formatFecha(f.FechaFactura) : '',
-          f.idCliente?.nombreCliente ?? '',
-          tiposDocumento[String(f.tipoDocumento)] ?? f.tipoDocumento ?? '',
-          f.totalNeto ?? 0,
-          f.iva ?? 0,
-          f.total ?? 0,
-          f.facturaProcesada ? 'Procesada' : 'Pendiente',
-        ])
-        fila.eachCell({ includeEmpty: true }, (cell) => {
-          cell.border = borderThin
-          cell.alignment = { vertical: 'middle' }
-        })
-        ;[7, 8, 9].forEach((col) => {
-          fila.getCell(col).numFmt = '"Q"#,##0.00'
-        })
-        fila.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' }
-        fila.getCell(9).font = { bold: true, color: { argb: 'FF1E7E34' } }
-        const celdaEstado = fila.getCell(10)
-        celdaEstado.fill = f.facturaProcesada ? fillVerde : { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E3E5' } }
-      })
-
-      const buf = await wb.xlsx.writeBuffer()
-      const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `facturas_${filtroAplicado.inicio}_${filtroAplicado.fin}.xlsx`
-      a.click()
-      URL.revokeObjectURL(url)
-
-    } else {
-      const totalDetalleFmt = detalles.reduce((s, d) => s + (d.ImpTotal ?? 0), 0)
-      const ws = wb.addWorksheet('Detalle por Producto')
-      ws.columns = [
-        { width: 6 }, { width: 18 }, { width: 22 }, { width: 13 }, { width: 18 },
-        { width: 18 }, { width: 42 }, { width: 11 }, { width: 11 }, { width: 13 },
-      ]
-
-      // ── Título del reporte ──
-      const filaTituloP = ws.addRow(['Reporte: Detalle por Producto'])
-      filaTituloP.getCell(1).font = { bold: true, size: 11, color: { argb: 'FF000000' } }
-      filaTituloP.getCell(1).fill = fillGris
-      filaTituloP.getCell(1).alignment = { vertical: 'middle' }
-      filaTituloP.height = 22
-
-      // ── Resumen en 3 filas — fila vacía superior + solo bordes externos ──
-      ws.addRow([])
-
-      const thinP = { style: 'thin' }
-      const agregarFilaResumenP = (etiqueta, valor, esPrimera, esUltima) => {
-        const fila = ws.addRow([etiqueta, valor])
-        fila.getCell(1).border = { top: esPrimera ? thinP : undefined, bottom: esUltima ? thinP : undefined, left: thinP }
-        fila.getCell(2).border = { top: esPrimera ? thinP : undefined, bottom: esUltima ? thinP : undefined, right: thinP }
-        fila.getCell(1).font = { bold: true }
-        fila.getCell(1).fill = fillGris
-        fila.getCell(2).fill = fillGris
-        fila.getCell(1).alignment = { vertical: 'middle' }
-        fila.getCell(2).alignment = { vertical: 'middle' }
-        fila.height = 18
-        return fila
-      }
-      agregarFilaResumenP('Período consultado:', periodo, true, false)
-      agregarFilaResumenP('Cantidad de Productos:', totalDetalles, false, false)
-      agregarFilaResumenP('Total de Venta:', formatMoneda(totalDetalleFmt), false, true)
-
-      ws.addRow([])
-
-      // ── Encabezados de columna ──
-      const filaEncabezado = ws.addRow([
-        '#', 'No. Factura', 'Referencia', 'Fecha', 'Cód. Producto',
-        'Cód. Proveedor', 'Descripción', 'Cantidad', 'IVA', 'Total',
-      ])
-      aplicarEstiloEncabezado(filaEncabezado)
-      filaEncabezado.height = 20
-
-      // ── Datos ──
-      detalles.forEach((d, idx) => {
-        const fila = ws.addRow([
-          idx + 1,
-          d._noFactura ?? '',
-          d._referencia ?? '',
-          d._fecha ? formatFecha(d._fecha) : '',
-          d._producto?.codigoProducto ?? '',
-          d._producto?.codigoProductoProveedor ?? '',
-          d._producto?.descripcionProducto ?? '',
-          d.cantidad ?? 0,
-          d.iva ?? 0,
-          d.ImpTotal ?? 0,
-        ])
-        fila.eachCell({ includeEmpty: true }, (cell) => {
-          cell.border = borderThin
-          cell.alignment = { vertical: 'middle' }
-        })
-        ;[9, 10].forEach((col) => {
-          fila.getCell(col).numFmt = '"Q"#,##0.00'
-        })
-        fila.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' }
-        fila.getCell(10).font = { bold: true, color: { argb: 'FF1E7E34' } }
-      })
-
-      const buf = await wb.xlsx.writeBuffer()
-      const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `productos_${filtroAplicado.inicio}_${filtroAplicado.fin}.xlsx`
-      a.click()
-      URL.revokeObjectURL(url)
+    const thin = { style: 'thin' }
+    const agregarFilaResumen = (etiqueta, valor, esPrimera, esUltima) => {
+      const fila = ws.addRow([etiqueta, valor])
+      fila.getCell(1).border = { top: esPrimera ? thin : undefined, bottom: esUltima ? thin : undefined, left: thin }
+      fila.getCell(2).border = { top: esPrimera ? thin : undefined, bottom: esUltima ? thin : undefined, right: thin }
+      fila.getCell(1).font = { bold: true }
+      fila.getCell(1).fill = fillGris
+      fila.getCell(2).fill = fillGris
+      fila.getCell(1).alignment = { vertical: 'middle' }
+      fila.getCell(2).alignment = { vertical: 'middle' }
+      fila.height = 18
+      return fila
     }
+    agregarFilaResumen('Período consultado:', periodo, true, false)
+    agregarFilaResumen('Cantidad de Facturas:', resumen.cantidadFacturas, false, false)
+    agregarFilaResumen('Total de Venta:', formatMoneda(resumen.totalVenta), false, true)
+
+    ws.addRow([])
+
+    // ── Encabezados de columna ──
+    const filaEncabezado = ws.addRow([
+      '#', 'No. Factura', 'Referencia', 'Fecha Emisión', 'Cliente',
+      'Tipo Documento', 'Subtotal', 'IVA', 'Total', 'Estado',
+    ])
+    aplicarEstiloEncabezado(filaEncabezado)
+    filaEncabezado.height = 20
+
+    // ── Datos ──
+    todasFacturas.forEach((f, idx) => {
+      const fila = ws.addRow([
+        idx + 1,
+        f.preimpresoResAPI ?? '',
+        f.referencia ?? '',
+        f.FechaFactura ? formatFecha(f.FechaFactura) : '',
+        f.idCliente?.nombreCliente ?? '',
+        tiposDocumento[String(f.tipoDocumento)] ?? f.tipoDocumento ?? '',
+        f.totalNeto ?? 0,
+        f.iva ?? 0,
+        f.total ?? 0,
+        f.facturaProcesada === 'S' ? 'Procesada' : 'Pendiente',
+      ])
+      fila.eachCell({ includeEmpty: true }, (cell) => {
+        cell.border = borderThin
+        cell.alignment = { vertical: 'middle' }
+      })
+      ;[7, 8, 9].forEach((col) => {
+        fila.getCell(col).numFmt = '"Q"#,##0.00'
+      })
+      fila.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' }
+      fila.getCell(9).font = { bold: true, color: { argb: 'FF1E7E34' } }
+      const celdaEstado = fila.getCell(10)
+      celdaEstado.fill = f.facturaProcesada === 'S' ? fillVerde : { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E3E5' } }
+    })
+
+    const buf = await wb.xlsx.writeBuffer()
+    const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `facturas_${filtroAplicado.inicio}_${filtroAplicado.fin}.xlsx`
+    a.click()
+    URL.revokeObjectURL(url)
   }
 
   const imprimirResumen = () => {
@@ -487,13 +324,10 @@ const ConsultaFacturas = () => {
           : `${formatFecha(filtroAplicado.inicio)} al ${formatFecha(filtroAplicado.fin)}`
         : 'Sin filtro'
 
-    const esFactura = tipoDetalle === '1'
-    const titulo = esFactura ? 'Reporte: Detalle por Factura' : 'Reporte: Detalle por Producto'
-    const cantidad = esFactura ? resumen.cantidadFacturas : totalDetalles
-    const labelCantidad = esFactura ? 'Cantidad de Facturas:' : 'Cantidad de Productos:'
-    const totalVenta = esFactura
-      ? formatMoneda(resumen.totalVenta)
-      : formatMoneda(detalles.reduce((s, d) => s + (d.ImpTotal ?? 0), 0))
+    const titulo = 'Reporte: Detalle por Factura'
+    const cantidad = resumen.cantidadFacturas
+    const labelCantidad = 'Cantidad de Facturas:'
+    const totalVenta = formatMoneda(resumen.totalVenta)
 
     const margenX = 20
     const colorFondo = [217, 225, 242]   // #D9E1F2
@@ -539,9 +373,6 @@ const ConsultaFacturas = () => {
     doc.save(`resumen_${filtroAplicado.inicio}_${filtroAplicado.fin}.pdf`)
   }
 
-  const esCargando = tipoDetalle === '1' ? cargando : cargandoDetalle
-  const detallesPagina = detalles.slice(paginaDetalle * PAGE_SIZE, (paginaDetalle + 1) * PAGE_SIZE)
-
   return (
     <CRow>
       <CCol xs={12}>
@@ -550,22 +381,10 @@ const ConsultaFacturas = () => {
             <strong className="fs-4">Reporte de Ventas</strong>
           </CCardHeader>
           <CCardBody className="p-4">
-            {/* ── Fila 2: Filtros y acciones ── */}
+            {/* ── Fila: Filtros y acciones ── */}
             <CRow className="mb-4 align-items-end g-2">
-            <CCol md={2}>
-                <CFormLabel htmlFor="tipoDetalle">Tipo de Consulta</CFormLabel>
-                <CFormSelect
-                  id="tipoDetalle"
-                  value={tipoDetalle}
-                  onChange={(e) => handleCambiarTipo(e.target.value)}
-                >
-                  <option value="">Seleccione una opción</option>
-                  <option value="1">Detalle por Factura</option>
-                  <option value="2">Detalle por Producto</option>
-                </CFormSelect>
-              </CCol>
               <CCol md={2}>
-                <CFormLabel htmlFor="fechaInicio">Fecha Inicio</CFormLabel>
+                <CFormLabel htmlFor="fechaInicio" className="fw-bold">Fecha Inicio</CFormLabel>
                 <CFormInput
                   type="date"
                   id="fechaInicio"
@@ -575,7 +394,7 @@ const ConsultaFacturas = () => {
                 />
               </CCol>
               <CCol md={2}>
-                <CFormLabel htmlFor="fechaFin">Fecha Fin</CFormLabel>
+                <CFormLabel htmlFor="fechaFin" className="fw-bold">Fecha Fin</CFormLabel>
                 <CFormInput
                   type="date"
                   id="fechaFin"
@@ -584,45 +403,45 @@ const ConsultaFacturas = () => {
                   onChange={(e) => setFechaFin(e.target.value)}
                 />
               </CCol>
-              <CCol md={2}>
-                <CFormLabel htmlFor="estadoFactura">Estado</CFormLabel>
+              <CCol md={3}>
+                <CFormLabel htmlFor="estadoFactura" className="fw-bold">Estado</CFormLabel>
                 <CFormSelect
                   id="estadoFactura"
                   value={estadoFiltro}
                   onChange={(e) => handleEstadoChange(e.target.value)}
-                  disabled={esCargando}
+                  disabled={cargando}
                 >
                   <option value="">Todos</option>
                   <option value="S">Procesadas</option>
                   <option value="N">No Procesadas</option>
                 </CFormSelect>
               </CCol>
-              <CCol className="d-flex align-items-end gap-2 flex-wrap">
-                <CButton color="primary" onClick={handleBuscar} disabled={esCargando}>
-                  {esCargando ? <CSpinner size="sm" /> : 'Buscar'}
+              <CCol className="d-flex align-items-end justify-content-end gap-2 flex-wrap">
+                <CButton color="primary" onClick={handleBuscar} disabled={cargando}>
+                  {cargando ? <CSpinner size="sm" /> : 'Buscar'}
                 </CButton>
-                <CButton color="secondary" className="text-white" onClick={handleLimpiar} disabled={esCargando}>
+                <CButton color="secondary" className="text-white" onClick={handleLimpiar} disabled={cargando}>
                   Limpiar
                 </CButton>
                 <CButton
                   style={{ backgroundColor: '#1e8449', borderColor: '#1e8449', color: '#fff' }}
                   onClick={exportarExcel}
-                  disabled={esCargando || (tipoDetalle === '1' ? todasFacturas.length === 0 : detalles.length === 0)}
+                  disabled={cargando || todasFacturas.length === 0}
                 >
                   Exportar Excel
                 </CButton>
                 <CButton
                   style={{ backgroundColor: '#1a3a6b', borderColor: '#1a3a6b', color: '#fff' }}
                   onClick={imprimirResumen}
-                  disabled={esCargando || (tipoDetalle === '1' ? resumen.cantidadFacturas === 0 : totalDetalles === 0)}
+                  disabled={cargando || resumen.cantidadFacturas === 0}
                 >
-                 Resumen
+                 Imprimir Resumen
                 </CButton>
               </CCol>
             </CRow>
 
-            {/* ── Resumen del período (solo Detalle por Factura) ── */}
-            {tipoDetalle === '1' && !error && (
+            {/* ── Resumen del período ── */}
+            {!error && (
               <CRow className="mb-4 g-3">
                 <CCol md={4}>
                   <div className="border rounded p-3 text-center" style={{ borderColor: '#1a3a6b' }}>
@@ -656,7 +475,7 @@ const ConsultaFacturas = () => {
             )}
 
             {/* ── Spinner ── */}
-            {esCargando && (
+            {cargando && (
               <div className="text-center py-5">
                 <CSpinner color="primary" />
                 <div className="mt-2 text-muted small">Cargando información...</div>
@@ -664,14 +483,14 @@ const ConsultaFacturas = () => {
             )}
 
             {/* ── Error ── */}
-            {!esCargando && (error || errorDetalle) && (
+            {!cargando && error && (
               <div className="alert alert-danger" role="alert">
-                {error || errorDetalle}
+                {error}
               </div>
             )}
 
             {/* ── Tabla: Detalle por Factura ── */}
-            {!esCargando && !error && tipoDetalle === '1' && (
+            {!cargando && !error && (
               <>
                 <CTable striped hover bordered responsive>
                   <CTableHead style={{ '--cui-table-bg': '#1a3a6b', '--cui-table-color': '#fff', '--cui-table-border-color': '#2a4a8b', backgroundColor: '#1a3a6b', color: '#fff' }}>
@@ -722,87 +541,6 @@ const ConsultaFacturas = () => {
                   totalPaginas={totalPaginas}
                   totalElementos={totalElementos}
                   onCambiar={setPaginaActual}
-                />
-              </>
-            )}
-
-            {/* ── Tabla: Detalle por Producto ── */}
-            {!esCargando && !errorDetalle && tipoDetalle === '2' && (
-              <>
-                <CRow className="mb-4 g-3">
-                  <CCol md={4}>
-                    <div className="border rounded p-3 text-center" style={{ borderColor: '#1a3a6b' }}>
-                      <div className="text-muted small mb-1">Período consultado</div>
-                      <div className="fs-4 fw-bold" style={{ color: '#1a8fd1' }}>
-                        {filtroAplicado.inicio && filtroAplicado.fin
-                          ? filtroAplicado.inicio === filtroAplicado.fin
-                            ? formatFecha(filtroAplicado.inicio)
-                            : `${formatFecha(filtroAplicado.inicio)} — ${formatFecha(filtroAplicado.fin)}`
-                          : 'Sin filtro'}
-                      </div>
-                    </div>
-                  </CCol>
-                  <CCol md={4}>
-                    <div className="border rounded p-3 text-center" style={{ borderColor: '#321fdb' }}>
-                      <div className="text-muted small mb-1">Cantidad de Productos</div>
-                      <div className="fs-5 fw-bold text-primary">{totalDetalles}</div>
-                    </div>
-                  </CCol>
-                  <CCol md={4}>
-                    <div className="border rounded p-3 text-center" style={{ borderColor: '#2eb85c' }}>
-                      <div className="text-muted small mb-1">Total de Venta</div>
-                      <div className="fs-5 fw-bold text-success">
-                        {formatMoneda(detalles.reduce((sum, d) => sum + (d.ImpTotal ?? 0), 0))}
-                      </div>
-                    </div>
-                  </CCol>
-                </CRow>
-
-                <CTable striped hover bordered responsive>
-                  <CTableHead style={{ '--cui-table-bg': '#1a3a6b', '--cui-table-color': '#fff', '--cui-table-border-color': '#2a4a8b', backgroundColor: '#1a3a6b', color: '#fff' }}>
-                    <CTableRow>
-                      <CTableHeaderCell className="text-center">#</CTableHeaderCell>
-                      <CTableHeaderCell className="text-center">No. Factura</CTableHeaderCell>
-                      <CTableHeaderCell>Referencia</CTableHeaderCell>
-                      <CTableHeaderCell>Fecha</CTableHeaderCell>
-                      <CTableHeaderCell>Cód. Producto</CTableHeaderCell>
-                      <CTableHeaderCell>Cód. Proveedor</CTableHeaderCell>
-                      <CTableHeaderCell>Descripción</CTableHeaderCell>
-                      <CTableHeaderCell className="text-center">Cantidad</CTableHeaderCell>
-                      <CTableHeaderCell className="text-end">IVA</CTableHeaderCell>
-                      <CTableHeaderCell className="text-end">Total</CTableHeaderCell>
-                    </CTableRow>
-                  </CTableHead>
-                  <CTableBody>
-                    {detallesPagina.length === 0 ? (
-                      <CTableRow>
-                        <CTableDataCell colSpan={10} className="text-center py-4 text-muted">
-                          No hay detalles para mostrar.
-                        </CTableDataCell>
-                      </CTableRow>
-                    ) : (
-                      detallesPagina.map((det, index) => (
-                        <CTableRow key={index}>
-                          <CTableDataCell className="text-center">{paginaDetalle * PAGE_SIZE + index + 1}</CTableDataCell>
-                          <CTableDataCell className="text-center">{det._noFactura || '—'}</CTableDataCell>
-                          <CTableDataCell>{det._referencia || '—'}</CTableDataCell>
-                          <CTableDataCell>{det._fecha ? formatFecha(det._fecha) : '—'}</CTableDataCell>
-                          <CTableDataCell>{det._producto?.codigoProducto || '—'}</CTableDataCell>
-                          <CTableDataCell>{det._producto?.codigoProductoProveedor || '—'}</CTableDataCell>
-                          <CTableDataCell>{det._producto?.descripcionProducto || '—'}</CTableDataCell>
-                          <CTableDataCell className="text-center">{det.cantidad ?? '—'}</CTableDataCell>
-                          <CTableDataCell className="text-end">Q{(det.iva ?? 0).toFixed(2)}</CTableDataCell>
-                          <CTableDataCell className="text-end fw-bold text-success">Q{(det.ImpTotal ?? 0).toFixed(2)}</CTableDataCell>
-                        </CTableRow>
-                      ))
-                    )}
-                  </CTableBody>
-                </CTable>
-                <Paginador
-                  paginaActual={paginaDetalle}
-                  totalPaginas={totalPaginasDetalle}
-                  totalElementos={totalDetalles}
-                  onCambiar={setPaginaDetalle}
                 />
               </>
             )}

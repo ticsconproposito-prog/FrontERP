@@ -3,7 +3,11 @@ import React, { createContext, useContext, useState, useCallback, useEffect, use
 const AuthContext = createContext(null)
 
 const TIMEOUT_INACTIVIDAD_MS = 30 * 60 * 1000 // 30 minutos en milisegundos
-const EVENTOS_ACTIVIDAD = ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart', 'click']
+const THROTTLE_ACTIVIDAD_MS = 5000 // No reiniciar el timer más de 1 vez cada 5s
+const FETCH_LOGOUT_TIMEOUT_MS = 8000 // Timeout máximo para el fetch de logout
+// mousemove se excluye intencionalmente: dispara cientos de eventos por segundo
+// y provoca congelamiento del navegador al combinarse con escrituras a localStorage.
+const EVENTOS_ACTIVIDAD = ['mousedown', 'keydown', 'scroll', 'touchstart', 'click']
 
 const cargarSesion = (clave, porDefecto) => {
   try {
@@ -12,6 +16,13 @@ const cargarSesion = (clave, porDefecto) => {
   } catch {
     return porDefecto
   }
+}
+
+// Realiza un fetch con timeout para evitar que la app quede colgada
+const fetchConTimeout = (url, opciones = {}, timeoutMs = FETCH_LOGOUT_TIMEOUT_MS) => {
+  const controller = new AbortController()
+  const id = setTimeout(() => controller.abort(), timeoutMs)
+  return fetch(url, { ...opciones, signal: controller.signal }).finally(() => clearTimeout(id))
 }
 
 export const AuthProvider = ({ children }) => {
@@ -25,12 +36,21 @@ export const AuthProvider = ({ children }) => {
   const [fechaLogin, setFechaLogin] = useState(() => cargarSesion('erp_fechaLogin', null))
 
   const timerRef = useRef(null)
+  const ultimaEjecucionRef = useRef(0)
+  const cerrandoSesionRef = useRef(false)
   // Ref para acceder al logout actualizado dentro del event listener
   const logoutRef = useRef(null)
 
   // ── Logout ──────────────────────────────────────────────────────────────────
   const logout = useCallback(async (motivo = 'manual') => {
-    if (timerRef.current) clearTimeout(timerRef.current)
+    // Evita que dos disparos simultáneos (timer + acción del usuario) ejecuten logout dos veces
+    if (cerrandoSesionRef.current) return
+    cerrandoSesionRef.current = true
+
+    if (timerRef.current) {
+      clearTimeout(timerRef.current)
+      timerRef.current = null
+    }
 
     const idLoginGuardado = cargarSesion('erp_idLogin', null)
 
@@ -38,13 +58,13 @@ export const AuthProvider = ({ children }) => {
       try {
         // Leer idUsuario guardado directamente (no depende del nombre del campo del API)
         const idUsuario = cargarSesion('erp_idUsuario', 0)
-        await fetch(`/api/editarSegLogin/${idLoginGuardado}`, {
+        await fetchConTimeout(`/api/editarSegLogin/${idLoginGuardado}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ idLogin: idLoginGuardado, idUsuario, estadoConexion: 'Inactivo' }),
         })
-       /* console.log('[Auth] Sesión marcada como Inactiva — idLogin:', idLoginGuardado, 'idUsuario:', idUsuario) */
       } catch (e) {
+        // No bloqueamos el logout si el backend falla o el fetch se aborta por timeout
         console.error('[Auth] Error al cerrar sesión en el servidor:', e)
       }
     }
@@ -66,6 +86,8 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem('erp_idLogin')
     localStorage.removeItem('erp_fechaLogin')
     localStorage.removeItem('erp_ultimaActividad')
+
+    cerrandoSesionRef.current = false
   }, [])
 
   // Mantener ref sincronizada con la función logout actual
@@ -74,39 +96,77 @@ export const AuthProvider = ({ children }) => {
   }, [logout])
 
   // ── Temporizador de inactividad ──────────────────────────────────────────────
+  // Throttled: máximo una ejecución cada THROTTLE_ACTIVIDAD_MS para evitar saturar
+  // el hilo principal con escrituras a localStorage y reseteos de setTimeout.
   const reiniciarTimer = useCallback(() => {
+    const ahora = Date.now()
+    if (ahora - ultimaEjecucionRef.current < THROTTLE_ACTIVIDAD_MS) return
+    ultimaEjecucionRef.current = ahora
+
     if (timerRef.current) clearTimeout(timerRef.current)
-    localStorage.setItem('erp_ultimaActividad', Date.now().toString())
+    try {
+      localStorage.setItem('erp_ultimaActividad', ahora.toString())
+    } catch {
+      // Ignorar errores de quota o modo privado
+    }
     timerRef.current = setTimeout(() => {
       logoutRef.current?.('inactividad')
     }, TIMEOUT_INACTIVIDAD_MS)
   }, [])
 
-  // Activar/desactivar listeners según si hay sesión
-  useEffect(() => {
-    if (!usuario) {
-      // Sin sesión: limpiar timer y listeners
-      if (timerRef.current) clearTimeout(timerRef.current)
-      EVENTOS_ACTIVIDAD.forEach((ev) => window.removeEventListener(ev, reiniciarTimer))
-      return
-    }
-
-    // Verificar si la sesión ya expiró al recargar la página
+  // Verifica si la sesión expiró comparando contra la última actividad guardada.
+  // Se ejecuta cuando la pestaña vuelve a estar visible (cubre el caso donde el
+  // navegador suspendió los setTimeout porque la pestaña estaba en background).
+  const verificarExpiracion = useCallback(() => {
     const ultimaActividad = parseInt(localStorage.getItem('erp_ultimaActividad') || '0', 10)
     if (ultimaActividad && Date.now() - ultimaActividad > TIMEOUT_INACTIVIDAD_MS) {
       logoutRef.current?.('inactividad')
+      return true
+    }
+    return false
+  }, [])
+
+  // Activar/desactivar listeners según si hay sesión
+  useEffect(() => {
+    if (!usuario) {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current)
+        timerRef.current = null
+      }
       return
     }
 
-    // Arrancar timer y escuchar actividad
+    // Verificar si la sesión ya expiró al cargar / re-montar
+    if (verificarExpiracion()) return
+
+    // Forzar el primer reset (saltarse el throttle inicial)
+    ultimaEjecucionRef.current = 0
     reiniciarTimer()
-    EVENTOS_ACTIVIDAD.forEach((ev) => window.addEventListener(ev, reiniciarTimer, { passive: true }))
+
+    EVENTOS_ACTIVIDAD.forEach((ev) =>
+      window.addEventListener(ev, reiniciarTimer, { passive: true })
+    )
+
+    // Al volver a la pestaña, comprobar si expiró mientras estaba en background
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        if (!verificarExpiracion()) {
+          ultimaEjecucionRef.current = 0
+          reiniciarTimer()
+        }
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange)
 
     return () => {
-      if (timerRef.current) clearTimeout(timerRef.current)
+      if (timerRef.current) {
+        clearTimeout(timerRef.current)
+        timerRef.current = null
+      }
       EVENTOS_ACTIVIDAD.forEach((ev) => window.removeEventListener(ev, reiniciarTimer))
+      document.removeEventListener('visibilitychange', onVisibilityChange)
     }
-  }, [usuario, reiniciarTimer])
+  }, [usuario, reiniciarTimer, verificarExpiracion])
 
   // ── Login ────────────────────────────────────────────────────────────────────
   const login = useCallback(async (datosUsuario, idLoginActual) => {
@@ -126,17 +186,25 @@ export const AuthProvider = ({ children }) => {
     localStorage.setItem('erp_idUsuario', JSON.stringify(idUsuario))
     localStorage.setItem('erp_idLogin', JSON.stringify(idLoginActual))
     localStorage.setItem('erp_fechaLogin', JSON.stringify(ahora))
+    localStorage.setItem('erp_ultimaActividad', Date.now().toString())
 
     try {
+      // Las 3 cargas son independientes entre sí en cuanto a IO: las pedimos
+      // en paralelo en lugar de secuencialmente. Esto reduce el tiempo total
+      // del login de la suma de las 3 latencias a la latencia de la más lenta.
+      const [resUsuariosPerfiles, resPerfilesPaginas, resPaginas] = await Promise.all([
+        fetch('/api/usuariosPerfiles?size=1000'),
+        fetch('/api/perfilesPaginas?size=1000'),
+        fetch('/api/paginas?size=1000'),
+      ])
 
-      /* console.log('[Auth] Usuario logueado:', datosUsuario)
-      console.log('[Auth] idUsuario:', idUsuario) */
+      const [todosUsuariosPerfiles, todosPerfilesPaginas, respPaginas] = await Promise.all([
+        resUsuariosPerfiles.json(),
+        resPerfilesPaginas.json(),
+        resPaginas.json(),
+      ])
 
       // 1. Perfiles asignados al usuario
-      const resUsuariosPerfiles = await fetch('/api/usuariosPerfiles?size=1000')
-      const todosUsuariosPerfiles = await resUsuariosPerfiles.json()
-      /* console.log('[Auth] /api/usuariosPerfiles response:', todosUsuariosPerfiles) */
-
       const perfilesUsuario = Array.isArray(todosUsuariosPerfiles)
         ? todosUsuariosPerfiles.filter((p) => {
             const idP = Number(p.idUsuario ?? p.id_Usuario ?? p.ID_Usuario ?? -1)
@@ -144,20 +212,13 @@ export const AuthProvider = ({ children }) => {
           })
         : []
 
-      /* console.log('[Auth] Perfiles del usuario:', perfilesUsuario) */
-
       const conPerfiles = perfilesUsuario.length > 0
       setTienePerfiles(conPerfiles)
       localStorage.setItem('erp_tienePerfiles', JSON.stringify(conPerfiles))
 
       const idPerfiles = perfilesUsuario.map((p) => Number(p.idPerfil ?? p.id_Perfil ?? -1))
-      /* console.log('[Auth] IDs de perfiles:', idPerfiles) */  
 
       // 2. Páginas asignadas a esos perfiles
-      const resPerfilesPaginas = await fetch('/api/perfilesPaginas?size=1000')
-      const todosPerfilesPaginas = await resPerfilesPaginas.json()
-      /* console.log('[Auth] /api/perfilesPaginas response:', todosPerfilesPaginas) */
-
       const asignacionesPerfil = Array.isArray(todosPerfilesPaginas)
         ? todosPerfilesPaginas.filter((pp) => {
             const idPerfil = Number(pp.idPerfil ?? pp.id_Perfil ?? -1)
@@ -168,13 +229,8 @@ export const AuthProvider = ({ children }) => {
       const idPaginasPermitidas = asignacionesPerfil.map(
         (pp) => Number(pp.idPagina ?? pp.id_Pagina ?? -1)
       )
-      /* console.log('[Auth] IDs de páginas permitidas:', idPaginasPermitidas) */
 
       // 3. URLs desde /api/paginas (respuesta con content:[])
-      const resPaginas = await fetch('/api/paginas?size=1000')
-      const respPaginas = await resPaginas.json()
-      /* console.log('[Auth] /api/paginas response:', respPaginas) */
-
       const todasPaginas = Array.isArray(respPaginas)
         ? respPaginas
         : Array.isArray(respPaginas?.content)
@@ -189,8 +245,6 @@ export const AuthProvider = ({ children }) => {
       const urls = paginasFiltradas
         .map((pag) => String(pag.URL ?? pag.url ?? pag.Url ?? '').trim())
         .filter(Boolean)
-
-      /* console.log('[Auth] URLs permitidas finales:', urls) */
 
       setPaginasPermitidas(urls)
       localStorage.setItem('erp_paginas', JSON.stringify(urls))

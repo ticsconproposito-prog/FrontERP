@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useAuth } from '../../../context/AuthContext'
+import { mapConLimite, fetchConCache } from '../../../utils/fetchHelpers'
 import logoFerreteria from 'src/assets/images/logo-ferreteria-agmner.png'
 import {
   CButton,
@@ -168,7 +169,16 @@ const ReporteConsignaciones = () => {
   // ── Cargar consignaciones ──────────────────────────────────────────────────
   // Siempre se traen todos los registros del rango de fechas y se filtra
   // client-side por tipoDocumento=4, luego se pagina localmente.
+  const abortConsignacionesRef = useRef(null)
   const cargarConsignaciones = useCallback(async (pagina, filtros) => {
+    // Cancelar petición previa si todavía estaba en curso
+    if (abortConsignacionesRef.current) {
+      abortConsignacionesRef.current.abort()
+    }
+    const controller = new AbortController()
+    abortConsignacionesRef.current = controller
+    const { signal } = controller
+
     setCargando(true)
     setError(null)
     try {
@@ -176,7 +186,7 @@ const ReporteConsignaciones = () => {
       if (filtros.inicio) params.append('fechaInicio', filtros.inicio)
       if (filtros.fin) params.append('fechaFin', filtros.fin)
 
-      const res = await fetch(`/api/erpEncabezadoFacturas?${params}`)
+      const res = await fetch(`/api/erpEncabezadoFacturas?${params}`, { signal })
       if (!res.ok) throw new Error(`Error ${res.status}`)
       const data = await res.json()
 
@@ -191,22 +201,23 @@ const ReporteConsignaciones = () => {
       setTodasConsignaciones(todasFiltradas)
 
       // Calcular total pendiente: suma de ImpTotal del detalle donde consignacionFacturada=0
-      const totalesPendientes = await Promise.all(
-        todasFiltradas.map(async (enc) => {
-          try {
-            const rd = await fetch(`/api/detalleFactura?idEncabezadoFactura=${enc.idEncabezadoFactura}`)
-            if (!rd.ok) return 0
-            const dd = await rd.json()
-            const lineas = Array.isArray(dd) ? dd : dd.content ?? []
-            return lineas
-              .filter((d) => String(d.consignacionFacturada) !== '1')
-              .reduce((s, d) => s + (Number(d.ImpTotal) || 0), 0)
-          } catch (_) {
-            return 0
-          }
-        })
-      )
-      const totalPendiente = totalesPendientes.reduce((s, t) => s + t, 0)
+      // Limitamos a 6 peticiones simultáneas para no saturar el navegador
+      const totalesPendientes = await mapConLimite(todasFiltradas, 6, async (enc) => {
+        if (signal.aborted) return 0
+        try {
+          const rd = await fetch(`/api/detalleFactura?idEncabezadoFactura=${enc.idEncabezadoFactura}`, { signal })
+          if (!rd.ok) return 0
+          const dd = await rd.json()
+          const lineas = Array.isArray(dd) ? dd : dd.content ?? []
+          return lineas
+            .filter((d) => String(d.consignacionFacturada) !== '1')
+            .reduce((s, d) => s + (Number(d.ImpTotal) || 0), 0)
+        } catch (_) {
+          return 0
+        }
+      })
+      if (signal.aborted) return
+      const totalPendiente = totalesPendientes.reduce((s, t) => s + (t || 0), 0)
 
       setResumen({
         cantidad: todasFiltradas.length,
@@ -223,16 +234,26 @@ const ReporteConsignaciones = () => {
       setTotalPaginas(totalPags)
       setTotalElementos(totalElems)
     } catch (e) {
+      // Si la petición fue cancelada (cambio de filtros o desmontaje) no es un error real
+      if (e.name === 'AbortError') return
       setError(e.message)
       setConsignaciones([])
       setTodasConsignaciones([])
     } finally {
-      setCargando(false)
+      if (!controller.signal.aborted) {
+        setCargando(false)
+      }
     }
   }, [])
 
   useEffect(() => {
     cargarConsignaciones(0, filtroAplicado)
+    // Cancelar peticiones pendientes al desmontar para evitar memory leaks
+    return () => {
+      if (abortConsignacionesRef.current) {
+        abortConsignacionesRef.current.abort()
+      }
+    }
   }, [cargarConsignaciones])
 
   const handleBuscar = () => {
@@ -271,40 +292,39 @@ const ReporteConsignaciones = () => {
     setCargandoDetalle(true)
     try {
       const idEnc = factura.idEncabezadoFactura
-      console.log('[Ver] Cargando detalle para idEncabezadoFactura:', idEnc)
 
       const res = await fetch(`/api/detalleFactura?idEncabezadoFactura=${idEnc}`)
       if (!res.ok) throw new Error(`Error ${res.status} al cargar detalle`)
       const data = await res.json()
       const lineas = Array.isArray(data) ? data : data.content ?? []
-      console.log('[Ver] Líneas de detalle:', lineas)
 
-      const lineasEnriquecidas = await Promise.all(
-        lineas.map(async (item) => {
-          const idProd = item.idProducto
-          let descripcionProducto = `Producto ${idProd || '?'}`
-          if (idProd) {
-            try {
+      // Cachear cada producto por idProducto durante 60s para evitar volver a pedirlo
+      // Limitar a 6 fetch simultáneos
+      const lineasEnriquecidas = await mapConLimite(lineas, 6, async (item) => {
+        const idProd = item.idProducto
+        let descripcionProducto = `Producto ${idProd || '?'}`
+        if (idProd) {
+          try {
+            const lista = await fetchConCache(`producto:${idProd}`, async () => {
               const rp = await fetch(`/api/productos?idProducto=${idProd}&page=0&size=1`)
-              if (rp.ok) {
-                const prod = await rp.json()
-                const lista = Array.isArray(prod) ? prod : prod.content ?? []
-                if (lista.length > 0) descripcionProducto = lista[0].descripcionProducto || descripcionProducto
-              }
-            } catch (_) { /* silencioso */ }
-          }
-          return {
-            idDetalleFactura:      item.idDetalleFactura,
-            idProducto:            item.idProducto,
-            cantidad:              Number(item.cantidad)            || 0,
-            precioVenta:           Number(item.precioVenta         ?? item.PrecioVenta)         || 0,
-            cantidadDeDescuento:   Number(item.cantidadDeDescuento ?? item.CantidadDeDescuento) || 0,
-            ImpTotal:              Number(item.ImpTotal            ?? item.impTotal)             || 0,
-            consignacionFacturada: item.consignacionFacturada,
-            descripcionProducto,
-          }
-        })
-      )
+              if (!rp.ok) return []
+              const prod = await rp.json()
+              return Array.isArray(prod) ? prod : prod.content ?? []
+            })
+            if (lista.length > 0) descripcionProducto = lista[0].descripcionProducto || descripcionProducto
+          } catch (_) { /* silencioso */ }
+        }
+        return {
+          idDetalleFactura:      item.idDetalleFactura,
+          idProducto:            item.idProducto,
+          cantidad:              Number(item.cantidad)            || 0,
+          precioVenta:           Number(item.precioVenta         ?? item.PrecioVenta)         || 0,
+          cantidadDeDescuento:   Number(item.cantidadDeDescuento ?? item.CantidadDeDescuento) || 0,
+          ImpTotal:              Number(item.ImpTotal            ?? item.impTotal)             || 0,
+          consignacionFacturada: item.consignacionFacturada,
+          descripcionProducto,
+        }
+      })
       setDetalleFactura(lineasEnriquecidas)
     } catch (e) {
       console.error('[Ver] Error:', e)
@@ -329,37 +349,36 @@ const ReporteConsignaciones = () => {
       const data = await res.json()
       const lineas = Array.isArray(data) ? data : data.content ?? []
 
-      const enriquecidas = await Promise.all(
-        lineas.map(async (item) => {
-          let descripcionProducto = `Producto ${item.idProducto || '?'}`
-          let codigoProducto = String(item.idProducto || '')
-          if (item.idProducto) {
-            try {
+      const enriquecidas = await mapConLimite(lineas, 6, async (item) => {
+        let descripcionProducto = `Producto ${item.idProducto || '?'}`
+        let codigoProducto = String(item.idProducto || '')
+        if (item.idProducto) {
+          try {
+            const lista = await fetchConCache(`producto:${item.idProducto}`, async () => {
               const rp = await fetch(`/api/productos?idProducto=${item.idProducto}&page=0&size=1`)
-              if (rp.ok) {
-                const prod = await rp.json()
-                const lista = Array.isArray(prod) ? prod : prod.content ?? []
-                if (lista.length > 0) {
-                  descripcionProducto = lista[0].descripcionProducto || descripcionProducto
-                  codigoProducto      = lista[0].codigoProducto      || codigoProducto
-                }
-              }
-            } catch (_) { /* silencioso */ }
-          }
-          return {
-            ...item,
-            idDetalleFactura:      item.idDetalleFactura,
-            idProducto:            item.idProducto,
-            codigoProducto,
-            cantidad:              Number(item.cantidad)            || 0,
-            precioVenta:           Number(item.precioVenta         ?? item.PrecioVenta)         || 0,
-            cantidadDeDescuento:   Number(item.cantidadDeDescuento ?? item.CantidadDeDescuento) || 0,
-            ImpTotal:              Number(item.ImpTotal            ?? item.impTotal)             || 0,
-            consignacionFacturada: item.consignacionFacturada,
-            descripcionProducto,
-          }
-        })
-      )
+              if (!rp.ok) return []
+              const prod = await rp.json()
+              return Array.isArray(prod) ? prod : prod.content ?? []
+            })
+            if (lista.length > 0) {
+              descripcionProducto = lista[0].descripcionProducto || descripcionProducto
+              codigoProducto      = lista[0].codigoProducto      || codigoProducto
+            }
+          } catch (_) { /* silencioso */ }
+        }
+        return {
+          ...item,
+          idDetalleFactura:      item.idDetalleFactura,
+          idProducto:            item.idProducto,
+          codigoProducto,
+          cantidad:              Number(item.cantidad)            || 0,
+          precioVenta:           Number(item.precioVenta         ?? item.PrecioVenta)         || 0,
+          cantidadDeDescuento:   Number(item.cantidadDeDescuento ?? item.CantidadDeDescuento) || 0,
+          ImpTotal:              Number(item.ImpTotal            ?? item.impTotal)             || 0,
+          consignacionFacturada: item.consignacionFacturada,
+          descripcionProducto,
+        }
+      })
       setDetalleAbonar(enriquecidas)
     } catch (e) {
       console.error('[Abonar] Error:', e)
@@ -409,29 +428,28 @@ const ReporteConsignaciones = () => {
         if (res.ok) {
           const data = await res.json()
           const lineas = Array.isArray(data) ? data : data.content ?? []
-          const lineasConDesc = await Promise.all(
-            lineas.map(async (item) => {
-              const idProd = item.idProducto
-              let descripcion = ''
-              if (idProd) {
-                try {
+          const lineasConDesc = await mapConLimite(lineas, 6, async (item) => {
+            const idProd = item.idProducto
+            let descripcion = ''
+            if (idProd) {
+              try {
+                const lista = await fetchConCache(`producto:${idProd}`, async () => {
                   const rp = await fetch(`/api/productos?idProducto=${idProd}&page=0&size=1`)
-                  if (rp.ok) {
-                    const prod = await rp.json()
-                    const lista = Array.isArray(prod) ? prod : prod.content ?? []
-                    descripcion = lista[0]?.descripcionProducto || ''
-                  }
-                } catch (_) { /* silencioso */ }
-              }
-              return {
-                cantidad:            Number(item.cantidad)            || 0,
-                precioVenta:         Number(item.precioVenta)         || 0,
-                cantidadDeDescuento: Number(item.cantidadDeDescuento) || 0,
-                ImpTotal:            Number(item.ImpTotal)            || 0,
-                descripcion,
-              }
-            })
-          )
+                  if (!rp.ok) return []
+                  const prod = await rp.json()
+                  return Array.isArray(prod) ? prod : prod.content ?? []
+                })
+                descripcion = lista[0]?.descripcionProducto || ''
+              } catch (_) { /* silencioso */ }
+            }
+            return {
+              cantidad:            Number(item.cantidad)            || 0,
+              precioVenta:         Number(item.precioVenta)         || 0,
+              cantidadDeDescuento: Number(item.cantidadDeDescuento) || 0,
+              ImpTotal:            Number(item.ImpTotal)            || 0,
+              descripcion,
+            }
+          })
           detalle = lineasConDesc
         }
       } catch (_) { detalle = [] }
