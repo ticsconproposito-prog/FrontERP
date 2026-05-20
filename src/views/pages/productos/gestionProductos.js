@@ -756,18 +756,19 @@ const Layout = () => {
                     <CTableDataCell className="text-end">
                       {modoEditarPrecio ? (
                         <CFormInput
-                          type="number"
-                          step="0.01"
-                          min="0"
+                          type="text"
+                          inputMode="decimal"
                           size="sm"
                           style={{ minWidth: '90px' }}
                           value={preciosEditados[producto.idProducto]?.compra ?? ''}
-                          onChange={(e) =>
-                            setPreciosEditados(prev => ({
-                              ...prev,
-                              [producto.idProducto]: { ...prev[producto.idProducto], compra: e.target.value }
-                            }))
-                          }
+                          onChange={(e) => {
+                            const val = e.target.value
+                            if (val === '' || /^\d*\.?\d*$/.test(val))
+                              setPreciosEditados(prev => ({
+                                ...prev,
+                                [producto.idProducto]: { ...prev[producto.idProducto], compra: val }
+                              }))
+                          }}
                         />
                       ) : (
                         producto.precioCompra != null ? Number(producto.precioCompra).toFixed(2) : '—'
@@ -776,18 +777,19 @@ const Layout = () => {
                     <CTableDataCell className="text-end">
                       {modoEditarPrecio ? (
                         <CFormInput
-                          type="number"
-                          step="0.01"
-                          min="0"
+                          type="text"
+                          inputMode="decimal"
                           size="sm"
                           style={{ minWidth: '90px' }}
                           value={preciosEditados[producto.idProducto]?.venta ?? ''}
-                          onChange={(e) =>
-                            setPreciosEditados(prev => ({
-                              ...prev,
-                              [producto.idProducto]: { ...prev[producto.idProducto], venta: e.target.value }
-                            }))
-                          }
+                          onChange={(e) => {
+                            const val = e.target.value
+                            if (val === '' || /^\d*\.?\d*$/.test(val))
+                              setPreciosEditados(prev => ({
+                                ...prev,
+                                [producto.idProducto]: { ...prev[producto.idProducto], venta: val }
+                              }))
+                          }}
                         />
                       ) : (
                         producto.precioVenta != null ? Number(producto.precioVenta).toFixed(2) : '—'

@@ -405,15 +405,15 @@ const Layout = () => {
   };
 
   const actualizarDescuentoDetalle = (index, descuento) => {
-    const valorDesc = Number(descuento);
-    if (descuento !== '' && (valorDesc < 0 || isNaN(valorDesc))) {
-      setAlertaCantidadModal(true);
+    // Permitir solo caracteres numéricos, punto decimal y campo vacío
+    if (descuento !== '' && !/^\d*\.?\d*$/.test(descuento)) {
       return;
     }
     const nuevoDetalle = [...detalleFactura];
-    nuevoDetalle[index].descuento = descuento === '' ? '' : valorDesc;
+    // Guardar el texto tal cual para permitir escribir decimales (ej: "5.")
+    nuevoDetalle[index].descuento = descuento;
     const cant = Number(nuevoDetalle[index].cantidad) || 0;
-    const desc = Number(nuevoDetalle[index].descuento) || 0;
+    const desc = Number(descuento) || 0;
     nuevoDetalle[index].precio = cant * nuevoDetalle[index].precioUnitario;
     nuevoDetalle[index].total = nuevoDetalle[index].precio - desc;
     setDetalleFactura(nuevoDetalle);
@@ -424,7 +424,7 @@ const Layout = () => {
   };
 
   const calcularTotalDescuentoProductos = () => {
-    return detalleFactura.reduce((sum, item) => sum + (item.descuento || 0), 0);
+    return detalleFactura.reduce((sum, item) => sum + (Number(item.descuento) || 0), 0);
   };
 
   const calcularBaseImponible = () => {
@@ -1970,8 +1970,8 @@ const Layout = () => {
                             </CTableDataCell>
                             <CTableDataCell>
                               <CFormInput
-                                type="number"
-                                min="1"
+                                type="text"
+                                inputMode="numeric"
                                 value={item.cantidad === '' ? '' : item.cantidad}
                                 onChange={(e) => actualizarCantidadDetalle(index, e.target.value)}
                                 placeholder="0"
@@ -1986,9 +1986,8 @@ const Layout = () => {
                             </CTableDataCell>
                             <CTableDataCell>
                               <CFormInput
-                                type="number"
-                                min="0"
-                                step="0.01"
+                                type="text"
+                                inputMode="decimal"
                                 value={item.descuento === '' ? '' : item.descuento}
                                 onChange={(e) => actualizarDescuentoDetalle(index, e.target.value)}
                                 placeholder="0"

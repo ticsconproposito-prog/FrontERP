@@ -26,7 +26,7 @@ import {
   CModalBody,
   CModalFooter,
 } from '@coreui/react'
-import * as XLSX from 'xlsx'
+import ExcelJS from 'exceljs'
 
 const PAGE_SIZE = 20
 const SIZE_TODOS = 10000
@@ -67,6 +67,9 @@ const ReporteInventario = () => {
   const [modoEditarExistencias, setModoEditarExistencias] = useState(false)
   const [existenciasEditadas, setExistenciasEditadas] = useState({})
   const [guardandoExistencias, setGuardandoExistencias] = useState(false)
+
+  // Modal de exportación
+  const [modalExportarVisible, setModalExportarVisible] = useState(false)
 
   // Modal de mensajes
   const [modalMsgVisible, setModalMsgVisible] = useState(false)
@@ -114,10 +117,13 @@ const ReporteInventario = () => {
   const formatearInventario = (arr) =>
     arr.map((item) => ({
       idInventario: item.idInventario,
+      idProducto: item.idProducto?.idProducto,
       codigoProducto: item.idProducto?.codigoProducto || 'N/A',
       codigoProductoProveedor: item.idProducto?.codigoProductoProveedor || 'N/A',
       descripcionProducto: item.idProducto?.descripcionProducto || 'N/A',
+      unidadDeMedida: item.idProducto?.unidadDeMedida,
       precioCompra: item.idProducto?.precioCompra || 0,
+      precioVenta: item.idProducto?.precioVenta || 0,
       estado: item.idProducto?.estado ?? item.estado,
       idUbicacion: item.idUbicacion ?? '—',
       cantidadExistencias: item.cantidadExistencias || 0,
@@ -214,6 +220,8 @@ const ReporteInventario = () => {
       inicial[item.idInventario] = {
         existencias: item.cantidadExistencias != null ? String(item.cantidadExistencias) : '0',
         danados: item.cantidadDanados != null ? String(item.cantidadDanados) : '0',
+        precioCompra: item.precioCompra != null ? String(item.precioCompra) : '0',
+        precioVenta: item.precioVenta != null ? String(item.precioVenta) : '0',
       }
     })
     setExistenciasEditadas(inicial)
@@ -227,7 +235,9 @@ const ReporteInventario = () => {
 
   const guardarExistencias = async () => {
     const regexEntero = /^\d+$/
-    const cambios = inventario.filter(item => {
+    const regexDecimal = /^\d+(\.\d{1,2})?$/
+
+    const cambiosInv = inventario.filter(item => {
       const ed = existenciasEditadas[item.idInventario]
       if (!ed) return false
       const exCambio = ed.existencias?.trim() && regexEntero.test(ed.existencias.trim()) && Number(ed.existencias) !== Number(item.cantidadExistencias)
@@ -235,9 +245,17 @@ const ReporteInventario = () => {
       return exCambio || danCambio
     })
 
-    if (cambios.length === 0) {
+    const cambiosPrecios = inventario.filter(item => {
+      const ed = existenciasEditadas[item.idInventario]
+      if (!ed || !item.idProducto) return false
+      const compraCambio = ed.precioCompra?.trim() && regexDecimal.test(ed.precioCompra.trim()) && Number(ed.precioCompra) !== Number(item.precioCompra)
+      const ventaCambio = ed.precioVenta?.trim() && regexDecimal.test(ed.precioVenta.trim()) && Number(ed.precioVenta) !== Number(item.precioVenta)
+      return compraCambio || ventaCambio
+    })
+
+    if (cambiosInv.length === 0 && cambiosPrecios.length === 0) {
       setModalMsgTitle('Sin cambios')
-      setModalMsgBody('No se detectaron cambios en las existencias.')
+      setModalMsgBody('No se detectaron cambios.')
       setModalMsgColor('info')
       setModalMsgVisible(true)
       cancelarEditarExistencias()
@@ -246,27 +264,51 @@ const ReporteInventario = () => {
 
     setGuardandoExistencias(true)
     try {
-      await Promise.all(
-        cambios.map(item => {
+      await Promise.all([
+        ...cambiosInv.map(item => {
           const ed = existenciasEditadas[item.idInventario]
           const nuevasEx = ed.existencias?.trim() && regexEntero.test(ed.existencias.trim()) ? Number(ed.existencias) : item.cantidadExistencias
           const nuevosDan = ed.danados?.trim() && regexEntero.test(ed.danados.trim()) ? Number(ed.danados) : item.cantidadDanados
-          const payload = {
-            cantidadExistencias: nuevasEx,
-            cantidadDanados: nuevosDan,
-            idUsuarioModificacion: idUsuarioActual,
-          }
           return fetch(`/api/editarInventario/${item.idInventario}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
+            body: JSON.stringify({ cantidadExistencias: nuevasEx, cantidadDanados: nuevosDan, idUsuarioModificacion: idUsuarioActual }),
           }).then(r => { if (!r.ok) throw new Error(`Error al actualizar inventario ${item.idInventario}`) })
-        })
-      )
+        }),
+        // Deduplicar por idProducto: un solo llamado por producto aunque tenga varias ubicaciones
+        ...Object.values(
+          cambiosPrecios.reduce((acc, item) => {
+            if (!acc[item.idProducto]) acc[item.idProducto] = item
+            return acc
+          }, {})
+        ).map(item => {
+          const ed = existenciasEditadas[item.idInventario]
+          const nuevaCompra = ed.precioCompra?.trim() && regexDecimal.test(ed.precioCompra.trim()) ? Number(ed.precioCompra) : item.precioCompra
+          const nuevaVenta = ed.precioVenta?.trim() && regexDecimal.test(ed.precioVenta.trim()) ? Number(ed.precioVenta) : item.precioVenta
+          return fetch(`/api/editarProducto/${item.idProducto}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              codigoProducto: item.codigoProducto,
+              codigoProductoProveedor: item.codigoProductoProveedor,
+              descripcionProducto: item.descripcionProducto,
+              unidadDeMedida: item.unidadDeMedida,
+              precioCompra: nuevaCompra,
+              precioVenta: nuevaVenta,
+              idUsuarioModificacion: idUsuarioActual,
+            }),
+          }).then(r => { if (!r.ok) throw new Error(`Error al actualizar precio de ${item.codigoProducto}`) })
+        }),
+      ])
       await cargarInventario(pageInv, debouncedBusqueda, debouncedUbicacion)
       cancelarEditarExistencias()
+      const idsActualizados = new Set([
+        ...cambiosInv.map(i => i.idProducto),
+        ...cambiosPrecios.map(i => i.idProducto),
+      ])
+      const total = idsActualizados.size
       setModalMsgTitle('Éxito')
-      setModalMsgBody(`${cambios.length} registro(s) actualizado(s) correctamente.`)
+      setModalMsgBody(`${total} registro(s) actualizado(s) correctamente.`)
       setModalMsgColor('success')
       setModalMsgVisible(true)
     } catch (err) {
@@ -288,7 +330,21 @@ const ReporteInventario = () => {
   }
 
   // ── Exportar a Excel ──
-  const exportarAExcel = async () => {
+  const aplicarEstiloEncabezado = (fila) => {
+    fila.eachCell((cell) => {
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1A3A6B' } }
+      cell.alignment = { horizontal: 'center', vertical: 'middle' }
+      cell.border = {
+        top: { style: 'thin' }, bottom: { style: 'thin' },
+        left: { style: 'thin' }, right: { style: 'thin' },
+      }
+    })
+    fila.height = 20
+  }
+
+  const exportarAExcel = async (sinPrecioVenta = false) => {
+    setModalExportarVisible(false)
     if (tipoReporte === '1') {
       try {
         const params = new URLSearchParams({ page: 0, size: SIZE_TODOS })
@@ -303,23 +359,49 @@ const ReporteInventario = () => {
         const data = await res.json()
         const todos = Array.isArray(data) ? data : data.content || []
 
-        const datosExcel = todos.map((item, i) => ({
-          'No.': i + 1,
-          'Código Producto': item.producto?.codigoProducto || '',
-          'Código Proveedor': item.producto?.codigoProductoProveedor || '',
-          'Descripción': item.producto?.descripcionProducto || '',
-          'Precio Compra': item.producto?.precioCompra != null ? Number(item.producto.precioCompra).toFixed(2) : '',
-          'Total Existencias': item.totalExistencias ?? 0,
-          'Total Dañados': item.totalDanados ?? 0,
-          'Unidad de Medida': obtenerNombreUnidad(item.producto?.unidadDeMedida),
-          'Estado': obtenerNombreEstado(item.producto?.estado),
-        }))
+        const wb = new ExcelJS.Workbook()
+        const ws = wb.addWorksheet('Reporte General')
 
-        const ws = XLSX.utils.json_to_sheet(datosExcel)
-        ws['!cols'] = [{ wch: 5 }, { wch: 20 }, { wch: 20 }, { wch: 50 }, { wch: 15 }, { wch: 18 }, { wch: 15 }, { wch: 20 }, { wch: 15 }]
-        const wb = XLSX.utils.book_new()
-        XLSX.utils.book_append_sheet(wb, ws, 'Reporte General')
-        XLSX.writeFile(wb, `ReporteGeneral_${new Date().toISOString().slice(0, 10)}.xlsx`)
+        const columnas = [
+          { header: 'No.',              key: 'no',          width: 6  },
+          { header: 'Código Producto',  key: 'codProd',     width: 22 },
+          { header: 'Código Proveedor', key: 'codProv',     width: 22 },
+          { header: 'Descripción',      key: 'desc',        width: 50 },
+          { header: 'Total Existencias',key: 'existencias', width: 18 },
+          { header: 'Precio Compra',    key: 'compra',      width: 16 },
+          ...(!sinPrecioVenta ? [{ header: 'Precio Venta', key: 'venta', width: 16 }] : []),
+          { header: 'Total Dañados',    key: 'danados',     width: 15 },
+          { header: 'Unidad de Medida', key: 'unidad',      width: 20 },
+          { header: 'Estado',           key: 'estado',      width: 15 },
+        ]
+        ws.columns = columnas
+
+        aplicarEstiloEncabezado(ws.getRow(1))
+
+        todos.forEach((item, i) => {
+          const fila = {
+            no: i + 1,
+            codProd: item.producto?.codigoProducto || '',
+            codProv: item.producto?.codigoProductoProveedor || '',
+            desc: item.producto?.descripcionProducto || '',
+            existencias: item.totalExistencias ?? 0,
+            compra: item.producto?.precioCompra != null ? Number(item.producto.precioCompra).toFixed(2) : '',
+            danados: item.totalDanados ?? 0,
+            unidad: obtenerNombreUnidad(item.producto?.unidadDeMedida),
+            estado: obtenerNombreEstado(item.producto?.estado),
+          }
+          if (!sinPrecioVenta) fila.venta = item.producto?.precioVenta != null ? Number(item.producto.precioVenta).toFixed(2) : ''
+          ws.addRow(fila)
+        })
+
+        const buffer = await wb.xlsx.writeBuffer()
+        const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `ReporteGeneral_${new Date().toISOString().slice(0, 10)}.xlsx`
+        a.click()
+        URL.revokeObjectURL(url)
 
         setModalMsgTitle('Éxito')
         setModalMsgBody(`Se exportaron ${todos.length} registros correctamente.`)
@@ -347,23 +429,49 @@ const ReporteInventario = () => {
         const arr = Array.isArray(data) ? data : data.content || []
         const todos = formatearInventario(arr)
 
-        const datosExcel = todos.map((item, i) => ({
-          'No.': i + 1,
-          'Código Producto': item.codigoProducto || '',
-          'Código Proveedor': item.codigoProductoProveedor || '',
-          'Descripción': item.descripcionProducto || '',
-          'Precio Compra': Number(item.precioCompra || 0).toFixed(2),
-          'Existencias': item.cantidadExistencias,
-          'Dañados': item.cantidadDanados,
-          'Ubicación': obtenerNombreUbicacion(item.idUbicacion),
-          'Estado': obtenerNombreEstado(item.estado),
-        }))
+        const wb = new ExcelJS.Workbook()
+        const ws = wb.addWorksheet('Reporte por Ubicación')
 
-        const ws = XLSX.utils.json_to_sheet(datosExcel)
-        ws['!cols'] = [{ wch: 5 }, { wch: 20 }, { wch: 20 }, { wch: 50 }, { wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 20 }, { wch: 15 }]
-        const wb = XLSX.utils.book_new()
-        XLSX.utils.book_append_sheet(wb, ws, 'Reporte por Ubicación')
-        XLSX.writeFile(wb, `ReporteUbicacion_${new Date().toISOString().slice(0, 10)}.xlsx`)
+        const columnas = [
+          { header: 'No.',              key: 'no',          width: 6  },
+          { header: 'Código Producto',  key: 'codProd',     width: 22 },
+          { header: 'Código Proveedor', key: 'codProv',     width: 22 },
+          { header: 'Descripción',      key: 'desc',        width: 50 },
+          { header: 'Existencias',      key: 'existencias', width: 14 },
+          { header: 'Precio Compra',    key: 'compra',      width: 16 },
+          ...(!sinPrecioVenta ? [{ header: 'Precio Venta', key: 'venta', width: 16 }] : []),
+          { header: 'Dañados',          key: 'danados',     width: 12 },
+          { header: 'Ubicación',        key: 'ubicacion',   width: 20 },
+          { header: 'Estado',           key: 'estado',      width: 15 },
+        ]
+        ws.columns = columnas
+
+        aplicarEstiloEncabezado(ws.getRow(1))
+
+        todos.forEach((item, i) => {
+          const fila = {
+            no: i + 1,
+            codProd: item.codigoProducto || '',
+            codProv: item.codigoProductoProveedor || '',
+            desc: item.descripcionProducto || '',
+            existencias: item.cantidadExistencias,
+            compra: Number(item.precioCompra || 0).toFixed(2),
+            danados: item.cantidadDanados,
+            ubicacion: obtenerNombreUbicacion(item.idUbicacion),
+            estado: obtenerNombreEstado(item.estado),
+          }
+          if (!sinPrecioVenta) fila.venta = Number(item.precioVenta || 0).toFixed(2)
+          ws.addRow(fila)
+        })
+
+        const buffer = await wb.xlsx.writeBuffer()
+        const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `ReporteUbicacion_${new Date().toISOString().slice(0, 10)}.xlsx`
+        a.click()
+        URL.revokeObjectURL(url)
 
         setModalMsgTitle('Éxito')
         setModalMsgBody(`Se exportaron ${todos.length} registros correctamente.`)
@@ -486,7 +594,7 @@ const ReporteInventario = () => {
                 <CCol md={tipoReporte === '2' ? 4 : 3} className="d-flex align-items-end justify-content-end gap-2">
                   {tipoReporte === '2' && !modoEditarExistencias && (
                     <CButton className="text-white text-nowrap" style={{ backgroundColor: '#e8590c', borderColor: '#e8590c' }} onClick={activarModoEditarExistencias}>
-                      Editar Existencias
+                      Editar Existencias y Precios
                     </CButton>
                   )}
                   {tipoReporte === '2' && modoEditarExistencias && (
@@ -500,8 +608,10 @@ const ReporteInventario = () => {
                       </CButton>
                     </>
                   )}
-                  <CButton color="secondary" className="text-nowrap" onClick={limpiarBusqueda}>Limpiar</CButton>
-                  <CButton color="success" className="text-white text-nowrap" onClick={exportarAExcel}>Exportar</CButton>
+                  <div className="d-flex gap-2">
+                    <CButton color="secondary" className="text-nowrap" onClick={limpiarBusqueda}>Limpiar</CButton>
+                    <CButton color="success" className="text-white text-nowrap" onClick={() => setModalExportarVisible(true)}>Exportar</CButton>
+                  </div>
                 </CCol>
               </CRow>
 
@@ -525,13 +635,14 @@ const ReporteInventario = () => {
                       <CTableHead style={{ '--cui-table-bg': '#1a3a6b', '--cui-table-color': '#fff', '--cui-table-border-color': '#2a4a8b', backgroundColor: '#1a3a6b', color: '#fff' }}>
                         <CTableRow>
                           <CTableHeaderCell className="text-center">No.</CTableHeaderCell>
-                          <CTableHeaderCell>Código Producto</CTableHeaderCell>
-                          <CTableHeaderCell>Código Proveedor</CTableHeaderCell>
-                          <CTableHeaderCell>Descripción</CTableHeaderCell>
-                          <CTableHeaderCell className="text-end">Precio Compra</CTableHeaderCell>
+                          <CTableHeaderCell className="text-center">Código Producto</CTableHeaderCell>
+                          <CTableHeaderCell className="text-center">Código Proveedor</CTableHeaderCell>
+                          <CTableHeaderCell className="text-center">Descripción</CTableHeaderCell>
                           <CTableHeaderCell className="text-center">Total Existencias</CTableHeaderCell>
+                          <CTableHeaderCell className="text-center">Precio Compra</CTableHeaderCell>
+                          <CTableHeaderCell className="text-center">Precio Venta</CTableHeaderCell>
                           <CTableHeaderCell className="text-center">Total Dañados</CTableHeaderCell>
-                          <CTableHeaderCell>Unidad de Medida</CTableHeaderCell>
+                          <CTableHeaderCell className="text-center">Unidad de Medida</CTableHeaderCell>
                           <CTableHeaderCell className="text-center">Estado</CTableHeaderCell>
                         </CTableRow>
                       </CTableHead>
@@ -542,8 +653,9 @@ const ReporteInventario = () => {
                             <CTableDataCell>{item.producto?.codigoProducto || '—'}</CTableDataCell>
                             <CTableDataCell>{item.producto?.codigoProductoProveedor || '—'}</CTableDataCell>
                             <CTableDataCell>{item.producto?.descripcionProducto || '—'}</CTableDataCell>
-                            <CTableDataCell className="text-end">Q{Number(item.producto?.precioCompra || 0).toFixed(2)}</CTableDataCell>
                             <CTableDataCell className="text-center">{item.totalExistencias ?? 0}</CTableDataCell>
+                            <CTableDataCell className="text-end">Q{Number(item.producto?.precioCompra || 0).toFixed(2)}</CTableDataCell>
+                            <CTableDataCell className="text-end">Q{Number(item.producto?.precioVenta || 0).toFixed(2)}</CTableDataCell>
                             <CTableDataCell className="text-center">{item.totalDanados ?? 0}</CTableDataCell>
                             <CTableDataCell>{obtenerNombreUnidad(item.producto?.unidadDeMedida)}</CTableDataCell>
                             <CTableDataCell className="text-center">{obtenerNombreEstado(item.producto?.estado)}</CTableDataCell>
@@ -566,11 +678,12 @@ const ReporteInventario = () => {
                       <CTableHead style={{ '--cui-table-bg': '#1a3a6b', '--cui-table-color': '#fff', '--cui-table-border-color': '#2a4a8b', backgroundColor: '#1a3a6b', color: '#fff' }}>
                         <CTableRow>
                           <CTableHeaderCell className="text-center">No.</CTableHeaderCell>
-                          <CTableHeaderCell>Código Producto</CTableHeaderCell>
-                          <CTableHeaderCell>Código Proveedor</CTableHeaderCell>
-                          <CTableHeaderCell>Descripción</CTableHeaderCell>
-                          <CTableHeaderCell className="text-end">Precio Compra</CTableHeaderCell>
+                          <CTableHeaderCell className="text-center">Código Producto</CTableHeaderCell>
+                          <CTableHeaderCell className="text-center">Código Proveedor</CTableHeaderCell>
+                          <CTableHeaderCell className="text-center">Descripción</CTableHeaderCell>
                           <CTableHeaderCell className="text-center">Existencias</CTableHeaderCell>
+                          <CTableHeaderCell className="text-center">Precio Compra</CTableHeaderCell>
+                          <CTableHeaderCell className="text-center">Precio Venta</CTableHeaderCell>
                           <CTableHeaderCell className="text-center">Dañados</CTableHeaderCell>
                           <CTableHeaderCell className="text-center">Ubicación</CTableHeaderCell>
                           <CTableHeaderCell className="text-center">Estado</CTableHeaderCell>
@@ -583,34 +696,79 @@ const ReporteInventario = () => {
                             <CTableDataCell>{item.codigoProducto}</CTableDataCell>
                             <CTableDataCell>{item.codigoProductoProveedor}</CTableDataCell>
                             <CTableDataCell>{item.descripcionProducto}</CTableDataCell>
-                            <CTableDataCell className="text-end">Q{Number(item.precioCompra).toFixed(2)}</CTableDataCell>
                             <CTableDataCell className="text-center">
                               {modoEditarExistencias ? (
                                 <CFormInput
-                                  type="number"
-                                  min="0"
+                                  type="text"
+                                  inputMode="numeric"
                                   size="sm"
                                   style={{ minWidth: '80px' }}
                                   value={existenciasEditadas[item.idInventario]?.existencias ?? ''}
-                                  onChange={(e) => setExistenciasEditadas(prev => ({
-                                    ...prev,
-                                    [item.idInventario]: { ...prev[item.idInventario], existencias: e.target.value }
-                                  }))}
+                                  onChange={(e) => {
+                                    const val = e.target.value
+                                    if (val === '' || /^\d*$/.test(val))
+                                      setExistenciasEditadas(prev => ({
+                                        ...prev,
+                                        [item.idInventario]: { ...prev[item.idInventario], existencias: val }
+                                      }))
+                                  }}
                                 />
                               ) : item.cantidadExistencias}
+                            </CTableDataCell>
+                            <CTableDataCell className="text-end">
+                              {modoEditarExistencias ? (
+                                <CFormInput
+                                  type="text"
+                                  inputMode="decimal"
+                                  size="sm"
+                                  style={{ minWidth: '90px' }}
+                                  value={existenciasEditadas[item.idInventario]?.precioCompra ?? ''}
+                                  onChange={(e) => {
+                                    const val = e.target.value
+                                    if (val === '' || /^\d*\.?\d*$/.test(val))
+                                      setExistenciasEditadas(prev => ({
+                                        ...prev,
+                                        [item.idInventario]: { ...prev[item.idInventario], precioCompra: val }
+                                      }))
+                                  }}
+                                />
+                              ) : `Q${Number(item.precioCompra).toFixed(2)}`}
+                            </CTableDataCell>
+                            <CTableDataCell className="text-end">
+                              {modoEditarExistencias ? (
+                                <CFormInput
+                                  type="text"
+                                  inputMode="decimal"
+                                  size="sm"
+                                  style={{ minWidth: '90px' }}
+                                  value={existenciasEditadas[item.idInventario]?.precioVenta ?? ''}
+                                  onChange={(e) => {
+                                    const val = e.target.value
+                                    if (val === '' || /^\d*\.?\d*$/.test(val))
+                                      setExistenciasEditadas(prev => ({
+                                        ...prev,
+                                        [item.idInventario]: { ...prev[item.idInventario], precioVenta: val }
+                                      }))
+                                  }}
+                                />
+                              ) : `Q${Number(item.precioVenta || 0).toFixed(2)}`}
                             </CTableDataCell>
                             <CTableDataCell className="text-center">
                               {modoEditarExistencias ? (
                                 <CFormInput
-                                  type="number"
-                                  min="0"
+                                  type="text"
+                                  inputMode="numeric"
                                   size="sm"
                                   style={{ minWidth: '80px' }}
                                   value={existenciasEditadas[item.idInventario]?.danados ?? ''}
-                                  onChange={(e) => setExistenciasEditadas(prev => ({
-                                    ...prev,
-                                    [item.idInventario]: { ...prev[item.idInventario], danados: e.target.value }
-                                  }))}
+                                  onChange={(e) => {
+                                    const val = e.target.value
+                                    if (val === '' || /^\d*$/.test(val))
+                                      setExistenciasEditadas(prev => ({
+                                        ...prev,
+                                        [item.idInventario]: { ...prev[item.idInventario], danados: val }
+                                      }))
+                                  }}
                                 />
                               ) : item.cantidadDanados}
                             </CTableDataCell>
@@ -628,6 +786,24 @@ const ReporteInventario = () => {
           </CCard>
         </CCol>
       </CRow>
+
+      {/* Modal de opciones de exportación */}
+      <CModal visible={modalExportarVisible} onClose={() => setModalExportarVisible(false)} alignment="center">
+        <CModalHeader className="bg-success text-white">
+          <CModalTitle>Exportar a Excel</CModalTitle>
+        </CModalHeader>
+        <CModalBody>
+          <p className="mb-1">¿Desea incluir la columna <strong>Precio Venta</strong> en el archivo exportado?</p>
+        </CModalBody>
+        <CModalFooter className="d-flex justify-content-end gap-2">
+          <CButton color="secondary" onClick={() => exportarAExcel(true)}>
+            Sin precio venta
+          </CButton>
+          <CButton color="success" className="text-white" onClick={() => exportarAExcel(false)}>
+            Con precio venta
+          </CButton>
+        </CModalFooter>
+      </CModal>
 
       <CModal visible={modalMsgVisible} onClose={() => setModalMsgVisible(false)} alignment="center">
         <CModalHeader className={`bg-${modalMsgColor} text-white`}>
