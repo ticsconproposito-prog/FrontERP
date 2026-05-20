@@ -216,8 +216,8 @@ const ConsultaFacturas = () => {
           : `${formatFecha(filtroAplicado.inicio)} al ${formatFecha(filtroAplicado.fin)}`
         : 'Todos'
 
-    const boldFont = { bold: true }
-    const fillGris = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9E1F2' } }
+    const fillAzul  = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1A3A6B' } }
+    const fillGris  = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9E1F2' } }
     const fillVerde = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFC6EFCE' } }
     const borderThin = {
       top: { style: 'thin' }, bottom: { style: 'thin' },
@@ -226,11 +226,12 @@ const ConsultaFacturas = () => {
 
     const aplicarEstiloEncabezado = (fila) => {
       fila.eachCell((cell) => {
-        cell.font = boldFont
-        cell.fill = fillGris
+        cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
+        cell.fill = fillAzul
         cell.border = borderThin
         cell.alignment = { vertical: 'middle', horizontal: 'center' }
       })
+      fila.height = 20
     }
 
     const wb = new ExcelJS.Workbook()
@@ -242,8 +243,8 @@ const ConsultaFacturas = () => {
 
     // ── Título del reporte ──
     const filaTitulo = ws.addRow(['Reporte: Detalle por Factura'])
-    filaTitulo.getCell(1).font = { bold: true, size: 11, color: { argb: 'FF000000' } }
-    filaTitulo.getCell(1).fill = fillGris
+    filaTitulo.getCell(1).font = { bold: true, size: 11, color: { argb: 'FFFFFFFF' } }
+    filaTitulo.getCell(1).fill = fillAzul
     filaTitulo.getCell(1).alignment = { vertical: 'middle' }
     filaTitulo.height = 22
 
@@ -251,21 +252,18 @@ const ConsultaFacturas = () => {
     ws.addRow([])
 
     const thin = { style: 'thin' }
-    const agregarFilaResumen = (etiqueta, valor, esPrimera, esUltima) => {
-      const fila = ws.addRow([etiqueta, valor])
-      fila.getCell(1).border = { top: esPrimera ? thin : undefined, bottom: esUltima ? thin : undefined, left: thin }
-      fila.getCell(2).border = { top: esPrimera ? thin : undefined, bottom: esUltima ? thin : undefined, right: thin }
-      fila.getCell(1).font = { bold: true }
-      fila.getCell(1).fill = fillGris
-      fila.getCell(2).fill = fillGris
-      fila.getCell(1).alignment = { vertical: 'middle' }
-      fila.getCell(2).alignment = { vertical: 'middle' }
-      fila.height = 18
-      return fila
-    }
-    agregarFilaResumen('Período consultado:', periodo, true, false)
-    agregarFilaResumen('Cantidad de Facturas:', resumen.cantidadFacturas, false, false)
-    agregarFilaResumen('Total de Venta:', formatMoneda(resumen.totalVenta), false, true)
+    const filaResumen = ws.addRow([
+      `Período consultado:  ${periodo}`,
+      `Cantidad de Facturas:  ${resumen.cantidadFacturas}`,
+      `Total de Venta:  ${formatMoneda(resumen.totalVenta)}`,
+    ])
+    ;[1, 2, 3].forEach((col) => {
+      filaResumen.getCell(col).font = { bold: true, color: { argb: 'FFFFFFFF' } }
+      filaResumen.getCell(col).fill = fillAzul
+      filaResumen.getCell(col).alignment = { vertical: 'middle', horizontal: 'center' }
+      filaResumen.getCell(col).border = { top: thin, bottom: thin, left: thin, right: thin }
+    })
+    filaResumen.height = 20
 
     ws.addRow([])
 

@@ -28,7 +28,7 @@ import {
   CSpinner,
 } from '@coreui/react'
 import "react-datepicker/dist/react-datepicker.css";
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 
 const PAGE_SIZE = 20
 
@@ -390,29 +390,57 @@ const Layout = () => {
         return
       }
 
-      const datosExcel = [...todosLosProductos]
+      const wb = new ExcelJS.Workbook()
+      const ws = wb.addWorksheet('Productos')
+
+      ws.columns = [
+        { header: 'No.',                       key: 'no',       width: 6  },
+        { header: 'Código Producto',            key: 'cod',      width: 22 },
+        { header: 'Código Producto Proveedor',  key: 'codProv',  width: 28 },
+        { header: 'Descripción',               key: 'desc',     width: 50 },
+        { header: 'Precio Compra',             key: 'compra',   width: 16 },
+        { header: 'Precio Venta',              key: 'venta',    width: 16 },
+        { header: 'Unidad de Medida',          key: 'unidad',   width: 20 },
+        { header: 'Estado',                    key: 'estado',   width: 15 },
+      ]
+
+      const borderThin = {
+        top: { style: 'thin' }, bottom: { style: 'thin' },
+        left: { style: 'thin' }, right: { style: 'thin' },
+      }
+      const filaEnc = ws.getRow(1)
+      filaEnc.eachCell((cell) => {
+        cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1A3A6B' } }
+        cell.alignment = { horizontal: 'center', vertical: 'middle' }
+        cell.border = borderThin
+      })
+      filaEnc.height = 20
+
+      ;[...todosLosProductos]
         .sort((a, b) => (a.idProducto ?? 0) - (b.idProducto ?? 0))
-        .map((producto, index) => ({
-          'No.': index + 1,
-          'Código Producto': producto.codigoProducto || '',
-          'Código Producto Proveedor': producto.codigoProductoProveedor || '',
-          'Descripción': producto.descripcionProducto || '',
-          'Precio Compra': producto.precioCompra != null ? Number(producto.precioCompra).toFixed(2) : '',
-          'Precio Venta': producto.precioVenta != null ? Number(producto.precioVenta).toFixed(2) : '',
-          'Unidad de Medida': obtenerNombreUnidad(producto.unidadDeMedida),
-          'Estado': obtenerNombreEstado(producto.estado)
-        }))
+        .forEach((producto, index) => {
+          ws.addRow({
+            no:      index + 1,
+            cod:     producto.codigoProducto || '',
+            codProv: producto.codigoProductoProveedor || '',
+            desc:    producto.descripcionProducto || '',
+            compra:  producto.precioCompra != null ? Number(producto.precioCompra).toFixed(2) : '',
+            venta:   producto.precioVenta != null ? Number(producto.precioVenta).toFixed(2) : '',
+            unidad:  obtenerNombreUnidad(producto.unidadDeMedida),
+            estado:  obtenerNombreEstado(producto.estado),
+          })
+        })
 
-      const ws = XLSX.utils.json_to_sheet(datosExcel)
-      ws['!cols'] = [{ wch: 5 }, { wch: 20 }, { wch: 25 }, { wch: 50 }, { wch: 15 }, { wch: 15 }, { wch: 20 }, { wch: 15 }]
-
-      const wb = XLSX.utils.book_new()
-      XLSX.utils.book_append_sheet(wb, ws, 'Productos')
-
+      const buffer = await wb.xlsx.writeBuffer()
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
       const fecha = new Date()
-      const nombreArchivo = `Productos_${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}-${String(fecha.getDate()).padStart(2, '0')}_${String(fecha.getHours()).padStart(2, '0')}${String(fecha.getMinutes()).padStart(2, '0')}.xlsx`
-
-      XLSX.writeFile(wb, nombreArchivo)
+      a.download = `Productos_${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}-${String(fecha.getDate()).padStart(2, '0')}_${String(fecha.getHours()).padStart(2, '0')}${String(fecha.getMinutes()).padStart(2, '0')}.xlsx`
+      a.click()
+      URL.revokeObjectURL(url)
 
       setModalMsgTitle('Éxito')
       setModalMsgBody(`Se exportaron ${todosLosProductos.length} productos correctamente`)

@@ -27,7 +27,7 @@ import {
   CPagination,
   CPaginationItem,
 } from '@coreui/react'
-import * as XLSX from 'xlsx'
+import ExcelJS from 'exceljs'
 
 const Layout = () => {
   const { usuario } = useAuth()
@@ -221,38 +221,59 @@ const Layout = () => {
         return
       }
 
-      const datosExcel = lista.map((cliente, index) => ({
-        'No.': index + 1,
-        'Nombre Cliente': cliente.nombreCliente ?? '',
-        'Correo Electrónico': cliente.correoElectronico ?? '',
-        'NIT': cliente.nit ?? '',
-        'Nombre Facturación': cliente.nombreFacturacion ?? '',
-        'Dirección Física': cliente.direccionFisica ?? '',
-        'Teléfono 1': cliente.telefono1 ?? '',
-        'Teléfono 2': cliente.telefono2 ?? '',
-        'Crédito Autorizado': cliente.creditoAutorizado ?? '',
-        'Deuda Actual': cliente.deudaActual ?? '',
-      }))
+      const wb = new ExcelJS.Workbook()
+      const ws = wb.addWorksheet('Clientes')
 
-      const ws = XLSX.utils.json_to_sheet(datosExcel)
-      ws['!cols'] = [
-        { wch: 5 },
-        { wch: 28 },
-        { wch: 28 },
-        { wch: 16 },
-        { wch: 28 },
-        { wch: 35 },
-        { wch: 14 },
-        { wch: 14 },
-        { wch: 18 },
-        { wch: 14 },
+      ws.columns = [
+        { header: 'No.',                key: 'no',       width: 6  },
+        { header: 'Nombre Cliente',     key: 'nombre',   width: 30 },
+        { header: 'Correo Electrónico', key: 'correo',   width: 30 },
+        { header: 'NIT',                key: 'nit',      width: 18 },
+        { header: 'Nombre Facturación', key: 'factura',  width: 30 },
+        { header: 'Dirección Física',   key: 'dir',      width: 36 },
+        { header: 'Teléfono 1',         key: 'tel1',     width: 16 },
+        { header: 'Teléfono 2',         key: 'tel2',     width: 16 },
+        { header: 'Crédito Autorizado', key: 'credito',  width: 20 },
+        { header: 'Deuda Actual',       key: 'deuda',    width: 16 },
       ]
-      const wb = XLSX.utils.book_new()
-      XLSX.utils.book_append_sheet(wb, ws, 'Clientes')
 
+      const borderThin = {
+        top: { style: 'thin' }, bottom: { style: 'thin' },
+        left: { style: 'thin' }, right: { style: 'thin' },
+      }
+      const filaEnc = ws.getRow(1)
+      filaEnc.eachCell((cell) => {
+        cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1A3A6B' } }
+        cell.alignment = { horizontal: 'center', vertical: 'middle' }
+        cell.border = borderThin
+      })
+      filaEnc.height = 20
+
+      lista.forEach((cliente, index) => {
+        ws.addRow({
+          no:      index + 1,
+          nombre:  cliente.nombreCliente ?? '',
+          correo:  cliente.correoElectronico ?? '',
+          nit:     cliente.nit ?? '',
+          factura: cliente.nombreFacturacion ?? '',
+          dir:     cliente.direccionFisica ?? '',
+          tel1:    cliente.telefono1 ?? '',
+          tel2:    cliente.telefono2 ?? '',
+          credito: cliente.creditoAutorizado ?? '',
+          deuda:   cliente.deudaActual ?? '',
+        })
+      })
+
+      const buffer = await wb.xlsx.writeBuffer()
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
       const fecha = new Date()
-      const nombreArchivo = `Clientes_${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}-${String(fecha.getDate()).padStart(2, '0')}_${String(fecha.getHours()).padStart(2, '0')}${String(fecha.getMinutes()).padStart(2, '0')}.xlsx`
-      XLSX.writeFile(wb, nombreArchivo)
+      a.download = `Clientes_${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}-${String(fecha.getDate()).padStart(2, '0')}_${String(fecha.getHours()).padStart(2, '0')}${String(fecha.getMinutes()).padStart(2, '0')}.xlsx`
+      a.click()
+      URL.revokeObjectURL(url)
     } catch (error) {
       console.error('Error al exportar:', error)
       alert('No se pudo exportar el archivo. ' + error.message)

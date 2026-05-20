@@ -27,7 +27,7 @@ import {
   CFormTextarea,
 } from '@coreui/react'
 import "react-datepicker/dist/react-datepicker.css"
-import * as XLSX from 'xlsx'
+import ExcelJS from 'exceljs'
 
 const Layout = () => {
   const { usuario } = useAuth()
@@ -281,38 +281,59 @@ const Layout = () => {
         return
       }
 
-      const datosExcel = lista.map((proveedor, index) => ({
-        'No.': index + 1,
-        'Nombre Proveedor': proveedor.nombre ?? proveedor.nombreProveedor ?? '',
-        'Dirección Física': proveedor.direccionFisica ?? proveedor.direccion ?? '',
-        'Correo Electrónico': proveedor.correoElectronico ?? proveedor.email ?? '',
-        'Nombre Contacto 1': proveedor.nombreDeContacto1 ?? proveedor.nombreContacto1 ?? '',
-        'Nombre Contacto 2': proveedor.nombreDeContacto2 ?? proveedor.nombreContacto2 ?? '',
-        'Teléfono 1': proveedor.telefono1 ?? proveedor.telefono ?? '',
-        'Teléfono 2': proveedor.telefono2 ?? '',
-        'Crédito Autorizado': proveedor.creditoAutorizado ?? '',
-        'Deuda Actual': proveedor.deudaActual ?? '',
-      }))
+      const wb = new ExcelJS.Workbook()
+      const ws = wb.addWorksheet('Proveedores')
 
-      const ws = XLSX.utils.json_to_sheet(datosExcel)
-      ws['!cols'] = [
-        { wch: 5 },
-        { wch: 28 },
-        { wch: 35 },
-        { wch: 28 },
-        { wch: 22 },
-        { wch: 22 },
-        { wch: 14 },
-        { wch: 14 },
-        { wch: 18 },
-        { wch: 14 },
+      ws.columns = [
+        { header: 'No.',                key: 'no',        width: 6  },
+        { header: 'Nombre Proveedor',   key: 'nombre',    width: 30 },
+        { header: 'Dirección Física',   key: 'direccion', width: 36 },
+        { header: 'Correo Electrónico', key: 'correo',    width: 30 },
+        { header: 'Nombre Contacto 1',  key: 'contacto1', width: 24 },
+        { header: 'Nombre Contacto 2',  key: 'contacto2', width: 24 },
+        { header: 'Teléfono 1',         key: 'tel1',      width: 16 },
+        { header: 'Teléfono 2',         key: 'tel2',      width: 16 },
+        { header: 'Crédito Autorizado', key: 'credito',   width: 20 },
+        { header: 'Deuda Actual',       key: 'deuda',     width: 16 },
       ]
-      const wb = XLSX.utils.book_new()
-      XLSX.utils.book_append_sheet(wb, ws, 'Proveedores')
 
+      // Encabezado azul
+      const filaEnc = ws.getRow(1)
+      filaEnc.eachCell((cell) => {
+        cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1A3A6B' } }
+        cell.alignment = { horizontal: 'center', vertical: 'middle' }
+        cell.border = {
+          top: { style: 'thin' }, bottom: { style: 'thin' },
+          left: { style: 'thin' }, right: { style: 'thin' },
+        }
+      })
+      filaEnc.height = 20
+
+      lista.forEach((proveedor, index) => {
+        ws.addRow({
+          no:        index + 1,
+          nombre:    proveedor.nombre ?? proveedor.nombreProveedor ?? '',
+          direccion: proveedor.direccionFisica ?? proveedor.direccion ?? '',
+          correo:    proveedor.correoElectronico ?? proveedor.email ?? '',
+          contacto1: proveedor.nombreDeContacto1 ?? proveedor.nombreContacto1 ?? '',
+          contacto2: proveedor.nombreDeContacto2 ?? proveedor.nombreContacto2 ?? '',
+          tel1:      proveedor.telefono1 ?? proveedor.telefono ?? '',
+          tel2:      proveedor.telefono2 ?? '',
+          credito:   proveedor.creditoAutorizado ?? '',
+          deuda:     proveedor.deudaActual ?? '',
+        })
+      })
+
+      const buffer = await wb.xlsx.writeBuffer()
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
       const fecha = new Date()
-      const nombreArchivo = `Proveedores_${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}-${String(fecha.getDate()).padStart(2, '0')}_${String(fecha.getHours()).padStart(2, '0')}${String(fecha.getMinutes()).padStart(2, '0')}.xlsx`
-      XLSX.writeFile(wb, nombreArchivo)
+      a.download = `Proveedores_${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}-${String(fecha.getDate()).padStart(2, '0')}_${String(fecha.getHours()).padStart(2, '0')}${String(fecha.getMinutes()).padStart(2, '0')}.xlsx`
+      a.click()
+      URL.revokeObjectURL(url)
     } catch (error) {
       console.error('Error al exportar:', error)
       alert('No se pudo exportar el archivo. ' + error.message)

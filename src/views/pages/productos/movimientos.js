@@ -27,7 +27,7 @@ import {
   CSpinner,
 } from '@coreui/react'
 import { useNavigate } from 'react-router-dom'
-import * as XLSX from 'xlsx'
+import ExcelJS from 'exceljs'
 
 const Layout = () => {
   const { usuario } = useAuth()
@@ -387,7 +387,6 @@ const Layout = () => {
   // Limpiar filtros
   const exportarAExcel = async () => {
     try {
-      // Obtener todos los registros aplicando los filtros actuales
       const params = new URLSearchParams()
       params.set('page', '0')
       params.set('size', '10000')
@@ -401,30 +400,57 @@ const Layout = () => {
       const data = await res.json()
       const lista = Array.isArray(data) ? data : (data?.content || [])
 
-      // Mapear al mismo formato que la tabla
-      const filas = lista.map((orden, index) => ({
-        'No.':              index + 1,
-        'Documento':        orden.numeroDeDocumento || '',
-        'Fecha Orden':      orden.fechaOrden || '',
-        'Proveedor':        obtenerNombreProveedor(orden.idProveedor),
-        'Tipo Movimiento':  obtenerNombreTipoMovimiento(orden.tipoDeMovimiento),
-        'Tipo Orden':       obtenerNombreTipoOrden(orden.tipoDeOrden),
-        'Estado Factura':   obtenerNombreTipoEstadoFactura(orden.estadoFactura),
-        'Total Orden':      orden.precioTotalOrden != null ? Number(orden.precioTotalOrden).toFixed(2) : '0.00',
-        'Valor Cancelado':  orden.valorCancelado != null ? Number(orden.valorCancelado).toFixed(2) : '0.00',
-      }))
+      const wb = new ExcelJS.Workbook()
+      const ws = wb.addWorksheet('Movimientos')
 
-      const hoja = XLSX.utils.json_to_sheet(filas)
-      const libro = XLSX.utils.book_new()
-      XLSX.utils.book_append_sheet(libro, hoja, 'Movimientos')
+      ws.columns = [
+        { header: 'No.',             key: 'no',        width: 6  },
+        { header: 'Documento',       key: 'doc',       width: 22 },
+        { header: 'Fecha Orden',     key: 'fecha',     width: 16 },
+        { header: 'Proveedor',       key: 'proveedor', width: 30 },
+        { header: 'Tipo Movimiento', key: 'tipoMov',   width: 22 },
+        { header: 'Tipo Orden',      key: 'tipoOrden', width: 18 },
+        { header: 'Estado Factura',  key: 'estado',    width: 18 },
+        { header: 'Total Orden',     key: 'total',     width: 16 },
+        { header: 'Valor Cancelado', key: 'cancelado', width: 18 },
+      ]
 
-      // Ajustar ancho de columnas automáticamente
-      const anchos = Object.keys(filas[0] || {}).map(col => ({
-        wch: Math.max(col.length, ...filas.map(f => String(f[col] || '').length)) + 2
-      }))
-      hoja['!cols'] = anchos
+      const borderThin = {
+        top: { style: 'thin' }, bottom: { style: 'thin' },
+        left: { style: 'thin' }, right: { style: 'thin' },
+      }
 
-      XLSX.writeFile(libro, `Movimientos_${new Date().toISOString().slice(0, 10)}.xlsx`)
+      const filaEnc = ws.getRow(1)
+      filaEnc.eachCell((cell) => {
+        cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF6C757D' } }
+        cell.alignment = { horizontal: 'center', vertical: 'middle' }
+        cell.border = borderThin
+      })
+      filaEnc.height = 20
+
+      lista.forEach((orden, index) => {
+        ws.addRow({
+          no:        index + 1,
+          doc:       orden.numeroDeDocumento || '',
+          fecha:     orden.fechaOrden || '',
+          proveedor: obtenerNombreProveedor(orden.idProveedor),
+          tipoMov:   obtenerNombreTipoMovimiento(orden.tipoDeMovimiento),
+          tipoOrden: obtenerNombreTipoOrden(orden.tipoDeOrden),
+          estado:    obtenerNombreTipoEstadoFactura(orden.estadoFactura),
+          total:     orden.precioTotalOrden != null ? Number(orden.precioTotalOrden).toFixed(2) : '0.00',
+          cancelado: orden.valorCancelado != null ? Number(orden.valorCancelado).toFixed(2) : '0.00',
+        })
+      })
+
+      const buffer = await wb.xlsx.writeBuffer()
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `Movimientos_${new Date().toISOString().slice(0, 10)}.xlsx`
+      a.click()
+      URL.revokeObjectURL(url)
     } catch (error) {
       console.error('Error al exportar:', error)
     }
