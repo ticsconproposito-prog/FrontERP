@@ -257,9 +257,13 @@ const MntFacturacion = () => {
         }
         if (filtro.cliente) {
           const term = filtro.cliente.toLowerCase()
-          todas = todas.filter((f) =>
-            String(f.idCliente?.nombreCliente ?? f.nombreResAPI ?? '').toLowerCase().includes(term)
-          )
+          todas = todas.filter((f) => {
+            const esCF = (f.idCliente?.nit || '').toString().toUpperCase() === 'CF'
+            const nombreMostrado = esCF
+              ? (f.nombreFactura || 'Consumidor Final')
+              : (f.idCliente?.nombreCliente || f.nombreResAPI || '')
+            return nombreMostrado.toLowerCase().includes(term)
+          })
         }
 
         todasLasFacturas = filtrarPorEstado(todas.filter((f) => String(f.tipoDocumento) !== '4'))
@@ -468,7 +472,10 @@ const MntFacturacion = () => {
       const preimpresoRes      = enc.preimpresoResAPI || ''
       const referenciaRes      = enc.referencia || ''
       const fechaFactura       = enc.FechaFactura || ''
-      const nombreCliente    = enc.nombreResAPI || cliente.nombreCliente || cliente.nombreFacturacion || 'Consumidor Final'
+      const esCF = (cliente.nit || '').toString().toUpperCase() === 'CF'
+      const nombreCliente = esCF
+        ? (enc.nombreFactura || 'Consumidor Final')
+        : (enc.nombreResAPI || cliente.nombreCliente || cliente.nombreFacturacion || 'Consumidor Final')
       const direccionCliente = cliente.direccionFisica || '—'
       const direccionEntrega = enc.direccionEntrega || '—'
 
@@ -881,7 +888,9 @@ const MntFacturacion = () => {
         items:        itemsDte,
         receptor: {
           nitReceptor,
-          nombre:    enc.nombreResAPI || cliente.nombreCliente || cliente.nombreFacturacion || 'Consumidor Final',
+          nombre:    ((cliente.nit || '').toString().toUpperCase() === 'CF')
+            ? (enc.nombreFactura || 'Consumidor Final')
+            : (enc.nombreResAPI || cliente.nombreCliente || cliente.nombreFacturacion || 'Consumidor Final'),
           direccion: cliente.direccionFisica || 'Ciudad',
         },
         totales: {
@@ -1117,7 +1126,11 @@ const MntFacturacion = () => {
                           <CTableDataCell>{f.preimpresoResAPI || '—'}</CTableDataCell>
                           <CTableDataCell>{(f.referencia && f.referencia !== '0') ? f.referencia : (() => { const t = String(f.tipoDocumento || ''); const p = t === '1' ? 'FACT' : t === '2' ? 'NCRE' : t === '3' ? 'NDEB' : t === '4' ? 'CONS' : ''; return p ? `${p}${f.idEncabezadoFactura}` : '—'; })()}</CTableDataCell>
                           <CTableDataCell>{formatFecha(f.FechaFactura)}</CTableDataCell>
-                          <CTableDataCell>{f.idCliente?.nombreCliente || '—'}</CTableDataCell>
+                          <CTableDataCell>
+                            {(f.idCliente?.nit || '').toString().toUpperCase() === 'CF'
+                              ? (f.nombreFactura || 'Consumidor Final')
+                              : (f.idCliente?.nombreCliente || '—')}
+                          </CTableDataCell>
                           <CTableDataCell>
                             {tiposDocumento[String(f.tipoDocumento)] ?? f.tipoDocumento ?? '—'}
                           </CTableDataCell>
@@ -1244,7 +1257,11 @@ const MntFacturacion = () => {
                   </div>
                 </CCol>
                 <CCol md={6}>
-                  <div><strong>Cliente:</strong> {facturaSeleccionada.idCliente?.nombreCliente || '—'}</div>
+                  <div><strong>Cliente:</strong> {
+                    (facturaSeleccionada.idCliente?.nit || '').toString().toUpperCase() === 'CF'
+                      ? (facturaSeleccionada.nombreFactura || 'Consumidor Final')
+                      : (facturaSeleccionada.idCliente?.nombreCliente || '—')
+                  }</div>
                   <div>
                     {(() => {
                       const tipoRec = String(facturaSeleccionada.tipoReceptor ?? '1')

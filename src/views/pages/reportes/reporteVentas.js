@@ -282,7 +282,9 @@ const ConsultaFacturas = () => {
         f.preimpresoResAPI ?? '',
         f.referencia ?? '',
         f.FechaFactura ? formatFecha(f.FechaFactura) : '',
-        f.idCliente?.nombreCliente ?? '',
+        ((f.idCliente?.nit || '').toString().toUpperCase() === 'CF'
+          ? (f.nombreFactura || 'Consumidor Final')
+          : (f.idCliente?.nombreCliente || '')),
         tiposDocumento[String(f.tipoDocumento)] ?? f.tipoDocumento ?? '',
         f.totalNeto ?? 0,
         f.iva ?? 0,
@@ -519,7 +521,11 @@ const ConsultaFacturas = () => {
                           <CTableDataCell className="text-center">{factura.preimpresoResAPI || '—'}</CTableDataCell>
                           <CTableDataCell>{factura.referencia || '—'}</CTableDataCell>
                           <CTableDataCell>{factura.FechaFactura || '—'}</CTableDataCell>
-                          <CTableDataCell>{factura.idCliente?.nombreCliente || '—'}</CTableDataCell>
+                          <CTableDataCell>
+                            {(factura.idCliente?.nit || '').toString().toUpperCase() === 'CF'
+                              ? (factura.nombreFactura || 'Consumidor Final')
+                              : (factura.idCliente?.nombreCliente || '—')}
+                          </CTableDataCell>
                           <CTableDataCell>{tiposDocumento[String(factura.tipoDocumento)] ?? factura.tipoDocumento ?? '—'}</CTableDataCell>
                           <CTableDataCell className="text-end">Q{(factura.totalNeto ?? 0).toFixed(2)}</CTableDataCell>
                           <CTableDataCell className="text-end">Q{(factura.iva ?? 0).toFixed(2)}</CTableDataCell>

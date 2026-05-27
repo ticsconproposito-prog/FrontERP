@@ -465,6 +465,7 @@ const Layout = () => {
   const handleNombreChange = (e) => {
     const value = (e.target.value || '').toString();
     setFormFactura((prev) => ({ ...prev, nombre: value }));
+    if (esConsumidorFinal) return;
     clearTimeout(debounceCliente.current);
     if (value.trim().length < 1) {
       setSugerenciasClientes([]);
@@ -795,7 +796,7 @@ const Layout = () => {
 
     const clienteBoxHTML = `
       <div class="cliente-box">
-        <div class="field"><label>Nombre: </label>${cliente.nombre || 'Consumidor Final'}</div>
+        <div class="field"><label>Nombre: </label>${cliente.nombreFactura || cliente.nombre || 'Consumidor Final'}</div>
         <div class="field"><label>${(tiposReceptor[String(documento)] || 'NIT').toUpperCase()}: </label>${cliente.nit || 'CF'}</div>
         <div class="field"><label>Dirección: </label>${cliente.direccion || '—'}</div>
         <div class="field"><label>Dirección de entrega: </label>${cliente.direccionEntrega || '—'}</div>
@@ -1176,6 +1177,7 @@ const Layout = () => {
         enviarCorreo: enviarCorreo ? 'S' : 'N',
         tipoReceptor: documento || '1',
         idUsuarioModificacion: idUsuarioActual,
+        nombreFactura: esConsumidorFinal ? (formFactura.nombre || 'Consumidor Final') : '',
       };
 
      /* console.log('[grabarEncabezadoFacturas] Body enviado:', JSON.stringify(body, null, 2)); */
@@ -1271,7 +1273,7 @@ const Layout = () => {
         })
 
         await imprimirFactura({
-          cliente: { ...formFactura },
+          cliente: { ...formFactura, nombreFactura: esConsumidorFinal ? formFactura.nombre : '' },
           detalle: [...detalleFactura],
           iva: totalesDetalle.iva,
           total: totalesDetalle.total,
@@ -1400,7 +1402,11 @@ const Layout = () => {
 
       if (!hayErrorDte) {
         await imprimirFactura({
-          cliente: { ...formFactura, nombre: nombreDte || formFactura.nombre },
+          cliente: {
+            ...formFactura,
+            nombre: nombreDte || formFactura.nombre,
+            nombreFactura: esConsumidorFinal ? formFactura.nombre : '',
+          },
           detalle: [...detalleFactura],
           iva: totalesDetalle.iva,
           total: totalesDetalle.total,
@@ -1544,13 +1550,13 @@ const Layout = () => {
                       type="text"
                       id="nombre"
                       name="nombre"
-                      placeholder={!documento && !esConsumidorFinal ? 'Seleccione un documento primero' : 'Ingrese el nombre para buscar cliente'}
+                      placeholder={esConsumidorFinal ? 'Ingrese nombre de referencia (opcional)' : (!documento ? 'Seleccione un documento primero' : 'Ingrese el nombre para buscar cliente')}
                       value={formFactura.nombre}
                       onChange={handleNombreChange}
-                      disabled={esConsumidorFinal || clienteSeleccionado || !documento}
+                      disabled={clienteSeleccionado || (!esConsumidorFinal && !documento)}
                       autoComplete="off"
                     />
-                    {(cargandoClientes || (mostrarSugerenciasClientes && sugerenciasClientes.length > 0)) && (
+                    {!esConsumidorFinal && (cargandoClientes || (mostrarSugerenciasClientes && sugerenciasClientes.length > 0)) && (
                       <div
                         style={{
                           position: 'absolute',
@@ -2330,7 +2336,7 @@ const Layout = () => {
           }, { iva: 0, total: 0 })
           setErrorDteModal({ visible: false, mensaje: '' })
           await imprimirFactura({
-            cliente: { ...formFactura },
+            cliente: { ...formFactura, nombreFactura: esConsumidorFinal ? formFactura.nombre : '' },
             detalle: [...detalleFactura],
             iva: totales.iva,
             total: totales.total,

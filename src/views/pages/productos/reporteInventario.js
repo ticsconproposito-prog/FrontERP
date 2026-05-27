@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../../context/AuthContext'
 import {
@@ -77,6 +77,27 @@ const ReporteInventario = () => {
   const [modalMsgBody, setModalMsgBody] = useState('')
   const [modalMsgColor, setModalMsgColor] = useState('info')
 
+  // Modal Ubicación Inventario
+  const [modalUbicacionVisible, setModalUbicacionVisible] = useState(false)
+  const [busquedaUbic1, setBusquedaUbic1] = useState('')
+  const [busquedaUbic2, setBusquedaUbic2] = useState('')
+  const [sugerenciasUbic1, setSugerenciasUbic1] = useState([])
+  const [sugerenciasUbic2, setSugerenciasUbic2] = useState([])
+  const [mostrarSugerenciasUbic1, setMostrarSugerenciasUbic1] = useState(false)
+  const [mostrarSugerenciasUbic2, setMostrarSugerenciasUbic2] = useState(false)
+  const [cargandoUbic1, setCargandoUbic1] = useState(false)
+  const [cargandoUbic2, setCargandoUbic2] = useState(false)
+  const [productoSelUbic1, setProductoSelUbic1] = useState(null)
+  const [productoSelUbic2, setProductoSelUbic2] = useState(null)
+  const [errorUbicMsg, setErrorUbicMsg] = useState('')
+  const [paresUbicacion, setParesUbicacion] = useState([])
+  const [guardandoUbicacion, setGuardandoUbicacion] = useState(false)
+  const debounceUbic1 = useRef(null)
+
+  const debounceUbic2 = useRef(null)
+  const abortUbic1 = useRef(null)
+  const abortUbic2 = useRef(null)
+
   // Diccionarios y ubicaciones
   const [unidadesMedida, setUnidadesMedida] = useState([])
   const [estados, setEstados] = useState([])
@@ -111,6 +132,148 @@ const ReporteInventario = () => {
       setEstados(Array.isArray(dE) ? dE : dE?.content || [])
       setUbicaciones(Array.isArray(dUb) ? dUb : dUb?.content || [])
     } catch { /* silencioso */ }
+  }
+
+  // ── Búsqueda para modal Ubicación Inventario ──
+  const buscarEnInventarioUbic = async (termino, slot) => {
+    const t = (termino || '').trim()
+    const setSugerencias = slot === 1 ? setSugerenciasUbic1 : setSugerenciasUbic2
+    const setMostrar = slot === 1 ? setMostrarSugerenciasUbic1 : setMostrarSugerenciasUbic2
+    const setCargando = slot === 1 ? setCargandoUbic1 : setCargandoUbic2
+    const abortRef = slot === 1 ? abortUbic1 : abortUbic2
+
+    if (t.length < 1) { setSugerencias([]); setMostrar(false); return }
+
+    if (abortRef.current) abortRef.current.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
+    const { signal } = controller
+
+    try {
+      setCargando(true)
+      const SIZE = 500
+      const [rCodigo, rProveedor, rDescripcion] = await Promise.all([
+        fetch(`/api/inventario?codigoProducto=${encodeURIComponent(t)}&page=0&size=${SIZE}`, { signal }).then(r => r.json()),
+        fetch(`/api/inventario?codigoProductoProveedor=${encodeURIComponent(t)}&page=0&size=${SIZE}`, { signal }).then(r => r.json()),
+        fetch(`/api/inventario?descripcion=${encodeURIComponent(t)}&page=0&size=${SIZE}`, { signal }).then(r => r.json()),
+      ])
+      const combinados = [
+        ...(Array.isArray(rCodigo) ? rCodigo : rCodigo.content || []),
+        ...(Array.isArray(rProveedor) ? rProveedor : rProveedor.content || []),
+        ...(Array.isArray(rDescripcion) ? rDescripcion : rDescripcion.content || []),
+      ]
+      const unicos = combinados.filter((p, idx, arr) =>
+        arr.findIndex(x => x.idInventario === p.idInventario) === idx
+      )
+      if (slot === 1) console.log('[Buscar Producto 1] Resultados /api/inventario:', unicos)
+      setSugerencias(unicos)
+      setMostrar(unicos.length > 0)
+    } catch (e) {
+      if (e.name !== 'AbortError') { setSugerencias([]); setMostrar(false) }
+    } finally {
+      setCargando(false)
+    }
+  }
+
+  const handleBusquedaUbic = (valor, slot) => {
+    const setVal = slot === 1 ? setBusquedaUbic1 : setBusquedaUbic2
+    const debounceRef = slot === 1 ? debounceUbic1 : debounceUbic2
+    const setSel = slot === 1 ? setProductoSelUbic1 : setProductoSelUbic2
+    setVal(valor)
+    setSel(null)
+    setErrorUbicMsg('')
+    clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => buscarEnInventarioUbic(valor, slot), 500)
+  }
+
+  const seleccionarProductoUbic = (prod, slot) => {
+    const codigo = prod.idProducto?.codigoProducto || prod.codigoProducto || ''
+    const descripcion = prod.idProducto?.descripcionProducto || prod.descripcionProducto || prod.descripcion || ''
+    const texto = codigo ? `${codigo} - ${descripcion}` : descripcion
+    if (slot === 1) {
+      setBusquedaUbic1(texto)
+      setSugerenciasUbic1([])
+      setMostrarSugerenciasUbic1(false)
+      setProductoSelUbic1(prod)
+    } else {
+      setBusquedaUbic2(texto)
+      setSugerenciasUbic2([])
+      setMostrarSugerenciasUbic2(false)
+      setProductoSelUbic2(prod)
+    }
+    setErrorUbicMsg('')
+  }
+
+  const limpiarInputsUbic = () => {
+    setBusquedaUbic1(''); setSugerenciasUbic1([]); setMostrarSugerenciasUbic1(false); setProductoSelUbic1(null)
+    setBusquedaUbic2(''); setSugerenciasUbic2([]); setMostrarSugerenciasUbic2(false); setProductoSelUbic2(null)
+  }
+
+  const agregarParUbicacion = () => {
+    if (!productoSelUbic1 && !productoSelUbic2) {
+      setErrorUbicMsg('Debe seleccionar un producto en ambos campos antes de agregar.')
+      return
+    }
+    if (!productoSelUbic1) {
+      setErrorUbicMsg('Debe seleccionar un producto en el campo Producto 1.')
+      return
+    }
+    if (!productoSelUbic2) {
+      setErrorUbicMsg('Debe seleccionar un producto en el campo Producto 2.')
+      return
+    }
+    setErrorUbicMsg('')
+
+    const mapProd = (prod) => ({
+      idInventario: prod.idInventario,
+      codigo: prod.idProducto?.codigoProducto || prod.codigoProducto || '',
+      codigoProveedor: prod.idProducto?.codigoProductoProveedor || prod.codigoProductoProveedor || '',
+      descripcion: prod.idProducto?.descripcionProducto || prod.descripcionProducto || prod.descripcion || '',
+      ubicacion: obtenerNombreUbicacion(prod.idUbicacion),
+      ordenInventario: prod.idProducto?.ordenInventario ?? prod.ordenInventario ?? '—',
+    })
+
+    setParesUbicacion(prev => [...prev, { id: Date.now(), prod1: mapProd(productoSelUbic1), prod2: mapProd(productoSelUbic2) }])
+    limpiarInputsUbic()
+  }
+
+  const cambiarUbicacion = async () => {
+    if (paresUbicacion.length === 0) {
+      setErrorUbicMsg('Debe agregar al menos un par de productos antes de cambiar ubicación.')
+      return
+    }
+    setGuardandoUbicacion(true)
+    try {
+      const body = {
+        movimientos: paresUbicacion.map(par => ({
+          idInventarioMover: par.prod1.idInventario,
+          idInventarioPrevio: par.prod2.idInventario,
+        })),
+      }
+      console.log('[Cambiar Ubicación] Body enviado a /api/inventario/reordenar:', JSON.stringify(body, null, 2))
+      const res = await fetch(`/api/api/inventario/reordenar?idUsuario=${idUsuarioActual}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) {
+        const texto = await res.text()
+        throw new Error(texto || `Error ${res.status}`)
+      }
+      setModalUbicacionVisible(false)
+      limpiarInputsUbic()
+      setParesUbicacion([])
+      setErrorUbicMsg('')
+      await cargarInventario(pageInv, debouncedBusqueda, debouncedUbicacion)
+      setModalMsgTitle('Ubicación actualizada')
+      setModalMsgBody(`Se reordenaron ${body.movimientos.length} movimiento(s) correctamente.`)
+      setModalMsgColor('success')
+      setModalMsgVisible(true)
+    } catch (e) {
+      setErrorUbicMsg(`Error al cambiar ubicación: ${e.message}`)
+    } finally {
+      setGuardandoUbicacion(false)
+    }
   }
 
   // Formatea items de /api/inventario (anida campos de idProducto)
@@ -552,8 +715,8 @@ const ReporteInventario = () => {
               <strong>Reporte de Inventario</strong>
             </CCardHeader>
             <CCardBody>
-              {/* Filtros */}
-              <CRow className="mb-3 g-3">
+              {/* Fila 1: Filtros */}
+              <CRow className="mb-2 g-3">
                 <CCol md={3}>
                   <CFormLabel className="fw-semibold">Tipo de Reporte</CFormLabel>
                   <CFormSelect value={tipoReporte} onChange={(e) => setTipoReporte(e.target.value)}>
@@ -577,7 +740,7 @@ const ReporteInventario = () => {
                     </CFormSelect>
                   </CCol>
                 )}
-                <CCol md={tipoReporte === '2' ? 3 : 6}>
+                <CCol>
                   <CFormLabel className="fw-semibold">Buscar</CFormLabel>
                   <CFormInput
                     type="text"
@@ -591,27 +754,52 @@ const ReporteInventario = () => {
                     {debouncedBusqueda && `Resultados para: "${debouncedBusqueda}"`}
                   </small>
                 </CCol>
-                <CCol md={tipoReporte === '2' ? 4 : 3} className="d-flex align-items-end justify-content-end gap-2">
+                {tipoReporte === '1' && (
+                  <CCol xs="auto" className="d-flex align-items-end gap-2">
+                    <CButton color="secondary" className="text-nowrap" onClick={limpiarBusqueda}>Limpiar</CButton>
+                    <CButton color="success" className="text-white text-nowrap" onClick={() => setModalExportarVisible(true)}>Exportar</CButton>
+                  </CCol>
+                )}
+              </CRow>
+
+              {/* Fila 2: Acciones */}
+              <CRow className="mb-1 mt-4 align-items-center">
+                <CCol className="d-flex justify-content-end gap-2">
                   {tipoReporte === '2' && !modoEditarExistencias && (
-                    <CButton className="text-white text-nowrap" style={{ backgroundColor: '#e8590c', borderColor: '#e8590c' }} onClick={activarModoEditarExistencias}>
-                      Editar Existencias y Precios
-                    </CButton>
+                    <>
+                      <CButton
+                        color="primary"
+                        className="text-white text-nowrap"
+                        onClick={() => { setParesUbicacion([]); limpiarInputsUbic(); setErrorUbicMsg(''); setModalUbicacionVisible(true) }}
+                      >
+                        Cambiar Orden Inventario
+                      </CButton>
+                      <CButton
+                        className="text-white text-nowrap"
+                        style={{ backgroundColor: '#e8590c', borderColor: '#e8590c' }}
+                        onClick={activarModoEditarExistencias}
+                      >
+                        Editar Existencias y Precios
+                      </CButton>
+                    </>
                   )}
                   {tipoReporte === '2' && modoEditarExistencias && (
                     <>
-                      <CButton color="success" className="text-white" onClick={guardarExistencias} disabled={guardandoExistencias}>
+                      <CButton color="success" className="text-white text-nowrap" onClick={guardarExistencias} disabled={guardandoExistencias}>
                         {guardandoExistencias && <CSpinner size="sm" className="me-1" />}
-                        Guardar
+                        Guardar Cambios
                       </CButton>
-                      <CButton color="secondary" onClick={cancelarEditarExistencias} disabled={guardandoExistencias}>
+                      <CButton color="secondary" className="text-nowrap" onClick={cancelarEditarExistencias} disabled={guardandoExistencias}>
                         Cancelar
                       </CButton>
                     </>
                   )}
-                  <div className="d-flex gap-2">
-                    <CButton color="secondary" className="text-nowrap" onClick={limpiarBusqueda}>Limpiar</CButton>
-                    <CButton color="success" className="text-white text-nowrap" onClick={() => setModalExportarVisible(true)}>Exportar</CButton>
-                  </div>
+                  {tipoReporte === '2' && (
+                    <>
+                      <CButton color="secondary" className="text-nowrap" onClick={limpiarBusqueda}>Limpiar</CButton>
+                      <CButton color="success" className="text-white text-nowrap" onClick={() => setModalExportarVisible(true)}>Exportar</CButton>
+                    </>
+                  )}
                 </CCol>
               </CRow>
 
@@ -786,6 +974,184 @@ const ReporteInventario = () => {
           </CCard>
         </CCol>
       </CRow>
+
+      {/* Modal Ubicación Inventario */}
+      <CModal
+        visible={modalUbicacionVisible}
+        onClose={() => { setModalUbicacionVisible(false); limpiarInputsUbic(); setParesUbicacion([]); setErrorUbicMsg('') }}
+        size="xl"
+        backdrop="static"
+        keyboard={false}
+      >
+        <CModalHeader className="bg-primary text-white">
+          <CModalTitle>Cambiar Orden Inventario</CModalTitle>
+        </CModalHeader>
+        <CModalBody className="p-4">
+
+          {/* Inputs lado a lado + un solo botón + */}
+          <CRow className="mb-4 align-items-end">
+            {/* Producto 1 */}
+            <CCol>
+              <CFormLabel className="fw-semibold">Mover Producto</CFormLabel>
+              <div style={{ position: 'relative' }}>
+                <CFormInput
+                  type="text"
+                  placeholder="Buscar por código, proveedor o descripción..."
+                  value={busquedaUbic1}
+                  onChange={e => handleBusquedaUbic(e.target.value, 1)}
+                  autoComplete="off"
+                />
+                {cargandoUbic1 && <small className="text-muted">Buscando...</small>}
+                {mostrarSugerenciasUbic1 && sugerenciasUbic1.length > 0 && (
+                  <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 1050, border: '1px solid #dee2e6', borderRadius: '0 0 4px 4px', background: '#fff', maxHeight: '200px', overflowY: 'auto', boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
+                    {sugerenciasUbic1.map((prod) => {
+                      const codigo = prod.idProducto?.codigoProducto || prod.codigoProducto || ''
+                      const codigoProveedor = prod.idProducto?.codigoProductoProveedor || prod.codigoProductoProveedor || ''
+                      const descripcion = prod.idProducto?.descripcionProducto || prod.descripcionProducto || prod.descripcion || ''
+                      const ordenInv = prod.idProducto?.ordenInventario ?? prod.ordenInventario ?? '—'
+                      const ubicacion = obtenerNombreUbicacion(prod.idUbicacion)
+                      return (
+                        <button
+                          key={prod.idInventario}
+                          type="button"
+                          className="list-group-item list-group-item-action text-start"
+                          onClick={() => seleccionarProductoUbic(prod, 1)}
+                          style={{ cursor: 'pointer', padding: '8px 12px' }}
+                        >
+                          <strong>{codigo}</strong> – {descripcion}
+                          <br />
+                          <small className="text-muted">Cód. Proveedor: {codigoProveedor} · Orden Inventario: {ordenInv} · Ubicación: {ubicacion}</small>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            </CCol>
+
+            {/* Producto 2 */}
+            <CCol>
+              <CFormLabel className="fw-semibold">Ubicación Producto</CFormLabel>
+              <div style={{ position: 'relative' }}>
+                <CFormInput
+                  type="text"
+                  placeholder="Buscar por código, proveedor o descripción..."
+                  value={busquedaUbic2}
+                  onChange={e => handleBusquedaUbic(e.target.value, 2)}
+                  autoComplete="off"
+                />
+                {cargandoUbic2 && <small className="text-muted">Buscando...</small>}
+                {mostrarSugerenciasUbic2 && sugerenciasUbic2.length > 0 && (
+                  <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 1050, border: '1px solid #dee2e6', borderRadius: '0 0 4px 4px', background: '#fff', maxHeight: '200px', overflowY: 'auto', boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
+                    {sugerenciasUbic2.map((prod) => {
+                      const codigo = prod.idProducto?.codigoProducto || prod.codigoProducto || ''
+                      const codigoProveedor = prod.idProducto?.codigoProductoProveedor || prod.codigoProductoProveedor || ''
+                      const descripcion = prod.idProducto?.descripcionProducto || prod.descripcionProducto || prod.descripcion || ''
+                      const ordenInv = prod.idProducto?.ordenInventario ?? prod.ordenInventario ?? '—'
+                      const ubicacion = obtenerNombreUbicacion(prod.idUbicacion)
+                      return (
+                        <button
+                          key={prod.idInventario}
+                          type="button"
+                          className="list-group-item list-group-item-action text-start"
+                          onClick={() => seleccionarProductoUbic(prod, 2)}
+                          style={{ cursor: 'pointer', padding: '8px 12px' }}
+                        >
+                          <strong>{codigo}</strong> – {descripcion}
+                          <br />
+                          <small className="text-muted">Cód. Proveedor: {codigoProveedor} · Orden Inventario: {ordenInv} · Ubicación: {ubicacion}</small>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            </CCol>
+
+            {/* Botón + único */}
+            <CCol xs="auto">
+              <CButton
+                color="success"
+                className="text-white"
+                style={{ marginTop: '1.6rem' }}
+                onClick={agregarParUbicacion}
+                title="Agregar par de productos"
+              >
+                + Agregar
+              </CButton>
+            </CCol>
+          </CRow>
+
+          {/* Mensaje de validación */}
+          {errorUbicMsg && (
+            <div className="alert alert-warning py-2 mb-3" role="alert">
+              {errorUbicMsg}
+            </div>
+          )}
+
+          {/* Tabla de pares agregados */}
+          {paresUbicacion.length > 0 && (
+            <CTable striped hover bordered responsive className="mt-2">
+              <CTableHead>
+                <CTableRow className="table-primary">
+                  <CTableHeaderCell colSpan={3} className="text-center">Mover Producto</CTableHeaderCell>
+                  <CTableHeaderCell colSpan={3} className="text-center">Ubicación Producto</CTableHeaderCell>
+                  <CTableHeaderCell></CTableHeaderCell>
+                </CTableRow>
+                <CTableRow>
+                  <CTableHeaderCell className="text-center">Orden Inventario</CTableHeaderCell>
+                  <CTableHeaderCell>Código</CTableHeaderCell>
+                  <CTableHeaderCell>Descripción</CTableHeaderCell>
+                  <CTableHeaderCell className="text-center">Orden Inventario</CTableHeaderCell>
+                  <CTableHeaderCell>Código</CTableHeaderCell>
+                  <CTableHeaderCell>Descripción</CTableHeaderCell>
+                  <CTableHeaderCell className="text-center"></CTableHeaderCell>
+                </CTableRow>
+              </CTableHead>
+              <CTableBody>
+                {paresUbicacion.map((par) => (
+                  <CTableRow key={par.id}>
+                    <CTableDataCell className="text-center">{par.prod1.ordenInventario}</CTableDataCell>
+                    <CTableDataCell>{par.prod1.codigo}</CTableDataCell>
+                    <CTableDataCell>{par.prod1.descripcion}</CTableDataCell>
+                    <CTableDataCell className="text-center">{par.prod2.ordenInventario}</CTableDataCell>
+                    <CTableDataCell>{par.prod2.codigo}</CTableDataCell>
+                    <CTableDataCell>{par.prod2.descripcion}</CTableDataCell>
+                    <CTableDataCell className="text-center">
+                      <CButton
+                        color="danger"
+                        size="sm"
+                        className="text-white"
+                        onClick={() => setParesUbicacion(prev => prev.filter(p => p.id !== par.id))}
+                      >
+                        ✕
+                      </CButton>
+                    </CTableDataCell>
+                  </CTableRow>
+                ))}
+              </CTableBody>
+            </CTable>
+          )}
+
+        </CModalBody>
+        <CModalFooter className="d-flex justify-content-end gap-2">
+          <CButton
+            color="secondary"
+            onClick={() => { setModalUbicacionVisible(false); limpiarInputsUbic(); setParesUbicacion([]); setErrorUbicMsg('') }}
+          >
+            Cerrar
+          </CButton>
+          <CButton
+            color="primary"
+            className="text-white"
+            onClick={cambiarUbicacion}
+            disabled={guardandoUbicacion || paresUbicacion.length === 0}
+          >
+            {guardandoUbicacion && <CSpinner size="sm" className="me-1" />}
+            Cambiar Ubicación
+          </CButton>
+        </CModalFooter>
+      </CModal>
 
       {/* Modal de opciones de exportación */}
       <CModal visible={modalExportarVisible} onClose={() => setModalExportarVisible(false)} alignment="center">
