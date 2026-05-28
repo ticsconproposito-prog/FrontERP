@@ -490,7 +490,7 @@ const Layout = () => {
       dpiPasaporte: cliente.documentoIdentificacion || '',
       telefono: cliente.telefono1 || '',
       direccion: cliente.direccionFisica || '',
-      direccionEntrega: '',
+      direccionEntrega: prev.direccionEntrega,
       fecha: prev.fecha,
       tipoDocumento: prev.tipoDocumento,
       moneda: prev.moneda,
@@ -1197,7 +1197,7 @@ const Layout = () => {
       const idEncabezadoFactura = responseText;
 
       // Guardar el detalle de la factura usando los valores ya calculados en lineasDetalle
-      const detallePromises = lineasDetalle.map(({ item, cantItem, descItem, precioItem, impBruto, totalConDesc, impNeto, impIva }) => {
+      const detallePromises = lineasDetalle.map(({ item, cantItem, descItem, precioItem, impBruto, totalConDesc, impNeto, impIva }, index) => {
         const bodyDetalle = {
           idEncabezadoFactura: String(idEncabezadoFactura).trim(),
           idProducto: String(item.idProducto),
@@ -1215,6 +1215,7 @@ const Layout = () => {
           impTotal: totalConDesc.toFixed(2),
           consignacionFacturada: '0',
           idUsuarioModificacion: String(idUsuarioActual),
+          ordenDetalleFactura: index + 1,
         };
 
         return fetch('/api/grabarDetalleFactura', {
