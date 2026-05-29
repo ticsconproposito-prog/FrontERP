@@ -343,11 +343,30 @@ const ReporteInventario = () => {
       if (!res.ok) throw new Error(`Error ${res.status}`)
       const data = await res.json()
       const arr = Array.isArray(data) ? data : data.content || []
+      const formateados = formatearInventario(arr)
 
-      setInventario(formatearInventario(arr))
+      setInventario(formateados)
       setPageInv(data.number ?? 0)
       setTotalPagesInv(data.totalPages ?? 0)
       setTotalElemsInv(data.totalElements ?? 0)
+
+      // Si está en modo edición, inicializar los nuevos items sin sobreescribir ediciones previas
+      if (modoEditarExistencias) {
+        setExistenciasEditadas(prev => {
+          const nuevos = {}
+          formateados.forEach(item => {
+            if (!prev[item.idInventario]) {
+              nuevos[item.idInventario] = {
+                existencias: item.cantidadExistencias != null ? String(item.cantidadExistencias) : '0',
+                danados: item.cantidadDanados != null ? String(item.cantidadDanados) : '0',
+                precioCompra: item.precioCompra != null ? String(item.precioCompra) : '0',
+                precioVenta: item.precioVenta != null ? String(item.precioVenta) : '0',
+              }
+            }
+          })
+          return { ...prev, ...nuevos }
+        })
+      }
     } catch (err) {
       setError(err.message)
       setInventario([])
