@@ -694,19 +694,19 @@ const ReporteInventario = () => {
   const Paginacion = ({ page, totalPages, onIr }) => {
     if (totalPages <= 1) return null
     const items = []
-    const inicio = Math.max(0, page - 2)
-    const fin = Math.min(totalPages - 1, page + 2)
+    const inicio = Math.max(0, page - 8)
+    const fin = Math.min(totalPages - 1, page + 7)
 
-    if (page > 2) {
+    if (page > 8) {
       items.push(<CPaginationItem key={0} onClick={() => onIr(0)}>1</CPaginationItem>)
-      if (page > 3) items.push(<CPaginationItem key="e1" disabled>…</CPaginationItem>)
+      if (page > 9) items.push(<CPaginationItem key="e1" disabled>…</CPaginationItem>)
     }
     for (let i = inicio; i <= fin; i++)
       items.push(
         <CPaginationItem key={i} active={i === page} onClick={() => onIr(i)}>{i + 1}</CPaginationItem>,
       )
-    if (page < totalPages - 3) {
-      if (page < totalPages - 4) items.push(<CPaginationItem key="e2" disabled>…</CPaginationItem>)
+    if (page < totalPages - 8) {
+      if (page < totalPages - 9) items.push(<CPaginationItem key="e2" disabled>…</CPaginationItem>)
       items.push(
         <CPaginationItem key={totalPages - 1} onClick={() => onIr(totalPages - 1)}>{totalPages}</CPaginationItem>,
       )
