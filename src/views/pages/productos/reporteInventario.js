@@ -27,9 +27,44 @@ import {
   CModalFooter,
 } from '@coreui/react'
 import ExcelJS from 'exceljs'
+import { fetchConTimeout } from '../../../utils/fetchHelpers'
 
 const PAGE_SIZE = 20
 const SIZE_TODOS = 10000
+
+// ── Componente de paginación ──────────────────────────────────────────────────
+// Definido fuera del componente padre para que React no lo desmonte/remonte
+// en cada re-render, evitando el error NotFoundError: removeChild.
+const Paginacion = ({ page, totalPages, onIr }) => {
+  if (totalPages <= 1) return null
+  const items = []
+  const inicio = Math.max(0, page - 8)
+  const fin = Math.min(totalPages - 1, page + 7)
+
+  if (page > 8) {
+    items.push(<CPaginationItem key={0} onClick={() => onIr(0)}>1</CPaginationItem>)
+    if (page > 9) items.push(<CPaginationItem key="e1" disabled>…</CPaginationItem>)
+  }
+  for (let i = inicio; i <= fin; i++)
+    items.push(
+      <CPaginationItem key={i} active={i === page} onClick={() => onIr(i)}>{i + 1}</CPaginationItem>,
+    )
+  if (page < totalPages - 8) {
+    if (page < totalPages - 9) items.push(<CPaginationItem key="e2" disabled>…</CPaginationItem>)
+    items.push(
+      <CPaginationItem key={totalPages - 1} onClick={() => onIr(totalPages - 1)}>{totalPages}</CPaginationItem>,
+    )
+  }
+  return (
+    <CPagination align="end" className="flex-wrap mt-3">
+      <CPaginationItem disabled={page === 0} onClick={() => onIr(0)} title="Primera">«</CPaginationItem>
+      <CPaginationItem disabled={page === 0} onClick={() => onIr(page - 1)}>Anterior</CPaginationItem>
+      {items}
+      <CPaginationItem disabled={page === totalPages - 1} onClick={() => onIr(page + 1)}>Siguiente</CPaginationItem>
+      <CPaginationItem disabled={page === totalPages - 1} onClick={() => onIr(totalPages - 1)} title="Última">»</CPaginationItem>
+    </CPagination>
+  )
+}
 
 const ReporteInventario = () => {
   const navigate = useNavigate()
@@ -66,6 +101,7 @@ const ReporteInventario = () => {
   // Edición de existencias (solo para reporte por ubicación)
   const [modoEditarExistencias, setModoEditarExistencias] = useState(false)
   const [existenciasEditadas, setExistenciasEditadas] = useState({})
+  const [inventarioSnapshot, setInventarioSnapshot] = useState({})
   const [guardandoExistencias, setGuardandoExistencias] = useState(false)
 
   // Modal de exportación
@@ -123,9 +159,9 @@ const ReporteInventario = () => {
   const cargarDiccionarios = async () => {
     try {
       const [resU, resE, resUb] = await Promise.all([
-        fetch('/api/diccionarios?diccionario=UNIDADDEMEDIDA&estado=1'),
-        fetch('/api/diccionarios?diccionario=ESTADO&estado=1'),
-        fetch('/api/ubicaciones'),
+        fetchConTimeout('/api/diccionarios?diccionario=UNIDADDEMEDIDA&estado=1'),
+        fetchConTimeout('/api/diccionarios?diccionario=ESTADO&estado=1'),
+        fetchConTimeout('/api/ubicaciones'),
       ])
       const [dU, dE, dUb] = await Promise.all([resU.json(), resE.json(), resUb.json()])
       setUnidadesMedida(Array.isArray(dU) ? dU : dU?.content || [])
@@ -251,7 +287,7 @@ const ReporteInventario = () => {
         })),
       }
       console.log('[Cambiar Ubicación] Body enviado a /api/inventario/reordenar:', JSON.stringify(body, null, 2))
-      const res = await fetch(`/api/api/inventario/reordenar?idUsuario=${idUsuarioActual}`, {
+      const res = await fetch(`/api/inventario/reordenar?idUsuario=${idUsuarioActual}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -307,7 +343,7 @@ const ReporteInventario = () => {
         params.append('descripcion', t)
       }
 
-      const res = await fetch(`/api/inventarioAgrupado?${params}`)
+      const res = await fetchConTimeout(`/api/inventarioAgrupado?${params}`)
       if (!res.ok) throw new Error(`Error ${res.status}`)
       const data = await res.json()
       const arr = Array.isArray(data) ? data : data.content || []
@@ -325,7 +361,9 @@ const ReporteInventario = () => {
   }
 
   // 🔥 Reporte por Ubicación - Usando el endpoint con paginación server-side
-  const cargarInventario = async (pagina = 0, termino = debouncedBusqueda, ubicacion = debouncedUbicacion) => {
+  // enModoEdicion permite forzar false desde guardarExistencias para evitar
+  // que la closure vieja reactive el bloque de edición tras cancelar.
+  const cargarInventario = async (pagina = 0, termino = debouncedBusqueda, ubicacion = debouncedUbicacion, enModoEdicion = modoEditarExistencias) => {
     try {
       setLoading(true)
       setError(null)
@@ -339,7 +377,7 @@ const ReporteInventario = () => {
       }
       if (ubicacion) params.append('idUbicacion', ubicacion)
 
-      const res = await fetch(`/api/inventario?${params}`)
+      const res = await fetchConTimeout(`/api/inventario?${params}`)
       if (!res.ok) throw new Error(`Error ${res.status}`)
       const data = await res.json()
       const arr = Array.isArray(data) ? data : data.content || []
@@ -350,8 +388,8 @@ const ReporteInventario = () => {
       setTotalPagesInv(data.totalPages ?? 0)
       setTotalElemsInv(data.totalElements ?? 0)
 
-      // Si está en modo edición, inicializar los nuevos items sin sobreescribir ediciones previas
-      if (modoEditarExistencias) {
+      // Si está en modo edición, acumular items de la nueva página sin sobreescribir ediciones previas
+      if (enModoEdicion) {
         setExistenciasEditadas(prev => {
           const nuevos = {}
           formateados.forEach(item => {
@@ -363,6 +401,13 @@ const ReporteInventario = () => {
                 precioVenta: item.precioVenta != null ? String(item.precioVenta) : '0',
               }
             }
+          })
+          return { ...prev, ...nuevos }
+        })
+        setInventarioSnapshot(prev => {
+          const nuevos = {}
+          formateados.forEach(item => {
+            if (!prev[item.idInventario]) nuevos[item.idInventario] = item
           })
           return { ...prev, ...nuevos }
         })
@@ -398,6 +443,7 @@ const ReporteInventario = () => {
   // ── Editar Existencias ──
   const activarModoEditarExistencias = () => {
     const inicial = {}
+    const snapshotInicial = {}
     inventario.forEach(item => {
       inicial[item.idInventario] = {
         existencias: item.cantidadExistencias != null ? String(item.cantidadExistencias) : '0',
@@ -405,21 +451,26 @@ const ReporteInventario = () => {
         precioCompra: item.precioCompra != null ? String(item.precioCompra) : '0',
         precioVenta: item.precioVenta != null ? String(item.precioVenta) : '0',
       }
+      snapshotInicial[item.idInventario] = item
     })
     setExistenciasEditadas(inicial)
+    setInventarioSnapshot(snapshotInicial)
     setModoEditarExistencias(true)
   }
 
   const cancelarEditarExistencias = () => {
     setModoEditarExistencias(false)
     setExistenciasEditadas({})
+    setInventarioSnapshot({})
   }
 
   const guardarExistencias = async () => {
     const regexEntero = /^\d+$/
     const regexDecimal = /^\d+(\.\d{1,2})?$/
 
-    const cambiosInv = inventario.filter(item => {
+    const todosLosItems = Object.values(inventarioSnapshot)
+
+    const cambiosInv = todosLosItems.filter(item => {
       const ed = existenciasEditadas[item.idInventario]
       if (!ed) return false
       const exCambio = ed.existencias?.trim() && regexEntero.test(ed.existencias.trim()) && Number(ed.existencias) !== Number(item.cantidadExistencias)
@@ -427,7 +478,7 @@ const ReporteInventario = () => {
       return exCambio || danCambio
     })
 
-    const cambiosPrecios = inventario.filter(item => {
+    const cambiosPrecios = todosLosItems.filter(item => {
       const ed = existenciasEditadas[item.idInventario]
       if (!ed || !item.idProducto) return false
       const compraCambio = ed.precioCompra?.trim() && regexDecimal.test(ed.precioCompra.trim()) && Number(ed.precioCompra) !== Number(item.precioCompra)
@@ -451,11 +502,11 @@ const ReporteInventario = () => {
           const ed = existenciasEditadas[item.idInventario]
           const nuevasEx = ed.existencias?.trim() && regexEntero.test(ed.existencias.trim()) ? Number(ed.existencias) : item.cantidadExistencias
           const nuevosDan = ed.danados?.trim() && regexEntero.test(ed.danados.trim()) ? Number(ed.danados) : item.cantidadDanados
-          return fetch(`/api/editarInventario/${item.idInventario}`, {
+          return fetchConTimeout(`/api/editarInventario/${item.idInventario}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ cantidadExistencias: nuevasEx, cantidadDanados: nuevosDan, idUsuarioModificacion: idUsuarioActual }),
-          }).then(r => { if (!r.ok) throw new Error(`Error al actualizar inventario ${item.idInventario}`) })
+          }, 30_000).then(r => { if (!r.ok) throw new Error(`Error al actualizar inventario ${item.idInventario}`) })
         }),
         // Deduplicar por idProducto: un solo llamado por producto aunque tenga varias ubicaciones
         ...Object.values(
@@ -467,7 +518,7 @@ const ReporteInventario = () => {
           const ed = existenciasEditadas[item.idInventario]
           const nuevaCompra = ed.precioCompra?.trim() && regexDecimal.test(ed.precioCompra.trim()) ? Number(ed.precioCompra) : item.precioCompra
           const nuevaVenta = ed.precioVenta?.trim() && regexDecimal.test(ed.precioVenta.trim()) ? Number(ed.precioVenta) : item.precioVenta
-          return fetch(`/api/editarProducto/${item.idProducto}`, {
+          return fetchConTimeout(`/api/editarProducto/${item.idProducto}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -479,11 +530,17 @@ const ReporteInventario = () => {
               precioVenta: nuevaVenta,
               idUsuarioModificacion: idUsuarioActual,
             }),
-          }).then(r => { if (!r.ok) throw new Error(`Error al actualizar precio de ${item.codigoProducto}`) })
+          }, 30_000).then(r => { if (!r.ok) throw new Error(`Error al actualizar precio de ${item.codigoProducto}`) })
         }),
       ])
-      await cargarInventario(pageInv, debouncedBusqueda, debouncedUbicacion)
+      // Salir del modo edición ANTES de recargar:
+      // 1) React renderiza la tabla sin CFormInputs (solo texto)
+      // 2) El await da tiempo a que ese render se aplique al DOM
+      // 3) La recarga usa enModoEdicion=false para evitar que la closure
+      //    vieja reactive el bloque de edición (fix de insertBefore/removeChild)
       cancelarEditarExistencias()
+      await new Promise(resolve => setTimeout(resolve, 100))
+      await cargarInventario(pageInv, debouncedBusqueda, debouncedUbicacion, false)
       const idsActualizados = new Set([
         ...cambiosInv.map(i => i.idProducto),
         ...cambiosPrecios.map(i => i.idProducto),
@@ -690,38 +747,6 @@ const ReporteInventario = () => {
     }
   }, [debouncedBusqueda, tipoReporte, debouncedUbicacion])
 
-  // ── Componente de paginación reutilizable ──
-  const Paginacion = ({ page, totalPages, onIr }) => {
-    if (totalPages <= 1) return null
-    const items = []
-    const inicio = Math.max(0, page - 8)
-    const fin = Math.min(totalPages - 1, page + 7)
-
-    if (page > 8) {
-      items.push(<CPaginationItem key={0} onClick={() => onIr(0)}>1</CPaginationItem>)
-      if (page > 9) items.push(<CPaginationItem key="e1" disabled>…</CPaginationItem>)
-    }
-    for (let i = inicio; i <= fin; i++)
-      items.push(
-        <CPaginationItem key={i} active={i === page} onClick={() => onIr(i)}>{i + 1}</CPaginationItem>,
-      )
-    if (page < totalPages - 8) {
-      if (page < totalPages - 9) items.push(<CPaginationItem key="e2" disabled>…</CPaginationItem>)
-      items.push(
-        <CPaginationItem key={totalPages - 1} onClick={() => onIr(totalPages - 1)}>{totalPages}</CPaginationItem>,
-      )
-    }
-    return (
-      <CPagination align="end" className="flex-wrap mt-3">
-        <CPaginationItem disabled={page === 0} onClick={() => onIr(0)} title="Primera">«</CPaginationItem>
-        <CPaginationItem disabled={page === 0} onClick={() => onIr(page - 1)}>Anterior</CPaginationItem>
-        {items}
-        <CPaginationItem disabled={page === totalPages - 1} onClick={() => onIr(page + 1)}>Siguiente</CPaginationItem>
-        <CPaginationItem disabled={page === totalPages - 1} onClick={() => onIr(totalPages - 1)} title="Última">»</CPaginationItem>
-      </CPagination>
-    )
-  }
-
   const isLoading = tipoReporte === '1' ? loadingAgrupado : loading
   const isError = tipoReporte === '1' ? errorAgrupado : error
 
@@ -829,7 +854,26 @@ const ReporteInventario = () => {
                   <p className="mt-2">Cargando inventario...</p>
                 </div>
               ) : isError ? (
-                <div className="alert alert-danger" role="alert">Error al cargar inventario: {isError}</div>
+                <div className="alert alert-danger d-flex flex-column flex-sm-row align-items-start align-items-sm-center gap-3" role="alert">
+                  <div>
+                    <strong>Error al cargar inventario:</strong>{' '}
+                    {isError === 'Failed to fetch'
+                      ? 'No se pudo conectar al servidor. Verifique que el backend esté en ejecución.'
+                      : isError}
+                  </div>
+                  <CButton
+                    color="danger"
+                    variant="outline"
+                    size="sm"
+                    className="text-nowrap"
+                    onClick={() => {
+                      if (tipoReporte === '1') cargarInventarioAgrupado(pageAgrupado, debouncedBusqueda)
+                      else cargarInventario(pageInv, debouncedBusqueda, debouncedUbicacion)
+                    }}
+                  >
+                    Reintentar
+                  </CButton>
+                </div>
               ) : tipoReporte === '1' ? (
                 inventarioAgrupado.length === 0 ? (
                   <div className="alert alert-info" role="alert">No se encontraron registros de inventario.</div>
@@ -855,7 +899,7 @@ const ReporteInventario = () => {
                       </CTableHead>
                       <CTableBody>
                         {inventarioAgrupado.map((item, index) => (
-                          <CTableRow key={item.producto?.idProducto || index}>
+                          <CTableRow key={item.producto?.idProducto ?? index}>
                             <CTableDataCell className="text-center">{pageAgrupado * PAGE_SIZE + index + 1}</CTableDataCell>
                             <CTableDataCell>{item.producto?.codigoProducto || '—'}</CTableDataCell>
                             <CTableDataCell>{item.producto?.codigoProductoProveedor || '—'}</CTableDataCell>
@@ -898,7 +942,7 @@ const ReporteInventario = () => {
                       </CTableHead>
                       <CTableBody>
                         {inventario.map((item, index) => (
-                          <CTableRow key={item.idInventario || index}>
+                          <CTableRow key={item.idInventario ?? index}>
                             <CTableDataCell className="text-center">{pageInv * PAGE_SIZE + index + 1}</CTableDataCell>
                             <CTableDataCell>{item.codigoProducto}</CTableDataCell>
                             <CTableDataCell>{item.codigoProductoProveedor}</CTableDataCell>

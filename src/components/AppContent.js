@@ -10,11 +10,11 @@ const AppContent = () => {
     <CContainer className="px-4" lg>
       <Suspense fallback={<CSpinner color="primary" />}>
         <Routes>
-          {routes.map((route, idx) => {
+          {routes.map((route) => {
             return (
               route.element && (
                 <Route
-                  key={idx}
+                  key={route.path}
                   path={route.path}
                   exact={route.exact}
                   name={route.name}
