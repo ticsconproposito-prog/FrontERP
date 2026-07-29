@@ -56,6 +56,8 @@ const Layout = () => {
   const [guardandoFactura, setGuardandoFactura] = useState(false);
   const [errorFactura, setErrorFactura] = useState('');
   const [enviarCorreo, setEnviarCorreo] = useState(false);
+  const [esConsignacionCheck, setEsConsignacionCheck] = useState(false);
+  const [rebajarInventarioConsig, setRebajarInventarioConsig] = useState('S');
   const [alertaSinCorreo, setAlertaSinCorreo] = useState(false);
   const [documentoOpts, setDocumentoOpts] = useState([]);
   const [tiposReceptor, setTiposReceptor] = useState({});
@@ -66,6 +68,8 @@ const Layout = () => {
   const [errorValidacionModal, setErrorValidacionModal] = useState({ visible: false, mensaje: '' });
   const [alertaCantidadModal, setAlertaCantidadModal] = useState(false);
   const [productosSinPrecioModal, setProductosSinPrecioModal] = useState({ visible: false, productos: [] });
+  const [alertaSinStockModal, setAlertaSinStockModal] = useState({ visible: false, descripcion: '', stock: 0 });
+  const [alertaExcedeStockModal, setAlertaExcedeStockModal] = useState({ visible: false, descripcion: '', stock: 0, cantidad: 0 });
   const [referenciaParaComprobante, setReferenciaParaComprobante] = useState('');
   const [clienteGuardadoModal, setClienteGuardadoModal] = useState(false);
 
@@ -172,6 +176,8 @@ const Layout = () => {
       establecimiento: 'Ferreteria y Blockera Agmner',
     });
     setEsConsumidorFinal(false);
+    setEsConsignacionCheck(false);
+    setRebajarInventarioConsig('S');
     setClienteSeleccionado(false);
     setEnviarCorreo(false);
     setAlertaSinCorreo(false);
@@ -348,6 +354,12 @@ const Layout = () => {
       return;
     }
 
+    const stock = Number(producto.cantidadExistencias ?? producto.stock ?? 0)
+    if (stock <= 0) {
+      setAlertaSinStockModal({ visible: true, descripcion, stock })
+      return
+    }
+
     const cantidad = 1;
     const precio = precioVenta * cantidad;
     const descuento = 0;
@@ -384,6 +396,15 @@ const Layout = () => {
     if (cantidad !== '' && (valor <= 0 || isNaN(valor))) {
       setAlertaCantidadModal(true);
       return;
+    }
+    const debeValidarStock = !esConsignacionCheck || rebajarInventarioConsig === 'S';
+    if (debeValidarStock && cantidad !== '') {
+      const item = detalleFactura[index];
+      const stockDisponible = Number(item.stock ?? 0);
+      if (valor > stockDisponible) {
+        setAlertaExcedeStockModal({ visible: true, descripcion: item.descripcion, stock: stockDisponible, cantidad: valor });
+        return;
+      }
     }
     const nuevoDetalle = [...detalleFactura];
     nuevoDetalle[index].cantidad = cantidad === '' ? '' : valor;
@@ -821,10 +842,6 @@ const Layout = () => {
       <div style="font-weight:bold;margin-bottom:6px;text-align:center;font-size:14px;">No se aceptan cambios, Ni devoluciones.</div>
       ${esConsignacion ? `
       <div style="font-weight:bold;text-align:center;font-size:14px;margin-top:4px;">**Productos pendientes de pago**</div>
-      <div style="margin-top:30px;text-align:center;">
-        <div style="font-size:13px;">f._____________________</div>
-        <div style="font-size:12px;margin-top:4px;">${cliente.nombre || 'Consumidor Final'}</div>
-      </div>
       ` : ''}`
 
     const paginasHTML = paginasDetalle.map((chunk, idx) => {
@@ -1061,17 +1078,33 @@ const Layout = () => {
       </head>
       <body>
         ${paginasHTML}
-        <script>
-          window.onload = function() { window.print(); window.onafterprint = function() { window.close(); }; };
-        </script>
       </body>
       </html>
     `;
 
-    const ventana = window.open('', '_blank', 'width=900,height=700');
-    if (ventana) {
-      ventana.document.write(html);
-      ventana.document.close();
+    const iframeId = 'print-frame-facturacion'
+    let iframe = document.getElementById(iframeId)
+    if (iframe) iframe.remove()
+
+    iframe = document.createElement('iframe')
+    iframe.id = iframeId
+    iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;border:none;'
+    document.body.appendChild(iframe)
+
+    iframe.contentDocument.open()
+    iframe.contentDocument.write(html)
+    iframe.contentDocument.close()
+
+    const nombrePDF = referenciaRes || preimpresoRes || 'Consignacion'
+    iframe.onload = () => {
+      const tituloOriginal = document.title
+      document.title = nombrePDF
+      iframe.contentWindow.focus()
+      iframe.contentWindow.print()
+      setTimeout(() => {
+        document.title = tituloOriginal
+        iframe.remove()
+      }, 1000)
     }
   };
 
@@ -1109,8 +1142,12 @@ const Layout = () => {
     }
 
     if (!formFactura.nombre?.trim()) {
-      mostrarErrorValidacion('Debe seleccionar o agregar un cliente.');
-      return;
+      if (esConsumidorFinal) {
+        setFormFactura((prev) => ({ ...prev, nombre: 'Consumidor Final' }));
+      } else {
+        mostrarErrorValidacion('Debe seleccionar o agregar un cliente.');
+        return;
+      }
     }
 
     if (detalleFactura.length === 0) {
@@ -1172,15 +1209,13 @@ const Layout = () => {
         isr: '0.00',
         iva: totalesDetalle.iva.toFixed(2),
         total: totalesDetalle.total.toFixed(2),
-        facturaProcesada: '',
+        facturaProcesada: String(formFactura.tipoDocumento) === '4' ? 'N' : '',
         direccionEntrega: formFactura.direccionEntrega || '',
         enviarCorreo: enviarCorreo ? 'S' : 'N',
         tipoReceptor: documento || '1',
         idUsuarioModificacion: idUsuarioActual,
         nombreFactura: esConsumidorFinal ? (formFactura.nombre || 'Consumidor Final') : '',
       };
-
-     /* console.log('[grabarEncabezadoFacturas] Body enviado:', JSON.stringify(body, null, 2)); */
       const response = await fetch('/api/grabarEncabezadoFacturas', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1218,7 +1253,7 @@ const Layout = () => {
           ordenDetalleFactura: index + 1,
         };
 
-        return fetch('/api/grabarDetalleFactura', {
+        return fetch(`/api/grabarDetalleFactura${esConsignacionCheck ? `?rebajarInventario=${rebajarInventarioConsig}` : ''}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(bodyDetalle),
@@ -1265,11 +1300,12 @@ const Layout = () => {
             isr: '0.00',
             iva: totalesDetalle.iva.toFixed(2),
             total: totalesDetalle.total.toFixed(2),
-            facturaProcesada: '',
+            facturaProcesada: 'N',
             direccionEntrega: formFactura.direccionEntrega || '',
             enviarCorreo: 'N',
             tipoReceptor: documento || '1',
             idUsuarioModificacion: idUsuarioActual,
+            nombreFactura: esConsumidorFinal ? (formFactura.nombre || 'Consumidor Final') : '',
           }),
         })
 
@@ -1451,8 +1487,8 @@ const Layout = () => {
             </CCardHeader>
 
             <CForm className="mt-4" onSubmit={guardarFactura}>
-              <CRow className="mb-2 align-items-center">
-                <CCol xs={12} md={6} className="d-flex gap-4">
+              <CRow className="mb-2 align-items-center flex-nowrap">
+                <CCol xs={12} md="auto" className="d-flex gap-4">
                   <CFormCheck
                     id="consumidorFinal"
                     label="Consumidor Final"
@@ -1475,7 +1511,34 @@ const Layout = () => {
                     }}
                   />
                 </CCol>
-                <CCol xs={12} md={6} className="d-flex justify-content-end gap-2">
+                <CCol xs={12} md="auto" className="d-flex align-items-center gap-2">
+                  <div className="d-flex align-items-center gap-2">
+                    <CFormCheck
+                      id="esConsignacion"
+                      label="Consignación"
+                      checked={esConsignacionCheck}
+                      onChange={(e) => {
+                        const checked = e.target.checked
+                        setEsConsignacionCheck(checked)
+                        setFormFactura((prev) => ({
+                          ...prev,
+                          tipoDocumento: checked ? '4' : (documentoOpts[0] ? String(documentoOpts[0].indice) : '1'),
+                        }))
+                      }}
+                    />
+                    {esConsignacionCheck && (
+                      <CFormSelect
+                        value={rebajarInventarioConsig}
+                        onChange={(e) => setRebajarInventarioConsig(e.target.value)}
+                        style={{ width: 'auto', minWidth: '185px', height: '30px', padding: '2px 8px', fontSize: '0.85rem', fontWeight: 'bold' }}
+                      >
+                        <option value="S">Rebajar Inventario</option>
+                        <option value="N">No Rebajar Inventario</option>
+                      </CFormSelect>
+                    )}
+                  </div>
+                </CCol>
+                <CCol xs={12} md="auto" className="d-flex justify-content-end gap-2 ms-auto">
                   <CButton color="secondary" className="text-light" onClick={limpiarFormulario}>
                     Limpiar
                   </CButton>
@@ -1554,6 +1617,11 @@ const Layout = () => {
                       placeholder={esConsumidorFinal ? 'Ingrese nombre de referencia (opcional)' : (!documento ? 'Seleccione un documento primero' : 'Ingrese el nombre para buscar cliente')}
                       value={formFactura.nombre}
                       onChange={handleNombreChange}
+                      onBlur={() => {
+                        if (esConsumidorFinal && !formFactura.nombre?.trim()) {
+                          setFormFactura((prev) => ({ ...prev, nombre: 'Consumidor Final' }));
+                        }
+                      }}
                       disabled={clienteSeleccionado || (!esConsumidorFinal && !documento)}
                       autoComplete="off"
                     />
@@ -1851,8 +1919,17 @@ const Layout = () => {
               </CRow>
             </CForm>
 
-            <CModal visible={visible} onClose={() => setVisible(false)} size="xl" backdrop="static" keyboard={false}>
-              <CModalHeader className="bg-primary text-white">
+            <CModal visible={visible} onClose={() => {
+              const conCantidadInvalida = detalleFactura.filter(
+                (item) => !Number(item.cantidad) || Number(item.cantidad) <= 0
+              )
+              if (conCantidadInvalida.length > 0) {
+                setAlertaCantidadModal(true)
+                return
+              }
+              setVisible(false)
+            }} size="xl" backdrop="static" keyboard={false}>
+              <CModalHeader className="bg-primary text-white" closeButton={!detalleFactura.some(item => !Number(item.cantidad) || Number(item.cantidad) <= 0)}>
                 <CModalTitle className="d-flex align-items-center gap-2">
                   <span>🛒</span> Agregar Productos a la Factura
                 </CModalTitle>
@@ -2047,7 +2124,16 @@ const Layout = () => {
               <CModalFooter className="bg-light">
                 <CButton
                   color="light"
-                  onClick={() => setVisible(false)}
+                  onClick={() => {
+                    const conCantidadInvalida = detalleFactura.filter(
+                      (item) => !Number(item.cantidad) || Number(item.cantidad) <= 0
+                    )
+                    if (conCantidadInvalida.length > 0) {
+                      setAlertaCantidadModal(true)
+                      return
+                    }
+                    setVisible(false)
+                  }}
                   className="border d-flex align-items-center gap-2"
                 >
                   <span>✖️</span> Cerrar
@@ -2055,7 +2141,16 @@ const Layout = () => {
                 <CButton
                   color="primary"
                   className="d-flex align-items-center gap-2"
-                  onClick={() => setVisible(false)}
+                  onClick={() => {
+                    const conCantidadInvalida = detalleFactura.filter(
+                      (item) => !Number(item.cantidad) || Number(item.cantidad) <= 0
+                    )
+                    if (conCantidadInvalida.length > 0) {
+                      setAlertaCantidadModal(true)
+                      return
+                    }
+                    setVisible(false)
+                  }}
                   disabled={detalleFactura.length === 0}
                 >
                   <span>✅</span> Confirmar Productos
@@ -2245,26 +2340,99 @@ const Layout = () => {
       alignment="center"
       backdrop="static"
     >
-      <CModalHeader className="bg-danger text-white">
-        <CModalTitle>⚠️ Productos sin precio de venta</CModalTitle>
+      <CModalHeader style={{ backgroundColor: '#f8d7da', borderBottom: '1px solid #f5c2c7' }}>
+        <CModalTitle style={{ color: '#842029', fontSize: '1rem', fontWeight: 'bold' }}>Producto sin precio de venta</CModalTitle>
       </CModalHeader>
-      <CModalBody>
-        <p className="mb-2">
-          No se puede generar la factura porque los siguientes productos no tienen un <strong>precio de venta</strong> válido:
-        </p>
-        <ul className="mb-2">
-          {productosSinPrecioModal.productos.map((p, i) => (
-            <li key={i}>
-              <strong>{p.codigo || '—'}</strong> — {p.descripcion || 'Sin descripción'}
-            </li>
-          ))}
-        </ul>
-        <p className="mb-0 text-muted small">
-          Por favor, actualice el precio de venta de estos productos en el inventario o elimínelos del detalle de la factura.
-        </p>
+      <CModalBody className="py-4 px-4">
+        <div className="d-flex align-items-start gap-3">
+          <span style={{ fontSize: '2rem', lineHeight: 1 }}>🚫</span>
+          <div>
+            <p className="mb-2 text-muted" style={{ fontSize: '0.9rem' }}>
+              No se puede agregar el producto porque no tiene un <strong>precio de venta</strong> válido:
+            </p>
+            <ul className="mb-2 ps-3">
+              {productosSinPrecioModal.productos.map((p, i) => (
+                <li key={i} style={{ fontSize: '0.95rem' }}>
+                  <strong>{p.codigo || '—'}</strong> — {p.descripcion || 'Sin descripción'}
+                </li>
+              ))}
+            </ul>
+            <p className="mb-0 text-muted small">
+              Actualice el precio de venta en el inventario antes de continuar.
+            </p>
+          </div>
+        </div>
       </CModalBody>
-      <CModalFooter>
-        <CButton color="danger" className="text-white" onClick={() => setProductosSinPrecioModal({ visible: false, productos: [] })}>
+      <CModalFooter style={{ backgroundColor: '#f8f9fa', borderTop: '1px solid #dee2e6' }}>
+        <CButton style={{ backgroundColor: '#842029', borderColor: '#842029', color: '#fff' }} onClick={() => setProductosSinPrecioModal({ visible: false, productos: [] })}>
+          Entendido
+        </CButton>
+      </CModalFooter>
+    </CModal>
+
+    {/* Modal sin stock */}
+    <CModal
+      visible={alertaSinStockModal.visible}
+      onClose={() => setAlertaSinStockModal({ visible: false, descripcion: '', stock: 0 })}
+      alignment="center"
+      backdrop="static"
+    >
+      <CModalHeader style={{ backgroundColor: '#ffe5d0', borderBottom: '1px solid #ffbc8a' }}>
+        <CModalTitle style={{ color: '#7a2e00', fontSize: '1rem', fontWeight: 'bold' }}>Sin existencias de inventario</CModalTitle>
+      </CModalHeader>
+      <CModalBody className="py-4 px-4">
+        <div className="d-flex align-items-start gap-3">
+          <span style={{ fontSize: '2rem', lineHeight: 1 }}>⚠️</span>
+          <div>
+            <p className="mb-2 text-muted" style={{ fontSize: '0.9rem' }}>
+              No se puede agregar el producto porque no tiene <strong>existencias disponibles</strong>:
+            </p>
+            <ul className="mb-2 ps-3">
+              <li style={{ fontSize: '0.95rem' }}>
+                <strong>{alertaSinStockModal.descripcion || '—'}</strong>
+              </li>
+            </ul>
+            <p className="mb-0 text-muted small">
+              Stock actual: <strong style={{ color: '#dc3545' }}>{alertaSinStockModal.stock}</strong>. Actualice el inventario antes de continuar.
+            </p>
+          </div>
+        </div>
+      </CModalBody>
+      <CModalFooter style={{ backgroundColor: '#f8f9fa', borderTop: '1px solid #dee2e6' }}>
+        <CButton style={{ backgroundColor: '#7a2e00', borderColor: '#7a2e00', color: '#fff' }} onClick={() => setAlertaSinStockModal({ visible: false, descripcion: '', stock: 0 })}>
+          Entendido
+        </CButton>
+      </CModalFooter>
+    </CModal>
+
+    {/* Modal: excede stock disponible */}
+    <CModal
+      visible={alertaExcedeStockModal.visible}
+      onClose={() => setAlertaExcedeStockModal({ visible: false, descripcion: '', stock: 0, cantidad: 0 })}
+      alignment="center"
+      backdrop="static"
+    >
+      <CModalHeader style={{ backgroundColor: '#ffe5d0', borderBottom: '1px solid #ffbc8a' }}>
+        <CModalTitle style={{ color: '#7a2e00', fontSize: '1rem', fontWeight: 'bold' }}>Cantidad excede el inventario</CModalTitle>
+      </CModalHeader>
+      <CModalBody className="py-4 px-4">
+        <div className="d-flex align-items-start gap-3">
+          <span style={{ fontSize: '2rem', lineHeight: 1 }}>⚠️</span>
+          <div>
+            <p className="mb-2 text-muted" style={{ fontSize: '0.9rem' }}>
+              La cantidad ingresada supera el stock disponible del producto:
+            </p>
+            <ul className="mb-2 ps-3">
+              <li style={{ fontSize: '0.95rem' }}><strong>{alertaExcedeStockModal.descripcion || '—'}</strong></li>
+            </ul>
+            <p className="mb-0 text-muted small">
+              Stock disponible: <strong style={{ color: '#dc3545' }}>{alertaExcedeStockModal.stock}</strong> — Cantidad ingresada: <strong>{alertaExcedeStockModal.cantidad}</strong>
+            </p>
+          </div>
+        </div>
+      </CModalBody>
+      <CModalFooter style={{ backgroundColor: '#f8f9fa', borderTop: '1px solid #dee2e6' }}>
+        <CButton style={{ backgroundColor: '#7a2e00', borderColor: '#7a2e00', color: '#fff' }} onClick={() => setAlertaExcedeStockModal({ visible: false, descripcion: '', stock: 0, cantidad: 0 })}>
           Entendido
         </CButton>
       </CModalFooter>
