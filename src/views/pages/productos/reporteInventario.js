@@ -97,6 +97,8 @@ const ReporteInventario = () => {
   // Filtro de ubicación (solo para reporte por ubicación)
   const [ubicacionFiltro, setUbicacionFiltro] = useState('')
   const [debouncedUbicacion, setDebouncedUbicacion] = useState('')
+  // '' = todas | 'sin_stock' = existencias <= 0
+  const [filtroExistencias, setFiltroExistencias] = useState('')
 
   // Edición de existencias (solo para reporte por ubicación)
   const [modoEditarExistencias, setModoEditarExistencias] = useState(false)
@@ -325,7 +327,7 @@ const ReporteInventario = () => {
       precioVenta: item.idProducto?.precioVenta || 0,
       estado: item.idProducto?.estado ?? item.estado,
       idUbicacion: item.idUbicacion ?? '—',
-      cantidadExistencias: item.cantidadExistencias || 0,
+      cantidadExistencias: item.cantidadExistencias ?? 0,
       cantidadDanados: item.cantidadDanados || 0,
     }))
 
@@ -363,13 +365,24 @@ const ReporteInventario = () => {
   // 🔥 Reporte por Ubicación - Usando el endpoint con paginación server-side
   // enModoEdicion permite forzar false desde guardarExistencias para evitar
   // que la closure vieja reactive el bloque de edición tras cancelar.
-  const cargarInventario = async (pagina = 0, termino = debouncedBusqueda, ubicacion = debouncedUbicacion, enModoEdicion = modoEditarExistencias) => {
+  // Si existenciasFiltro === 'sin_stock', trae todos y filtra existencias <= 0 en cliente.
+  const cargarInventario = async (
+    pagina = 0,
+    termino = debouncedBusqueda,
+    ubicacion = debouncedUbicacion,
+    enModoEdicion = modoEditarExistencias,
+    existenciasFiltro = filtroExistencias,
+  ) => {
     try {
       setLoading(true)
       setError(null)
       const t = (termino || '').trim()
+      const filtrarSinStock = existenciasFiltro === 'sin_stock'
 
-      const params = new URLSearchParams({ page: pagina, size: PAGE_SIZE })
+      const params = new URLSearchParams({
+        page: filtrarSinStock ? 0 : pagina,
+        size: filtrarSinStock ? SIZE_TODOS : PAGE_SIZE,
+      })
       if (t) {
         params.append('codigoProducto', t)
         params.append('codigoProductoProveedor', t)
@@ -381,12 +394,27 @@ const ReporteInventario = () => {
       if (!res.ok) throw new Error(`Error ${res.status}`)
       const data = await res.json()
       const arr = Array.isArray(data) ? data : data.content || []
-      const formateados = formatearInventario(arr)
+      let formateados = formatearInventario(arr)
 
-      setInventario(formateados)
-      setPageInv(data.number ?? 0)
-      setTotalPagesInv(data.totalPages ?? 0)
-      setTotalElemsInv(data.totalElements ?? 0)
+      if (filtrarSinStock) {
+        formateados = formateados.filter((item) => Number(item.cantidadExistencias) <= 0)
+        const totalElems = formateados.length
+        const totalPags = Math.max(1, Math.ceil(totalElems / PAGE_SIZE) || 1)
+        const paginaSegura = Math.min(pagina, totalPags - 1)
+        const inicio = paginaSegura * PAGE_SIZE
+        const paginaItems = formateados.slice(inicio, inicio + PAGE_SIZE)
+
+        setInventario(paginaItems)
+        setPageInv(paginaSegura)
+        setTotalPagesInv(totalElems === 0 ? 0 : totalPags)
+        setTotalElemsInv(totalElems)
+        formateados = paginaItems
+      } else {
+        setInventario(formateados)
+        setPageInv(data.number ?? 0)
+        setTotalPagesInv(data.totalPages ?? 0)
+        setTotalElemsInv(data.totalElements ?? 0)
+      }
 
       // Si está en modo edición, acumular items de la nueva página sin sobreescribir ediciones previas
       if (enModoEdicion) {
@@ -422,7 +450,7 @@ const ReporteInventario = () => {
 
   // ── Paginación ──
   const irPaginaAgrupado = (p) => cargarInventarioAgrupado(p, debouncedBusqueda)
-  const irPaginaInv = (p) => cargarInventario(p, debouncedBusqueda, debouncedUbicacion)
+  const irPaginaInv = (p) => cargarInventario(p, debouncedBusqueda, debouncedUbicacion, modoEditarExistencias, filtroExistencias)
 
   // ── Debounce para búsqueda ──
   useEffect(() => {
@@ -564,6 +592,7 @@ const ReporteInventario = () => {
   const limpiarBusqueda = () => {
     setBusqueda('')
     setUbicacionFiltro('')
+    setFiltroExistencias('')
     setDebouncedBusqueda('')
     setDebouncedUbicacion('')
   }
@@ -666,7 +695,10 @@ const ReporteInventario = () => {
         if (!res.ok) throw new Error('Error al exportar')
         const data = await res.json()
         const arr = Array.isArray(data) ? data : data.content || []
-        const todos = formatearInventario(arr)
+        let todos = formatearInventario(arr)
+        if (filtroExistencias === 'sin_stock') {
+          todos = todos.filter((item) => Number(item.cantidadExistencias) <= 0)
+        }
 
         const wb = new ExcelJS.Workbook()
         const ws = wb.addWorksheet('Reporte por Ubicación')
@@ -743,9 +775,9 @@ const ReporteInventario = () => {
     if (tipoReporte === '1') {
       cargarInventarioAgrupado(0, debouncedBusqueda)
     } else {
-      cargarInventario(0, debouncedBusqueda, debouncedUbicacion)
+      cargarInventario(0, debouncedBusqueda, debouncedUbicacion, modoEditarExistencias, filtroExistencias)
     }
-  }, [debouncedBusqueda, tipoReporte, debouncedUbicacion])
+  }, [debouncedBusqueda, tipoReporte, debouncedUbicacion, filtroExistencias])
 
   const isLoading = tipoReporte === '1' ? loadingAgrupado : loading
   const isError = tipoReporte === '1' ? errorAgrupado : error
@@ -769,20 +801,32 @@ const ReporteInventario = () => {
                   </CFormSelect>
                 </CCol>
                 {tipoReporte === '2' && (
-                  <CCol md={2}>
-                    <CFormLabel className="fw-semibold">Ubicación</CFormLabel>
-                    <CFormSelect
-                      value={ubicacionFiltro}
-                      onChange={(e) => setUbicacionFiltro(e.target.value)}
-                    >
-                      <option value="">Todas las ubicaciones</option>
-                      {ubicaciones.map((u) => (
-                        <option key={u.idUbicacion} value={u.idUbicacion}>
-                          {u.nombreUbicacion || `Ubicación ${u.idUbicacion}`}
-                        </option>
-                      ))}
-                    </CFormSelect>
-                  </CCol>
+                  <>
+                    <CCol md={2}>
+                      <CFormLabel className="fw-semibold">Ubicación</CFormLabel>
+                      <CFormSelect
+                        value={ubicacionFiltro}
+                        onChange={(e) => setUbicacionFiltro(e.target.value)}
+                      >
+                        <option value="">Todas las ubicaciones</option>
+                        {ubicaciones.map((u) => (
+                          <option key={u.idUbicacion} value={u.idUbicacion}>
+                            {u.nombreUbicacion || `Ubicación ${u.idUbicacion}`}
+                          </option>
+                        ))}
+                      </CFormSelect>
+                    </CCol>
+                    <CCol md={2}>
+                      <CFormLabel className="fw-semibold">Existencias</CFormLabel>
+                      <CFormSelect
+                        value={filtroExistencias}
+                        onChange={(e) => setFiltroExistencias(e.target.value)}
+                      >
+                        <option value="">Todas</option>
+                        <option value="sin_stock">Sin existencias (≤ 0)</option>
+                      </CFormSelect>
+                    </CCol>
+                  </>
                 )}
                 <CCol>
                   <CFormLabel className="fw-semibold">Buscar</CFormLabel>
@@ -868,7 +912,7 @@ const ReporteInventario = () => {
                     className="text-nowrap"
                     onClick={() => {
                       if (tipoReporte === '1') cargarInventarioAgrupado(pageAgrupado, debouncedBusqueda)
-                      else cargarInventario(pageInv, debouncedBusqueda, debouncedUbicacion)
+                      else cargarInventario(pageInv, debouncedBusqueda, debouncedUbicacion, modoEditarExistencias, filtroExistencias)
                     }}
                   >
                     Reintentar

@@ -29,8 +29,10 @@ import {
 import ExcelJS from 'exceljs'
 
 const PAGE_SIZE = 20
-const _d = new Date()
-const HOY = `${_d.getFullYear()}-${String(_d.getMonth() + 1).padStart(2, '0')}-${String(_d.getDate()).padStart(2, '0')}`
+const obtenerHOY = () => {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
 
 const formatFecha = (f) => {
   if (!f) return '—'
@@ -123,11 +125,16 @@ const ReporteConsignaciones = () => {
   const { usuario } = useAuth()
   const idUsuarioActual = Number(usuario?.idUsuario ?? usuario?.id_Usuario ?? 0)
 
-  const [fechaInicio, setFechaInicio] = useState(HOY)
-  const [fechaFin, setFechaFin] = useState(HOY)
+  const [fechaInicio, setFechaInicio] = useState(() => obtenerHOY())
+  const [fechaFin, setFechaFin] = useState(() => obtenerHOY())
   const [buscarCliente, setBuscarCliente] = useState('')
   const [filtroEstado, setFiltroEstado]   = useState('')
-  const [filtroAplicado, setFiltroAplicado] = useState({ inicio: '', fin: '', cliente: '', estado: '' })
+  const [filtroAplicado, setFiltroAplicado] = useState(() => ({
+    inicio: obtenerHOY(),
+    fin: obtenerHOY(),
+    cliente: '',
+    estado: '',
+  }))
   const debounceCliente = useRef(null)
 
   const [consignaciones, setConsignaciones] = useState([])
@@ -185,6 +192,143 @@ const ReporteConsignaciones = () => {
   const [seleccionadosFacturar, setSeleccionadosFacturar] = useState(new Set())
   const [confirmandoFacturar, setConfirmandoFacturar] = useState(false)
   const [msgFacturar, setMsgFacturar] = useState({ visible: false, ok: false, texto: '' })
+  const [modalNitFacturar, setModalNitFacturar] = useState(false)
+  const [nitFacturarEdit, setNitFacturarEdit] = useState('')
+  const [nombreFacturarEdit, setNombreFacturarEdit] = useState('')
+  const [errorNitFacturar, setErrorNitFacturar] = useState('')
+  const [sugerenciasNitFacturar, setSugerenciasNitFacturar] = useState([])
+  const [mostrarSugerenciasNit, setMostrarSugerenciasNit] = useState(false)
+  const [cargandoNitFacturar, setCargandoNitFacturar] = useState(false)
+  const [clienteFacturarSeleccionado, setClienteFacturarSeleccionado] = useState(null)
+  const [clienteFacturarBloqueado, setClienteFacturarBloqueado] = useState(false)
+  const [tiposReceptor, setTiposReceptor] = useState({})
+  const [documentoFacturar, setDocumentoFacturar] = useState('')
+  const debounceNitFacturar = useRef(null)
+
+  // Para CF queremos permitir escribir un nombre personalizado aunque el cliente quede "bloqueado".
+  const esCFModal = (nitFacturarEdit || '').trim().toUpperCase() === 'CF'
+    || ((clienteFacturarSeleccionado?.nit || '').trim().toUpperCase() === 'CF')
+
+  const tipoBusquedaFacturar = () => {
+    const valor = (tiposReceptor[String(documentoFacturar)] || '').toLowerCase()
+    if (valor.includes('pasaporte')) return 'pasaporte'
+    if (valor.includes('dpi')) return 'dpi'
+    return 'nit'
+  }
+
+  const buscarClientesFacturar = async (termino, campo = 'nombre') => {
+    const t = (termino || '').trim()
+    if (t.length < 1) {
+      setSugerenciasNitFacturar([])
+      setMostrarSugerenciasNit(false)
+      return
+    }
+    setCargandoNitFacturar(true)
+    try {
+      const params = new URLSearchParams({ page: 0, size: 15 })
+      if (campo === 'nombre') {
+        params.append('nombreCliente', t)
+      } else {
+        if (documentoFacturar) params.append('tipoDocumento', documentoFacturar)
+        params.append('documentoCliente', t)
+      }
+      const res = await fetch(`/api/clientes?${params}`)
+      if (!res.ok) throw new Error()
+      const data = await res.json()
+      const lista = Array.isArray(data) ? data : (data?.content || [])
+      setSugerenciasNitFacturar(lista.slice(0, 15))
+      setMostrarSugerenciasNit(lista.length > 0)
+    } catch {
+      setSugerenciasNitFacturar([])
+      setMostrarSugerenciasNit(false)
+    } finally {
+      setCargandoNitFacturar(false)
+    }
+  }
+
+  const handleNitFacturarChange = (e) => {
+    const value = (e.target.value || '').toString()
+    setNitFacturarEdit(value)
+    setClienteFacturarSeleccionado(null)
+    setClienteFacturarBloqueado(false)
+    if (errorNitFacturar) setErrorNitFacturar('')
+    clearTimeout(debounceNitFacturar.current)
+    if (value.trim().length < 1) {
+      setSugerenciasNitFacturar([])
+      setMostrarSugerenciasNit(false)
+      return
+    }
+    const tipo = tipoBusquedaFacturar()
+    const campo = (tipo === 'dpi' || tipo === 'pasaporte') ? 'dpi' : 'nit'
+    debounceNitFacturar.current = setTimeout(() => buscarClientesFacturar(value, campo), 300)
+  }
+
+  const handleNombreFacturarChange = (e) => {
+    const value = (e.target.value || '').toString()
+    setNombreFacturarEdit(value)
+    setClienteFacturarSeleccionado(null)
+    setClienteFacturarBloqueado(false)
+    clearTimeout(debounceNitFacturar.current)
+    if (value.trim().length < 1) {
+      setSugerenciasNitFacturar([])
+      setMostrarSugerenciasNit(false)
+      return
+    }
+    debounceNitFacturar.current = setTimeout(() => buscarClientesFacturar(value, 'nombre'), 300)
+  }
+
+  const seleccionarClienteFacturar = (cliente) => {
+    const tipo = tipoBusquedaFacturar()
+    const docValue = (tipo === 'dpi' || tipo === 'pasaporte')
+      ? (cliente.documentoIdentificacion || '')
+      : (cliente.nit || '')
+    setNitFacturarEdit(docValue)
+    setNombreFacturarEdit(cliente.nombreCliente || cliente.nombreFacturacion || '')
+    setClienteFacturarSeleccionado(cliente)
+    setClienteFacturarBloqueado(true)
+    setSugerenciasNitFacturar([])
+    setMostrarSugerenciasNit(false)
+    setErrorNitFacturar('')
+  }
+
+  const limpiarClienteFacturar = () => {
+    setNitFacturarEdit('')
+    setNombreFacturarEdit('')
+    setClienteFacturarSeleccionado(null)
+    setClienteFacturarBloqueado(false)
+    setSugerenciasNitFacturar([])
+    setMostrarSugerenciasNit(false)
+    setErrorNitFacturar('')
+  }
+
+  const abrirConfirmacionNit = () => {
+    if (seleccionadosFacturar.size === 0) return
+    if (!consignacionAgregar) {
+      setMsgFacturar({ visible: true, ok: false, texto: 'No hay consignación seleccionada.' })
+      return
+    }
+    const cliente = (consignacionAgregar.idCliente && typeof consignacionAgregar.idCliente === 'object')
+      ? consignacionAgregar.idCliente : {}
+    const tipoRec = String(consignacionAgregar.tipoReceptor ?? '1')
+    const nitActual = (tipoRec === '2' || tipoRec === '3')
+      ? (cliente.documentoIdentificacion || cliente.nit || 'CF')
+      : (cliente.nit || 'CF')
+    setDocumentoFacturar(tipoRec || '')
+    setNitFacturarEdit(nitActual)
+    setNombreFacturarEdit(
+      getNombreCliente(consignacionAgregar)
+      || consignacionAgregar.nombreFactura
+      || cliente.nombreCliente
+      || cliente.nombreFacturacion
+      || 'Consumidor Final'
+    )
+    setClienteFacturarSeleccionado(cliente?.idCliente ? cliente : null)
+    setClienteFacturarBloqueado(!!cliente?.idCliente)
+    setSugerenciasNitFacturar([])
+    setMostrarSugerenciasNit(false)
+    setErrorNitFacturar('')
+    setModalNitFacturar(true)
+  }
 
   const confirmarFacturacion = async () => {
     const itemsSeleccionados = lineasAgregar.filter(
@@ -196,8 +340,17 @@ const ReporteConsignaciones = () => {
       return
     }
 
-    const enc     = consignacionAgregar
-    const cliente = (enc.idCliente && typeof enc.idCliente === 'object') ? enc.idCliente : {}
+    const nitIngresado = (nitFacturarEdit || '').trim()
+    if (!nitIngresado) {
+      setErrorNitFacturar('Debe ingresar un NIT para facturar.')
+      return
+    }
+    setErrorNitFacturar('')
+    setModalNitFacturar(false)
+
+      const enc = consignacionAgregar
+    const clienteOriginal = (enc.idCliente && typeof enc.idCliente === 'object') ? enc.idCliente : {}
+    const cliente = clienteFacturarSeleccionado || clienteOriginal
 
     // ── Validar inventario antes de facturar ─────────────────────────────────
     setConfirmandoFacturar(true)
@@ -231,19 +384,17 @@ const ReporteConsignaciones = () => {
       const hoy      = new Date()
       const fechaDte = `${String(hoy.getDate()).padStart(2, '0')}/${String(hoy.getMonth() + 1).padStart(2, '0')}/${hoy.getFullYear()}`
       const r2       = (n) => parseFloat(parseFloat(n || 0).toFixed(2))
-      console.log('[Facturar] enc:', enc, '| cliente:', cliente, '| items:', itemsSeleccionados.length)
+      // console.log('[Facturar] enc:', enc, '| cliente:', cliente, '| items:', itemsSeleccionados.length)
 
       // Normalizar campos y calcular lineasDetalle una sola vez (igual que facturacion.js)
       const monedaStr          = String(enc.moneda ?? enc.idMoneda ?? '1')
-      const tipoRec            = String(enc.tipoReceptor ?? '1')
-      const idClienteEnc       = enc.idCliente?.idCliente ?? enc.idCliente ?? null
-      const esConsumidorFinalF = (cliente.nit || '').toUpperCase() === 'CF'
-                                 || Number(idClienteEnc) === 1
+      const tipoRec            = String(documentoFacturar || enc.tipoReceptor || '1')
+      const idClienteEnc       = cliente?.idCliente ?? enc.idCliente?.idCliente ?? enc.idCliente ?? null
+      const nitReceptor        = nitIngresado
+      const esConsumidorFinalF = nitReceptor.toUpperCase() === 'CF'
       const nombreFactura      = esConsumidorFinalF
-        ? (enc.nombreFactura || cliente.nombreCliente || cliente.nombreFacturacion || 'Consumidor Final')
-        : ''
-      let nitReceptor = cliente.nit || 'CF'
-      if (tipoRec === '2' || tipoRec === '3') nitReceptor = cliente.documentoIdentificacion || 'CF'
+        ? ((nombreFacturarEdit || '').trim() || enc.nombreFactura || cliente.nombreCliente || cliente.nombreFacturacion || 'Consumidor Final')
+        : ((nombreFacturarEdit || '').trim() || '')
 
       const lineasDetalle = itemsSeleccionados.map((item) => {
         const cantItem     = Number(item.cantidad) || 0
@@ -296,7 +447,7 @@ const ReporteConsignaciones = () => {
         nombreFactura,
       }
 
-      console.log('[Facturar] Creando encabezado:', bodyEnc)
+      // console.log('[Facturar] Creando encabezado:', bodyEnc)
       const resEnc = await fetch('/api/grabarEncabezadoFacturas', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -304,7 +455,7 @@ const ReporteConsignaciones = () => {
       })
       if (!resEnc.ok) throw new Error(`Error ${resEnc.status} al crear encabezado de factura`)
       const idEncabezadoNuevo = (await resEnc.text()).trim()
-      console.log('[Facturar] Encabezado creado, id:', idEncabezadoNuevo)
+      // console.log('[Facturar] Encabezado creado, id:', idEncabezadoNuevo)
 
       // ── 2. Crear detalle de la nueva factura (valores de lineasDetalle ya calculados) ─
       const detallePromises = lineasDetalle.map(({ item, cantItem, descItem, precioItem, impBruto, totalConDesc, impNeto, impIva }, index) => {
@@ -327,7 +478,7 @@ const ReporteConsignaciones = () => {
           idUsuarioModificacion: String(idUsuarioActual),
           ordenDetalleFactura:   index + 1,
         }
-        console.log(`[grabarDetalleFactura] item ${index + 1}:`, bodyDetalle)
+        // console.log(`[grabarDetalleFactura] item ${index + 1}:`, bodyDetalle)
         return fetch('/api/grabarDetalleFactura?rebajarInventario=N', {
           method:  'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -336,7 +487,7 @@ const ReporteConsignaciones = () => {
       })
       const resultadosDet = await Promise.all(detallePromises)
       if (resultadosDet.some(r => !r.ok)) throw new Error('El encabezado se creó pero algunos productos del detalle fallaron')
-      console.log('[Facturar] Detalle creado correctamente')
+      // console.log('[Facturar] Detalle creado correctamente')
 
       // ── 3. Marcar items de la consignación como facturados (PATCH) ────────────
       const patchPromises = itemsSeleccionados
@@ -349,9 +500,9 @@ const ReporteConsignaciones = () => {
           })
         )
       await Promise.all(patchPromises)
-      console.log('[Facturar] Items marcados como facturados')
+      // console.log('[Facturar] Items marcados como facturados')
 
-      // ── Verificar si todos los items están facturados → marcar encabezado como procesado ──
+      // ── Verificar si todos los items estan facturados → marcar encabezado como procesado ──
       await verificarYActualizarFacturaProcesada(Number(enc.idEncabezadoFactura))
 
       // ── 4. Enviar DTE (construido desde lineasDetalle) ────────────────────────
@@ -385,7 +536,9 @@ const ReporteConsignaciones = () => {
         items:        itemsDte,
         receptor: {
           nitReceptor,
-          nombre:    esConsumidorFinalF ? 'Consumidor Final' : (enc.nombreResAPI || nombreFactura || cliente.nombreCliente || cliente.nombreFacturacion || 'Consumidor Final'),
+          nombre:    esConsumidorFinalF
+            ? 'Consumidor Final'
+            : ((nombreFacturarEdit || '').trim() || enc.nombreResAPI || cliente.nombreCliente || cliente.nombreFacturacion || 'Consumidor Final'),
           direccion: cliente.direccionFisica || 'Ciudad',
         },
         totales: {
@@ -405,7 +558,7 @@ const ReporteConsignaciones = () => {
         },
       }
 
-      console.log('[Facturar DTE] Enviando:', JSON.stringify(bodyDte, null, 2))
+      // console.log('[Facturar DTE] Enviando:', JSON.stringify(bodyDte, null, 2))
       const resDte = await fetch('/api/fel/dtes', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -414,16 +567,35 @@ const ReporteConsignaciones = () => {
       const rawDte = await resDte.text()
       let responseDte = null
       try { responseDte = JSON.parse(rawDte) } catch (_) { responseDte = rawDte }
-      console.log('[Facturar DTE] Respuesta:', responseDte)
+      // console.log('[Facturar DTE] Respuesta:', responseDte)
 
       const fel = responseDte?.fel ?? responseDte
       if (fel?.ok === false) {
         setMsgFacturar({ visible: true, ok: false, texto: fel.error || 'Error al emitir el DTE' })
+        const idEnc = Number(enc.idEncabezadoFactura)
+        if (idEnc) await cargarLineasExistentes(idEnc)
+        cargarConsignaciones(paginaActual, filtroAplicado)
       } else {
         const referenciaFinal = fel?.referencia || referenciaCalculada
         setMsgFacturar({ visible: true, ok: true, texto: `Facturación procesada correctamente. Referencia: ${referenciaFinal}` })
         setSeleccionadosFacturar(new Set())
-        await imprimirFacturaAbono(itemsSeleccionados, responseDte, totalesDetalle.totalNeto, totalesDetalle.iva, totalesDetalle.total, enc)
+        await imprimirFacturaAbono(
+          itemsSeleccionados,
+          responseDte,
+          totalesDetalle.totalNeto,
+          totalesDetalle.iva,
+          totalesDetalle.total,
+          enc,
+          {
+            nit: nitReceptor,
+            nombre: (nombreFacturarEdit || '').trim()
+              || (esConsumidorFinalF
+                ? 'Consumidor Final'
+                : (cliente.nombreCliente || cliente.nombreFacturacion || '')),
+            direccion: cliente.direccionFisica || 'Ciudad',
+            tipoReceptor: tipoRec,
+          },
+        )
         const idEnc = Number(enc.idEncabezadoFactura)
         if (idEnc) await cargarLineasExistentes(idEnc)
         cargarConsignaciones(paginaActual, filtroAplicado)
@@ -435,7 +607,7 @@ const ReporteConsignaciones = () => {
     }
   }
 
-  // Verifica si todos los items del encabezado están facturados y actualiza facturaProcesada='S'
+  // Verifica si todos los items del encabezado estan facturados y actualiza facturaProcesada='S'
   const verificarYActualizarFacturaProcesada = async (idEncabezado) => {
     try {
       const res = await fetch(`/api/detalleFactura?idEncabezadoFactura=${idEncabezado}`)
@@ -450,7 +622,7 @@ const ReporteConsignaciones = () => {
           headers: { 'Content-Type': 'application/json' },
           body:    JSON.stringify({ facturaProcesada: 'S', idUsuarioModificacion: Number(idUsuarioActual) }),
         })
-        console.log(`[FacturaProcesada] Encabezado ${idEncabezado} marcado como procesado (S)`)
+        // console.log(`[FacturaProcesada] Encabezado ${idEncabezado} marcado como procesado (S)`)
       }
     } catch (e) {
       console.warn('[FacturaProcesada] Error al verificar:', e.message)
@@ -477,13 +649,25 @@ const ReporteConsignaciones = () => {
   useEffect(() => {
     const cargarDiccionarios = async () => {
       try {
-        const res = await fetch('/api/diccionarios?diccionario=TIPODOCUMENTO&estado=1')
-        if (res.ok) {
-          const data = await res.json()
+        const [resDoc, resRec] = await Promise.all([
+          fetch('/api/diccionarios?diccionario=TIPODOCUMENTO&estado=1'),
+          fetch('/api/diccionarios?diccionario=TIPORECEPTOR&estado=1'),
+        ])
+        if (resDoc.ok) {
+          const data = await resDoc.json()
           const lista = Array.isArray(data) ? data : data.content ?? []
           const mapa = {}
           lista.forEach((item) => { mapa[String(item.indice)] = item.valor })
           setTiposDocumento(mapa)
+        }
+        if (resRec.ok) {
+          const data = await resRec.json()
+          const lista = Array.isArray(data) ? data : data.content ?? []
+          const mapa = {}
+          lista.forEach((item) => { mapa[String(item.indice)] = item.valor })
+          setTiposReceptor(mapa)
+          const nitEntry = lista.find((item) => (item.valor || '').toUpperCase().includes('NIT'))
+          if (nitEntry && !documentoFacturar) setDocumentoFacturar(String(nitEntry.indice))
         }
       } catch { /* silencioso */ }
     }
@@ -510,7 +694,18 @@ const ReporteConsignaciones = () => {
       if (filtros.inicio) params.append('fechaInicio', filtros.inicio)
       if (filtros.fin) params.append('fechaFin', filtros.fin)
 
-      const res = await fetch(`/api/erpEncabezadoFacturas?${params}`, { signal })
+      const resumenParams = new URLSearchParams()
+      resumenParams.append('fechaInicio', filtros.inicio || obtenerHOY())
+      resumenParams.append('fechaFin', filtros.fin || obtenerHOY())
+      if (filtros.cliente) resumenParams.append('nombreCliente', filtros.cliente)
+      if (filtros.estado) resumenParams.append('facturaProcesada', filtros.estado)
+
+      const [res, resumenData] = await Promise.all([
+        fetch(`/api/erpEncabezadoFacturas?${params}`, { signal }),
+        fetch(`/api/consignacionPagos/resumenConsignaciones?${resumenParams}`, { signal })
+          .then(async (r) => (r.ok ? r.json() : null))
+          .catch(() => null),
+      ])
       if (!res.ok) throw new Error(`Error ${res.status}`)
       const data = await res.json()
 
@@ -531,37 +726,20 @@ const ReporteConsignaciones = () => {
 
       setTodasConsignaciones(todasFiltradas)
 
-      // Calcular total pendiente: suma de ImpTotal del detalle donde consignacionFacturada=0
-      // Limitamos a 6 peticiones simultáneas para no saturar el navegador
-      const totalesPendientes = await mapConLimite(todasFiltradas, 6, async (enc) => {
-        if (signal.aborted) return 0
-        const idEnc = Number(enc.idEncabezadoFactura)
-        if (!idEnc || !Number.isFinite(idEnc) || idEnc <= 0) return 0
-        try {
-          const rd = await fetch(`/api/detalleFactura?idEncabezadoFactura=${idEnc}`, { signal })
-          if (!rd.ok) return 0
-          const dd = await rd.json()
-          const lineas = Array.isArray(dd) ? dd : dd.content ?? []
-          return lineas
-            .filter((d) => String(d.consignacionFacturada) !== '1')
-            .reduce((s, d) => s + (Number(d.ImpTotal) || 0), 0)
-        } catch (_) {
-          return 0
-        }
-      })
-      if (signal.aborted) return
-      const totalPendiente = totalesPendientes.reduce((s, t) => s + (t || 0), 0)
+      const montoTotalLocal = todasFiltradas.reduce((s, f) => s + (Number(f.total) || 0), 0)
+      const totalPagadoLocal = todasFiltradas.reduce((s, f) => s + (Number(f.totalPagado) || 0), 0)
+      const saldoPendienteLocal = todasFiltradas.reduce((s, f) => s + (Number(f.saldoPendiente) || 0), 0)
 
-      const montoTotal = todasFiltradas.reduce((s, f) => s + (Number(f.total) || 0), 0)
-      const totalPagado = todasFiltradas.reduce((s, f) => s + (Number(f.totalPagado) || 0), 0)
-      const saldoPendiente = todasFiltradas.reduce((s, f) => s + (Number(f.saldoPendiente) || 0), 0)
+      const montoTotal = Number(resumenData?.montoTotal ?? montoTotalLocal) || 0
+      const totalPagado = Number(resumenData?.totalPagado ?? totalPagadoLocal) || 0
+      const saldoPendiente = Number(resumenData?.saldoPendiente ?? saldoPendienteLocal) || 0
 
       setResumen({
-        cantidad: todasFiltradas.length,
+        cantidad: Number(resumenData?.totalConsignaciones ?? todasFiltradas.length) || 0,
         montoTotal,
         totalPagado,
         saldoPendiente,
-        total: totalPendiente,
+        total: montoTotal,
       })
 
       const totalElems = todasFiltradas.length
@@ -604,11 +782,12 @@ const ReporteConsignaciones = () => {
   }
 
   const handleLimpiar = () => {
-    setFechaInicio(HOY)
-    setFechaFin(HOY)
+    const hoy = obtenerHOY()
+    setFechaInicio(hoy)
+    setFechaFin(hoy)
     setBuscarCliente('')
     setFiltroEstado('')
-    const filtros = { inicio: HOY, fin: HOY, cliente: '', estado: '' }
+    const filtros = { inicio: hoy, fin: hoy, cliente: '', estado: '' }
     setFiltroAplicado(filtros)
     setPaginaActual(0)
     cargarConsignaciones(0, filtros)
@@ -754,7 +933,7 @@ const ReporteConsignaciones = () => {
     if (lineasAgregar.some(l => l.idInventario === idInventario)) return
 
     const stock = Number(producto.cantidadExistencias ?? producto.stock ?? 0)
-    console.log('[seleccionarProductoAgregar] stock:', stock, '| producto:', producto)
+    // console.log('[seleccionarProductoAgregar] stock:', stock, '| producto:', producto)
     if (stock <= 0) {
       setAlertaSinStockAgregar({
         visible: true,
@@ -884,7 +1063,7 @@ const ReporteConsignaciones = () => {
           idUsuarioModificacion: String(idUsuarioActual),
           ordenDetalleFactura:   ordenBase + idx + 1,
         }
-        console.log(`[grabarDetalleFactura] item ${idx + 1}:`, bodyDetalle)
+        // console.log(`[grabarDetalleFactura] item ${idx + 1}:`, bodyDetalle)
         return fetch('/api/grabarDetalleFactura', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -927,7 +1106,7 @@ const ReporteConsignaciones = () => {
         total:                 parseFloat(totalesDetalle.total.toFixed(2)),
         idUsuarioModificacion: Number(idUsuarioActual),
       }
-      console.log(`[actualizarMontosFactura] id=${idEnc}:`, bodyMonto)
+      // console.log(`[actualizarMontosFactura] id=${idEnc}:`, bodyMonto)
 
       const resMonto = await fetch(`/api/actualizarMontosFactura/${idEnc}`, {
         method: 'PUT',
@@ -962,6 +1141,7 @@ const ReporteConsignaciones = () => {
       if (!res.ok) throw new Error(`Error ${res.status} al cargar detalle`)
       const data = await res.json()
       const lineas = Array.isArray(data) ? data : data.content ?? []
+
 
       const lineasEnriquecidas = await mapConLimite(lineas, 6, async (item) => {
         const idProd = item.idProducto
@@ -1127,6 +1307,7 @@ const ReporteConsignaciones = () => {
       if (!res.ok) throw new Error(`Error ${res.status}`)
       const data = await res.json()
       const lineas = Array.isArray(data) ? data : data.content ?? []
+
 
       const enriquecidas = await mapConLimite(lineas, 6, async (item) => {
         let descripcionProducto = `Producto ${item.idProducto || '?'}`
@@ -1474,7 +1655,7 @@ const ReporteConsignaciones = () => {
   }
 
   // ── Imprimir factura de abono (PDF) ────────────────────────────────────────
-  const imprimirFacturaAbono = async (itemsSeleccionados, responseDte, totalNeto, totalIva, totalFinal, encParam = null) => {
+  const imprimirFacturaAbono = async (itemsSeleccionados, responseDte, totalNeto, totalIva, totalFinal, encParam = null, receptorOverride = null) => {
     let logoBase64 = ''
     try {
       const resp = await fetch(logoFerreteria)
@@ -1498,16 +1679,29 @@ const ReporteConsignaciones = () => {
     const hoy = new Date()
     const fechaHoy = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`
 
-    const tipoRec = String(enc.tipoReceptor ?? '1')
+    const tipoRec = String(receptorOverride?.tipoReceptor ?? enc.tipoReceptor ?? '1')
     let labelReceptor = 'NIT'
     let docReceptor   = cliente.nit || 'CF'
     if (tipoRec === '2') { labelReceptor = 'DPI';       docReceptor = cliente.documentoIdentificacion || '—' }
     if (tipoRec === '3') { labelReceptor = 'PASAPORTE'; docReceptor = cliente.documentoIdentificacion || '—' }
 
-    const esCF           = (cliente.nit || '').toUpperCase() === 'CF' || Number(enc.idCliente?.idCliente ?? enc.idCliente) === 1
-    const nombreDte      = fel.nombreResAPI || fel.nombre || null
-    const nombreCliente  = (!esCF && nombreDte) ? nombreDte : getNombreCliente(enc)
-    const direccionCliente = cliente.direccionFisica || '—'
+    // Si se cambió NIT/nombre al facturar, usar esos valores en la impresión
+    if (receptorOverride?.nit) {
+      docReceptor = receptorOverride.nit
+      if (tipoRec === '2') labelReceptor = 'DPI'
+      else if (tipoRec === '3') labelReceptor = 'PASAPORTE'
+      else labelReceptor = 'NIT'
+    }
+
+    const esCF = (docReceptor || '').toUpperCase() === 'CF'
+      || (!receptorOverride?.nit && Number(enc.idCliente?.idCliente ?? enc.idCliente) === 1)
+    // NIT / DPI / Pasaporte: nombre del DTE (FEL). CF: no tomar de FEL.
+    const nombreDte = fel.nombre || fel.nombreResAPI || null
+    const nombreOverride = (receptorOverride?.nombre || '').trim()
+    const nombreCliente = esCF
+      ? (nombreOverride || 'Consumidor Final')
+      : (nombreDte || nombreOverride || getNombreCliente(enc))
+    const direccionCliente = receptorOverride?.direccion || cliente.direccionFisica || '—'
     const moneda           = 'Q'
     const hayDescuento     = itemsSeleccionados.some((i) => (i.cantidadDeDescuento || 0) !== 0)
     const totalCols        = 4 + (hayDescuento ? 1 : 0)
@@ -1783,7 +1977,7 @@ const ReporteConsignaciones = () => {
         observaciones:         observacionesAbono.trim(),
         idUsuarioModificacion: Number(idUsuarioActual),
       }
-      console.log('[grabarConsignacionPago] Body enviado:', bodyPago)
+      // console.log('[grabarConsignacionPago] Body enviado:', bodyPago)
       const res = await fetch('/api/consignacionPagos', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1861,7 +2055,9 @@ const ReporteConsignaciones = () => {
     }
     agregarFila('Período consultado:', periodo, true, false)
     agregarFila('Cantidad de Consignaciones:', resumen.cantidad, false, false)
-    agregarFila('Total:', formatMoneda(resumen.total), false, true)
+    agregarFila('Monto Total:', formatMoneda(resumen.montoTotal), false, false)
+    agregarFila('Total Pagado:', formatMoneda(resumen.totalPagado), false, false)
+    agregarFila('Saldo Pendiente:', formatMoneda(resumen.saldoPendiente), false, true)
     ws.addRow([])
 
     const filaEnc = ws.addRow(['#', 'Referencia', 'Fecha Emisión', 'Cliente', 'Tipo Documento', 'Monto Total', 'Saldo Pendiente', 'Total Pagado', 'Estado'])
@@ -3121,7 +3317,7 @@ const ReporteConsignaciones = () => {
             <CButton
               style={{ backgroundColor: '#e8680a', borderColor: '#e8680a', color: '#fff' }}
               disabled={seleccionadosFacturar.size === 0 || confirmandoFacturar}
-              onClick={confirmarFacturacion}
+              onClick={abrirConfirmacionNit}
             >
               {confirmandoFacturar
                 ? <><CSpinner size="sm" className="me-1" />Procesando...</>
@@ -3129,6 +3325,160 @@ const ReporteConsignaciones = () => {
               }
             </CButton>
           </div>
+        </CModalFooter>
+      </CModal>
+
+      {/* ── Modal: confirmar / cambiar NIT de facturación ── */}
+      <CModal
+        visible={modalNitFacturar}
+        onClose={() => {
+          setModalNitFacturar(false)
+          setSugerenciasNitFacturar([])
+          setMostrarSugerenciasNit(false)
+        }}
+        alignment="center"
+        backdrop="static"
+      >
+        <CModalHeader style={{ backgroundColor: '#fff3cd', borderBottom: '1px solid #ffe69c' }}>
+          <CModalTitle style={{ color: '#664d03', fontSize: '1rem', fontWeight: 'bold' }}>
+            Confirmar datos de facturación
+          </CModalTitle>
+        </CModalHeader>
+        <CModalBody className="py-4 px-4">
+          <p className="mb-3 text-muted" style={{ fontSize: '0.9rem' }}>
+            Seleccione el tipo de documento y busque el cliente registrado al cual desea emitir la factura.
+          </p>
+          {errorNitFacturar && (
+            <div className="alert alert-danger py-2 mb-3">{errorNitFacturar}</div>
+          )}
+          <CRow className="g-3">
+            <CCol xs={12} md={5}>
+              <CFormLabel className="fw-semibold">Tipo de Documento</CFormLabel>
+              <CFormSelect
+                value={documentoFacturar}
+                disabled={clienteFacturarBloqueado}
+                onChange={(e) => {
+                  setDocumentoFacturar(e.target.value)
+                  setNitFacturarEdit('')
+                  setSugerenciasNitFacturar([])
+                  setMostrarSugerenciasNit(false)
+                }}
+              >
+                <option value="">Seleccione documento</option>
+                {Object.entries(tiposReceptor).map(([indice, valor]) => (
+                  <option key={indice} value={indice}>{valor}</option>
+                ))}
+              </CFormSelect>
+            </CCol>
+            <CCol xs={12} md={7}>
+              <CFormLabel className="fw-semibold">
+                {(tiposReceptor[String(documentoFacturar)] || 'Documento').toUpperCase()}
+              </CFormLabel>
+              <CFormInput
+                value={nitFacturarEdit}
+                onChange={handleNitFacturarChange}
+                placeholder={
+                  !documentoFacturar
+                    ? 'Seleccione un documento primero'
+                    : tipoBusquedaFacturar() === 'dpi'
+                      ? 'Ingrese el DPI para buscar'
+                      : tipoBusquedaFacturar() === 'pasaporte'
+                        ? 'Ingrese el Pasaporte para buscar'
+                        : 'Ingrese el NIT para buscar cliente'
+                }
+                disabled={clienteFacturarBloqueado || !documentoFacturar}
+                autoFocus
+                autoComplete="off"
+              />
+            </CCol>
+            <CCol xs={12}>
+              <div className="d-flex justify-content-between align-items-center mb-1">
+                <CFormLabel className="fw-semibold mb-0">Nombre</CFormLabel>
+                {clienteFacturarBloqueado && (
+                  <CButton color="link" size="sm" className="p-0" onClick={limpiarClienteFacturar}>
+                    Cambiar cliente
+                  </CButton>
+                )}
+              </div>
+              <div style={{ position: 'relative' }}>
+                <CFormInput
+                  value={nombreFacturarEdit}
+                  onChange={handleNombreFacturarChange}
+                  placeholder={!documentoFacturar ? 'Seleccione un documento primero' : 'Ingrese el nombre para buscar cliente'}
+                  disabled={clienteFacturarBloqueado || !documentoFacturar || esCFModal}
+                  autoComplete="off"
+                />
+                {(cargandoNitFacturar || (mostrarSugerenciasNit && sugerenciasNitFacturar.length > 0)) && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: '100%',
+                      left: 0,
+                      right: 0,
+                      zIndex: 1060,
+                      maxHeight: '220px',
+                      overflowY: 'auto',
+                      border: '1px solid #dee2e6',
+                      borderRadius: '4px',
+                      backgroundColor: '#fff',
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                    }}
+                    className="list-group"
+                  >
+                    {cargandoNitFacturar ? (
+                      <div className="list-group-item py-2 text-muted text-center">
+                        <small>Buscando clientes...</small>
+                      </div>
+                    ) : (
+                      <div className="list-group-item list-group-item-secondary py-2">
+                        <small><strong>Clientes encontrados:</strong> haga clic para seleccionar</small>
+                      </div>
+                    )}
+                    {sugerenciasNitFacturar.map((cli) => (
+                      <button
+                        key={cli.idCliente ?? cli.id}
+                        type="button"
+                        className="list-group-item list-group-item-action text-start"
+                        onClick={() => seleccionarClienteFacturar(cli)}
+                        style={{ cursor: 'pointer' }}
+                      >
+                        <div>
+                          <strong>{cli.nombreCliente || cli.nombreFacturacion}</strong>
+                          {' - '}
+                          {(tipoBusquedaFacturar() === 'dpi' || tipoBusquedaFacturar() === 'pasaporte')
+                            ? (cli.documentoIdentificacion || '—')
+                            : (cli.nit || '—')}
+                        </div>
+                        <small className="text-muted">{cli.telefono1 || cli.direccionFisica || ''}</small>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </CCol>
+          </CRow>
+        </CModalBody>
+        <CModalFooter style={{ backgroundColor: '#f8f9fa', borderTop: '1px solid #dee2e6' }}>
+          <CButton
+            color="secondary"
+            onClick={() => {
+              setModalNitFacturar(false)
+              setSugerenciasNitFacturar([])
+              setMostrarSugerenciasNit(false)
+            }}
+            disabled={confirmandoFacturar}
+          >
+            Cancelar
+          </CButton>
+          <CButton
+            style={{ backgroundColor: '#e8680a', borderColor: '#e8680a', color: '#fff' }}
+            onClick={confirmarFacturacion}
+            disabled={confirmandoFacturar || !(nitFacturarEdit || '').trim() || !documentoFacturar}
+          >
+            {confirmandoFacturar
+              ? <><CSpinner size="sm" className="me-1" />Procesando...</>
+              : 'Continuar Facturación'}
+          </CButton>
         </CModalFooter>
       </CModal>
 
