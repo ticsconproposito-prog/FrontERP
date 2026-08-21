@@ -203,7 +203,7 @@ const ReporteInventario = () => {
       const unicos = combinados.filter((p, idx, arr) =>
         arr.findIndex(x => x.idInventario === p.idInventario) === idx
       )
-      if (slot === 1) console.log('[Buscar Producto 1] Resultados /api/inventario:', unicos)
+      // if (slot === 1) console.log('[Buscar Producto 1] Resultados /api/inventario:', unicos)
       setSugerencias(unicos)
       setMostrar(unicos.length > 0)
     } catch (e) {
@@ -288,7 +288,7 @@ const ReporteInventario = () => {
           idInventarioPrevio: par.prod2.idInventario,
         })),
       }
-      console.log('[Cambiar Ubicación] Body enviado a /api/inventario/reordenar:', JSON.stringify(body, null, 2))
+      // console.log('[Cambiar Ubicación] Body enviado a /api/inventario/reordenar:', JSON.stringify(body, null, 2))
       const res = await fetch(`/api/inventario/reordenar?idUsuario=${idUsuarioActual}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
