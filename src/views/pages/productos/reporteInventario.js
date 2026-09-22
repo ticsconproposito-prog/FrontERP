@@ -149,7 +149,18 @@ const ReporteInventario = () => {
 
   const obtenerNombreEstado = (id) => {
     const e = estados.find((e) => Number(e.indice) === Number(id))
-    return e ? e.valor : String(id ?? '')
+    const nombre = e ? e.valor : String(id ?? '')
+    const lower = nombre.toLowerCase()
+    if (lower.includes('inactivo')) return 'Inactivo'
+    if (lower.includes('activo')) return 'Activo'
+    return nombre
+  }
+
+  const colorEstado = (id) => {
+    const nombre = obtenerNombreEstado(id).toLowerCase()
+    if (nombre.includes('inactivo')) return '#dc3545'
+    if (nombre.includes('activo')) return '#198754'
+    return undefined
   }
 
   const obtenerNombreUbicacion = (id) => {
@@ -953,7 +964,9 @@ const ReporteInventario = () => {
                             <CTableDataCell className="text-end">Q{Number(item.producto?.precioVenta || 0).toFixed(2)}</CTableDataCell>
                             <CTableDataCell className="text-center">{item.totalDanados ?? 0}</CTableDataCell>
                             <CTableDataCell>{obtenerNombreUnidad(item.producto?.unidadDeMedida)}</CTableDataCell>
-                            <CTableDataCell className="text-center">{obtenerNombreEstado(item.producto?.estado)}</CTableDataCell>
+                            <CTableDataCell className="text-center fw-bold" style={{ color: colorEstado(item.producto?.estado) }}>
+                              {obtenerNombreEstado(item.producto?.estado)}
+                            </CTableDataCell>
                           </CTableRow>
                         ))}
                       </CTableBody>
@@ -1068,7 +1081,9 @@ const ReporteInventario = () => {
                               ) : item.cantidadDanados}
                             </CTableDataCell>
                             <CTableDataCell className="text-center">{obtenerNombreUbicacion(item.idUbicacion)}</CTableDataCell>
-                            <CTableDataCell className="text-center">{obtenerNombreEstado(item.estado)}</CTableDataCell>
+                            <CTableDataCell className="text-center fw-bold" style={{ color: colorEstado(item.estado) }}>
+                              {obtenerNombreEstado(item.estado)}
+                            </CTableDataCell>
                           </CTableRow>
                         ))}
                       </CTableBody>

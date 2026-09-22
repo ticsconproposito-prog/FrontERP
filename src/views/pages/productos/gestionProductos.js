@@ -174,25 +174,28 @@ const Layout = () => {
     }
 
     try {
-      const producto = productos.find((p) => Number(p.idProducto) === Number(id))
-      const codigo = producto?.codigoProducto || ''
-      if (codigo) {
-        const res = await fetch(`/api/inventario?codigoProducto=${encodeURIComponent(codigo)}&page=0&size=100`)
-        if (res.ok) {
-          const data = await res.json()
-          const items = Array.isArray(data) ? data : (data?.content || [])
-          const delProducto = items.filter(
-            (item) => Number(item.idProducto?.idProducto ?? item.idProducto) === Number(id)
+      const res = await fetch(`/api/inventario?idProducto=${id}&page=0&size=1000`)
+      if (res.ok) {
+        const data = await res.json()
+        const items = Array.isArray(data) ? data : (data?.content || [])
+        const delProducto = items.filter(
+          (item) => Number(item.idProducto?.idProducto ?? item.idProducto) === Number(id)
+        )
+        const totalExistencias = delProducto.reduce(
+          (sum, item) => sum + (Number(item.cantidadExistencias) || 0),
+          0
+        )
+        // Bloquear si hay existencias distintas de 0 (positivas o negativas)
+        if (totalExistencias !== 0) {
+          setIdEliminar(null)
+          setModalMsgTitle('No se puede eliminar')
+          setModalMsgBody(
+            `Este producto tiene ${totalExistencias} unidad(es) en inventario. ` +
+            `Debe dejar el inventario en 0 antes de eliminarlo.`
           )
-          const totalExistencias = delProducto.reduce((sum, item) => sum + (Number(item.cantidadExistencias) || 0), 0)
-          if (totalExistencias > 0) {
-            setIdEliminar(null)
-            setModalMsgTitle('No se puede eliminar')
-            setModalMsgBody(`Este producto tiene ${totalExistencias} unidad(es) en inventario. Debe retirar las existencias antes de eliminarlo.`)
-            setModalMsgColor('warning')
-            setModalMsgVisible(true)
-            return
-          }
+          setModalMsgColor('warning')
+          setModalMsgVisible(true)
+          return
         }
       }
     } catch {
@@ -215,13 +218,30 @@ const Layout = () => {
     }
 
     try {
-      // 1. Obtener todos los registros de inventario del producto
+      // Validar inventario nuevamente antes de eliminar (debe estar en 0)
       const resInv = await fetch(`/api/inventario?idProducto=${idEliminar}&page=0&size=1000`)
       if (resInv.ok) {
         const dataInv = await resInv.json()
         const registrosInv = Array.isArray(dataInv) ? dataInv : (dataInv?.content || [])
+        const delProducto = registrosInv.filter(
+          (item) => Number(item.idProducto?.idProducto ?? item.idProducto) === Number(idEliminar)
+        )
+        const totalExistencias = delProducto.reduce(
+          (sum, item) => sum + (Number(item.cantidadExistencias) || 0),
+          0
+        )
+        if (totalExistencias !== 0) {
+          setModalMsgTitle('No se puede eliminar')
+          setModalMsgBody(
+            `Este producto tiene ${totalExistencias} unidad(es) en inventario. ` +
+            `Debe dejar el inventario en 0 antes de eliminarlo.`
+          )
+          setModalMsgColor('warning')
+          setIdEliminar(null)
+          return
+        }
 
-        // 2. Eliminar cada registro de inventario
+        // Eliminar registros de inventario asociados (existencias en 0)
         await fetch(`/api/eliminarInventarioXProd/${idEliminar}`, {
           method: 'DELETE',
           headers: { 'Content-Type': 'application/json' },
@@ -229,7 +249,7 @@ const Layout = () => {
         })
       }
 
-      // 3. Eliminar el producto
+      // Eliminar el producto
       const response = await fetch(`/api/eliminarProducto/${idEliminar}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },

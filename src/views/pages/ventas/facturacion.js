@@ -285,17 +285,23 @@ const Layout = () => {
     try {
       setCargandoProductos(true);
       const SIZE = 500;
+      const urlCodigo = `/api/inventario?codigoProducto=${encodeURIComponent(t)}&page=0&size=${SIZE}&estadoExcluido=0`;
+      const urlProveedor = `/api/inventario?codigoProductoProveedor=${encodeURIComponent(t)}&page=0&size=${SIZE}&estadoExcluido=0`;
+      const urlDescripcion = `/api/inventario?descripcion=${encodeURIComponent(t)}&page=0&size=${SIZE}&estadoExcluido=0`;
+      // console.log('[inventario] término:', t);
+      // console.log('[inventario] URL codigoProducto:', urlCodigo);
+      // console.log('[inventario] URL codigoProductoProveedor:', urlProveedor);
+      // console.log('[inventario] URL descripcion:', urlDescripcion);
 
       const [rCodigo, rProveedor, rDescripcion] = await Promise.all([
-        fetch(`/api/inventario?codigoProducto=${encodeURIComponent(t)}&page=0&size=${SIZE}`, { signal }).then(r => r.json()),
-        fetch(`/api/inventario?codigoProductoProveedor=${encodeURIComponent(t)}&page=0&size=${SIZE}`, { signal }).then(r => r.json()),
-        fetch(`/api/inventario?descripcion=${encodeURIComponent(t)}&page=0&size=${SIZE}`, { signal }).then(r => r.json()),
+        fetch(urlCodigo, { signal }).then(r => r.json()),
+        fetch(urlProveedor, { signal }).then(r => r.json()),
+        fetch(urlDescripcion, { signal }).then(r => r.json()),
       ]);
 
-    /*console.log('[inventario] término:', t);
-      console.log('[inventario] por codigoProducto:', rCodigo);
-      console.log('[inventario] por codigoProductoProveedor:', rProveedor);
-      console.log('[inventario] por descripcion:', rDescripcion);*/
+      // console.log('[inventario] por codigoProducto:', rCodigo);
+      // console.log('[inventario] por codigoProductoProveedor:', rProveedor);
+      // console.log('[inventario] por descripcion:', rDescripcion);
 
       const combinados = [
         ...(Array.isArray(rCodigo)      ? rCodigo      : rCodigo.content      || []),
