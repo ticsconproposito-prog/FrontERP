@@ -798,7 +798,7 @@ const Layout = () => {
           <div class="telefonos">📞 7888-9138 / 5203-0726</div>
         </div>
         <div class="empresa-info">
-          <div style="font-size:14px;font-weight:bold;margin-bottom:3px;letter-spacing:0.5px;">${esConsignacion ? 'CONSIGNACIÓN' : error ? 'COMPROBANTE DE PAGO' : 'DOCUMENTO TRIBUTARIO ELECTRÓNICO'}</div>
+          <div style="font-size:14px;font-weight:bold;margin-bottom:3px;letter-spacing:0.5px;">${esConsignacion ? 'CRÉDITO' : error ? 'COMPROBANTE DE PAGO' : 'DOCUMENTO TRIBUTARIO ELECTRÓNICO'}</div>
           <div class="empresa-nombre">Blockera Agmner</div>
           <div class="empresa-linea">JUAN ALBERTO, ARREDONDO GARCIA</div>
           <div class="empresa-linea">CALLE PRINCIPAL SECTOR PALIN NUEVA SANTA ROSA</div>
@@ -880,7 +880,7 @@ const Layout = () => {
       <html lang="es">
       <head>
         <meta charset="UTF-8" />
-        <title>${esConsignacion ? `Consignación - ${referenciaRes}` : error ? `Comprobante - ${referenciaRes}` : cliente.tipoDocumento === '2' ? `Nota de Crédito - ${referenciaRes}` : cliente.tipoDocumento === '3' ? `Nota de Débito - ${referenciaRes}` : `Factura - ${referenciaRes}`}</title>
+        <title>${esConsignacion ? `Crédito - ${referenciaRes}` : error ? `Comprobante - ${referenciaRes}` : cliente.tipoDocumento === '2' ? `Nota de Crédito - ${referenciaRes}` : cliente.tipoDocumento === '3' ? `Nota de Débito - ${referenciaRes}` : `Factura - ${referenciaRes}`}</title>
         <style>
           * { margin: 0; padding: 0; box-sizing: border-box; }
           body { font-family: Arial, sans-serif; font-size: 12px; color: #222; }
@@ -1101,7 +1101,7 @@ const Layout = () => {
     iframe.contentDocument.write(html)
     iframe.contentDocument.close()
 
-    const nombrePDF = referenciaRes || preimpresoRes || 'Consignacion'
+    const nombrePDF = referenciaRes || preimpresoRes || 'Credito'
     iframe.onload = () => {
       const tituloOriginal = document.title
       document.title = nombrePDF
@@ -1275,11 +1275,11 @@ const Layout = () => {
       // Construir la referencia en memoria: prefijo + idEncabezadoFactura
       const idFacturaTrimmed = idEncabezadoFactura.trim()
       const tipoDoc = String(formFactura.tipoDocumento)
-      const prefijoRef = tipoDoc === '1' ? 'FACT' : tipoDoc === '2' ? 'NCRE' : tipoDoc === '3' ? 'NDEB' : tipoDoc === '4' ? 'CONS' : ''
+      const prefijoRef = tipoDoc === '1' ? 'FACT' : tipoDoc === '2' ? 'NCRE' : tipoDoc === '3' ? 'NDEB' : tipoDoc === '4' ? 'CRED' : ''
       const referenciaCalculada = prefijoRef ? `${prefijoRef}${idFacturaTrimmed}` : idFacturaTrimmed
       setReferenciaParaComprobante(referenciaCalculada)
 
-      // Tipo 4 (Consignación): no enviar DTE, guardar referencia y imprimir directamente
+      // Tipo 4 (Crédito): no enviar DTE, guardar referencia y imprimir directamente
       if (tipoDoc === '4') {
         await fetch('/api/grabarEncabezadoFacturas', {
           method: 'POST',
@@ -1521,7 +1521,7 @@ const Layout = () => {
                   <div className="d-flex align-items-center gap-2">
                     <CFormCheck
                       id="esConsignacion"
-                      label="Consignación"
+                      label="Crédito"
                       checked={esConsignacionCheck}
                       onChange={(e) => {
                         const checked = e.target.checked
@@ -1917,7 +1917,7 @@ const Layout = () => {
                     {guardandoFactura ? 'Guardando...' : (
                       formFactura.tipoDocumento === '2' ? 'Guardar Nota de Crédito' :
                       formFactura.tipoDocumento === '3' ? 'Guardar Nota de Débito' :
-                      formFactura.tipoDocumento === '4' ? 'Guardar Consignación' :
+                      formFactura.tipoDocumento === '4' ? 'Guardar Crédito' :
                       'Guardar Factura'
                     )}
                   </CButton>

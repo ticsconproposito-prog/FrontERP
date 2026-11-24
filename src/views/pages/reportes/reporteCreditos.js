@@ -82,10 +82,22 @@ const numeroALetras = (num) => {
   return (resultado.trim() || 'CERO') + ' QUETZALES CON ' + String(centavos).padStart(2, '0') + '/100'
 }
 
+// Errores DTE que requieren corregir datos (NIT, límite CF, etc.): no se ofrece comprobante de pago
+const esErrorSinComprobante = (msg) => {
+  const m = String(msg ?? '')
+  return (
+    m.includes('NO EXISTE EL NIT') ||
+    m.includes('2-NO EXISTE EL NIT/CUI DEL CONTRIBUYENTE') ||
+    m.includes('186-NUMERO') ||
+    m.includes('DOCUMENTO DE IDENTIFICACION INVALIDO') ||
+    m.includes('El monto total en Q del documento excede del limite permitido para receptor CF')
+  )
+}
+
 const calcularReferencia = (f) => {
   if (f.referencia && f.referencia !== '0') return f.referencia
   const t = String(f.tipoDocumento || '')
-  const p = t === '1' ? 'FACT' : t === '2' ? 'NCRE' : t === '3' ? 'NDEB' : t === '4' ? 'CONS' : ''
+  const p = t === '1' ? 'FACT' : t === '2' ? 'NCRE' : t === '3' ? 'NDEB' : t === '4' ? 'CRED' : ''
   return p ? `${p}${f.idEncabezadoFactura}` : '—'
 }
 
@@ -121,7 +133,7 @@ const headerStyle = {
   color: '#fff',
 }
 
-const ReporteConsignaciones = () => {
+const ReporteCreditos = () => {
   const { usuario } = useAuth()
   const idUsuarioActual = Number(usuario?.idUsuario ?? usuario?.id_Usuario ?? 0)
 
@@ -192,6 +204,9 @@ const ReporteConsignaciones = () => {
   const [seleccionadosFacturar, setSeleccionadosFacturar] = useState(new Set())
   const [confirmandoFacturar, setConfirmandoFacturar] = useState(false)
   const [msgFacturar, setMsgFacturar] = useState({ visible: false, ok: false, texto: '' })
+  // Error al emitir DTE (FEL) + datos necesarios para generar el comprobante de pago
+  const [errorDteModal, setErrorDteModal] = useState({ visible: false, mensaje: '' })
+  const comprobanteDteRef = useRef(null)
   const [modalNitFacturar, setModalNitFacturar] = useState(false)
   const [nitFacturarEdit, setNitFacturarEdit] = useState('')
   const [nombreFacturarEdit, setNombreFacturarEdit] = useState('')
@@ -304,7 +319,7 @@ const ReporteConsignaciones = () => {
   const abrirConfirmacionNit = () => {
     if (seleccionadosFacturar.size === 0) return
     if (!consignacionAgregar) {
-      setMsgFacturar({ visible: true, ok: false, texto: 'No hay consignación seleccionada.' })
+      setMsgFacturar({ visible: true, ok: false, texto: 'No hay crédito seleccionado.' })
       return
     }
     const cliente = (consignacionAgregar.idCliente && typeof consignacionAgregar.idCliente === 'object')
@@ -336,7 +351,7 @@ const ReporteConsignaciones = () => {
     )
     if (itemsSeleccionados.length === 0) return
     if (!consignacionAgregar) {
-      setMsgFacturar({ visible: true, ok: false, texto: 'No hay consignación seleccionada.' })
+      setMsgFacturar({ visible: true, ok: false, texto: 'No hay crédito seleccionado.' })
       return
     }
 
@@ -352,33 +367,9 @@ const ReporteConsignaciones = () => {
     const clienteOriginal = (enc.idCliente && typeof enc.idCliente === 'object') ? enc.idCliente : {}
     const cliente = clienteFacturarSeleccionado || clienteOriginal
 
-    // ── Validar inventario antes de facturar ─────────────────────────────────
+    // En consignaciones no se valida existencias al facturar (el inventario ya se descontó al consignar)
     setConfirmandoFacturar(true)
     setMsgFacturar({ visible: false, ok: false, texto: '' })
-    try {
-      const stockChecks = await Promise.all(
-        itemsSeleccionados.map(async (item) => {
-          try {
-            const res = await fetch(`/api/inventario?idProducto=${item.idProducto}&page=0&size=1`)
-            if (!res.ok) return null
-            const data = await res.json()
-            const lista = Array.isArray(data) ? data : data.content ?? []
-            const stock = Number(lista[0]?.cantidadExistencias ?? 0)
-            return { descripcion: item.descripcionProducto || `Producto ${item.idProducto}`, stock }
-          } catch { return null }
-        })
-      )
-      const sinStock = stockChecks.filter(s => s !== null && s.stock <= 0)
-      if (sinStock.length > 0) {
-        const nombres = sinStock.map(s => `• ${s.descripcion} (stock: ${s.stock})`).join('\n')
-        setMsgFacturar({ visible: true, ok: false, texto: `No se puede facturar. Los siguientes productos no tienen existencias:\n${nombres}` })
-        setConfirmandoFacturar(false)
-        return
-      }
-    } catch (e) {
-      console.warn('[Facturar] Error al verificar inventario:', e)
-    }
-    // ─────────────────────────────────────────────────────────────────────────
 
     try {
       const hoy      = new Date()
@@ -559,19 +550,45 @@ const ReporteConsignaciones = () => {
       }
 
       // console.log('[Facturar DTE] Enviando:', JSON.stringify(bodyDte, null, 2))
-      const resDte = await fetch('/api/fel/dtes', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(bodyDte),
-      })
-      const rawDte = await resDte.text()
+      // Datos para generar el comprobante de pago si el DTE falla
+      const receptorFacturar = {
+        nit: nitReceptor,
+        nombre: (nombreFacturarEdit || '').trim()
+          || (esConsumidorFinalF
+            ? 'Consumidor Final'
+            : (cliente.nombreCliente || cliente.nombreFacturacion || '')),
+        direccion: cliente.direccionFisica || 'Ciudad',
+        tipoReceptor: tipoRec,
+      }
+      comprobanteDteRef.current = {
+        items: itemsSeleccionados,
+        totalNeto: totalesDetalle.totalNeto,
+        iva: totalesDetalle.iva,
+        total: totalesDetalle.total,
+        enc,
+        receptor: receptorFacturar,
+        referencia: referenciaCalculada,
+      }
+
       let responseDte = null
-      try { responseDte = JSON.parse(rawDte) } catch (_) { responseDte = rawDte }
-      // console.log('[Facturar DTE] Respuesta:', responseDte)
+      let errorDte = ''
+      try {
+        const resDte = await fetch('/api/fel/dtes', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify(bodyDte),
+        })
+        const rawDte = await resDte.text()
+        try { responseDte = JSON.parse(rawDte) } catch (_) { responseDte = rawDte }
+        // console.log('[Facturar DTE] Respuesta:', responseDte)
+      } catch (eDte) {
+        errorDte = eDte.message || 'Error al conectar con el servicio DTE'
+      }
 
       const fel = responseDte?.fel ?? responseDte
-      if (fel?.ok === false) {
-        setMsgFacturar({ visible: true, ok: false, texto: fel.error || 'Error al emitir el DTE' })
+      if (errorDte || fel?.ok === false) {
+        const mensajeErrorDte = errorDte || fel?.error || 'Error desconocido al emitir el DTE'
+        setErrorDteModal({ visible: true, mensaje: mensajeErrorDte })
         const idEnc = Number(enc.idEncabezadoFactura)
         if (idEnc) await cargarLineasExistentes(idEnc)
         cargarConsignaciones(paginaActual, filtroAplicado)
@@ -1441,7 +1458,7 @@ const ReporteConsignaciones = () => {
         <html lang="es">
         <head>
           <meta charset="UTF-8" />
-          <title>Consignación - ${referenciaRes || preimpresoRes || 'SinReferencia'}</title>
+          <title>Crédito - ${referenciaRes || preimpresoRes || 'SinReferencia'}</title>
           <style>
             * { margin: 0; padding: 0; box-sizing: border-box; }
             body { font-family: Arial, sans-serif; font-size: 12px; color: #222; }
@@ -1562,7 +1579,7 @@ const ReporteConsignaciones = () => {
                 <div class="telefonos">📞 7888-9138 / 5203-0726</div>
               </div>
               <div class="empresa-info">
-                <div style="font-size:13px;font-weight:bold;margin-bottom:3px;">CONSIGNACIÓN</div>
+                <div style="font-size:13px;font-weight:bold;margin-bottom:3px;">CRÉDITO</div>
                 <div class="empresa-nombre">Blockera Agmner</div>
                 <div class="empresa-linea">JUAN ALBERTO, ARREDONDO GARCIA</div>
                 <div class="empresa-linea">CALLE PRINCIPAL SECTOR PALIN NUEVA SANTA ROSA</div>
@@ -1570,7 +1587,7 @@ const ReporteConsignaciones = () => {
                 <div class="empresa-linea">NIT: 16949447</div>
               </div>
               <div class="factura-id">
-                <div class="factura-titulo">CONSIGNACIÓN</div>
+                <div class="factura-titulo">CRÉDITO</div>
                 <div class="factura-linea"><strong>Referencia:</strong> ${referenciaRes || '—'}</div>
                 <div class="factura-linea" style="margin-top:5px;"><strong>Fecha de Emisión:</strong> ${formatearFechaFactura(fechaFactura)}</div>
               </div>
@@ -1634,7 +1651,7 @@ const ReporteConsignaciones = () => {
       iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;border:none;'
       document.body.appendChild(iframe)
 
-      const nombrePDF = `Consignación - ${referenciaRes || preimpresoRes || 'SinReferencia'}`
+      const nombrePDF = `Crédito - ${referenciaRes || preimpresoRes || 'SinReferencia'}`
       iframe.onload = () => {
         const tituloOriginal = document.title
         document.title = nombrePDF
@@ -1655,7 +1672,7 @@ const ReporteConsignaciones = () => {
   }
 
   // ── Imprimir factura de abono (PDF) ────────────────────────────────────────
-  const imprimirFacturaAbono = async (itemsSeleccionados, responseDte, totalNeto, totalIva, totalFinal, encParam = null, receptorOverride = null) => {
+  const imprimirFacturaAbono = async (itemsSeleccionados, responseDte, totalNeto, totalIva, totalFinal, encParam = null, receptorOverride = null, esComprobante = false) => {
     let logoBase64 = ''
     try {
       const resp = await fetch(logoFerreteria)
@@ -1674,7 +1691,7 @@ const ReporteConsignaciones = () => {
     const numeroAutorizacion = fel.numeroAutorizacion || '—'
     const serieRes           = fel.serie || '—'
     const preimpresoRes      = String(fel.Preimpreso || fel.preimpreso || '—')
-    const referenciaAbono    = fel.referencia || `FACT${enc.idEncabezadoFactura}`
+    const referenciaAbono    = fel.referencia || receptorOverride?.referencia || `FACT${enc.idEncabezadoFactura}`
 
     const hoy = new Date()
     const fechaHoy = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`
@@ -1733,7 +1750,7 @@ const ReporteConsignaciones = () => {
       <html lang="es">
       <head>
         <meta charset="UTF-8" />
-        <title>Factura Abono - ${referenciaAbono}</title>
+        <title>${esComprobante ? 'Comprobante' : 'Factura Abono'} - ${referenciaAbono}</title>
         <style>
           * { margin: 0; padding: 0; box-sizing: border-box; }
           body { font-family: Arial, sans-serif; font-size: 12px; color: #222; }
@@ -1853,7 +1870,7 @@ const ReporteConsignaciones = () => {
               <div class="telefonos">📞 7888-9138 / 5203-0726</div>
             </div>
             <div class="empresa-info">
-              <div style="font-size:13px;font-weight:bold;margin-bottom:3px;letter-spacing:0.5px;">DOCUMENTO TRIBUTARIO ELECTRÓNICO</div>
+              <div style="font-size:13px;font-weight:bold;margin-bottom:3px;letter-spacing:0.5px;">${esComprobante ? 'COMPROBANTE DE PAGO' : 'DOCUMENTO TRIBUTARIO ELECTRÓNICO'}</div>
               <div class="empresa-nombre">Blockera Agmner</div>
               <div class="empresa-linea">JUAN ALBERTO, ARREDONDO GARCIA</div>
               <div class="empresa-linea">CALLE PRINCIPAL SECTOR PALIN NUEVA SANTA ROSA</div>
@@ -1861,12 +1878,16 @@ const ReporteConsignaciones = () => {
               <div class="empresa-linea">NIT: 16949447</div>
             </div>
             <div class="factura-id">
+              ${esComprobante ? `
+              <div class="factura-linea"><strong>Referencia:</strong> ${referenciaAbono}</div>
+              ` : `
               <div class="factura-titulo">FACTURA</div>
               <div class="factura-linea"><strong>NÚMERO DE AUTORIZACIÓN</strong></div>
               <div class="factura-linea" style="font-size:10px;line-height:1.4;">${numAutoStr.slice(0, 26) || '—'}</div>
               ${numAutoStr.length > 26 ? `<div class="factura-linea" style="font-size:10px;line-height:1.4;">${numAutoStr.slice(26)}</div>` : ''}
               <div class="factura-linea"><strong>Serie:</strong> ${serieRes}</div>
               <div class="factura-linea"><strong>Número:</strong> ${preimpresoRes}</div>
+              `}
               <div class="factura-linea" style="margin-top:5px;"><strong>Fecha de Emisión:</strong> ${formatearFechaFactura(fechaHoy)}</div>
             </div>
           </div>
@@ -1911,6 +1932,7 @@ const ReporteConsignaciones = () => {
               </tr>
             </tfoot>
           </table>
+          ${esComprobante ? '' : `
           <div style="margin-top:10px;padding:6px 10px;border:1px solid #000;border-radius:4px;font-size:10px;text-align:center;">
             <div><strong>Sujeto a pagos trimestrales ISR</strong></div>
             <div><strong>Agente de Retención de IVA</strong></div>
@@ -1923,6 +1945,7 @@ const ReporteConsignaciones = () => {
               <span><strong>Nombre, razón o denominación social:</strong> AINNOVA, SOCIEDAD ANÓNIMA</span>
             </div>
           </div>
+          `}
           <div class="footer">Gracias por su compra — Ferretería y Blockera Agmner</div>
           <div style="font-weight:bold;margin-bottom:6px;text-align:center;font-size:14px;">No se aceptan cambios, Ni devoluciones.</div>
         </div>
@@ -1941,7 +1964,7 @@ const ReporteConsignaciones = () => {
     iframe.contentDocument.write(html)
     iframe.contentDocument.close()
 
-    const nombrePDF = `Factura Abono - ${referenciaAbono}`
+    const nombrePDF = `${esComprobante ? 'Comprobante' : 'Factura Abono'} - ${referenciaAbono}`
     iframe.onload = () => {
       const tituloOriginal = document.title
       document.title = nombrePDF
@@ -2018,7 +2041,7 @@ const ReporteConsignaciones = () => {
       : `${filtroAplicado.inicio} al ${filtroAplicado.fin}`
 
     const wb = new ExcelJS.Workbook()
-    const ws = wb.addWorksheet('Consignaciones')
+    const ws = wb.addWorksheet('Créditos')
 
     const fillAzul   = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1A3A6B' } }
     const fillGris   = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF2F2F2' } }
@@ -2037,7 +2060,7 @@ const ReporteConsignaciones = () => {
       { width: 13 }, // Estado
     ]
 
-    const filaTitulo = ws.addRow(['Reporte: Consignaciones'])
+    const filaTitulo = ws.addRow(['Reporte: Créditos'])
     filaTitulo.getCell(1).font = { bold: true, size: 11 }
     filaTitulo.getCell(1).fill = fillGris
     filaTitulo.height = 22
@@ -2054,7 +2077,7 @@ const ReporteConsignaciones = () => {
       fila.height = 18
     }
     agregarFila('Período consultado:', periodo, true, false)
-    agregarFila('Cantidad de Consignaciones:', resumen.cantidad, false, false)
+    agregarFila('Cantidad de Créditos:', resumen.cantidad, false, false)
     agregarFila('Monto Total:', formatMoneda(resumen.montoTotal), false, false)
     agregarFila('Total Pagado:', formatMoneda(resumen.totalPagado), false, false)
     agregarFila('Saldo Pendiente:', formatMoneda(resumen.saldoPendiente), false, true)
@@ -2101,7 +2124,7 @@ const ReporteConsignaciones = () => {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `consignaciones_${filtroAplicado.inicio}_${filtroAplicado.fin}.xlsx`
+    a.download = `creditos_${filtroAplicado.inicio}_${filtroAplicado.fin}.xlsx`
     a.click()
     URL.revokeObjectURL(url)
   }
@@ -2112,7 +2135,7 @@ const ReporteConsignaciones = () => {
         <CCol xs={12}>
           <CCard className="mb-4">
             <CCardHeader>
-              <strong className="fs-5">Reporte de Consignaciones</strong>
+              <strong className="fs-5">Reporte de Créditos</strong>
             </CCardHeader>
             <CCardBody>
 
@@ -2192,7 +2215,7 @@ const ReporteConsignaciones = () => {
                   </CCol>
                   <CCol>
                     <div className="border rounded p-3 text-center" style={{ borderColor: '#321fdb' }}>
-                      <div className="text-muted small mb-1">Consignaciones</div>
+                      <div className="text-muted small mb-1">Créditos</div>
                       <div className="fs-5 fw-bold text-primary">
                         {resumen.cantidad}
                       </div>
@@ -2229,7 +2252,7 @@ const ReporteConsignaciones = () => {
               {cargando && (
                 <div className="text-center py-4">
                   <CSpinner color="primary" />
-                  <div className="mt-2 text-muted">Cargando consignaciones...</div>
+                  <div className="mt-2 text-muted">Cargando créditos...</div>
                 </div>
               )}
               {error && <div className="alert alert-danger">Error: {error}</div>}
@@ -2256,7 +2279,7 @@ const ReporteConsignaciones = () => {
                       {consignaciones.length === 0 ? (
                         <CTableRow>
                           <CTableDataCell colSpan={11} className="text-center py-4 text-muted">
-                            No hay consignaciones para mostrar.
+                            No hay créditos para mostrar.
                           </CTableDataCell>
                         </CTableRow>
                       ) : (
@@ -2346,7 +2369,7 @@ const ReporteConsignaciones = () => {
       <CModal size="lg" visible={modalVer} onClose={() => { document.activeElement?.blur(); setModalVer(false) }}>
         <CModalHeader>
           <CModalTitle>
-            Detalle — Consignación {facturaSeleccionada?.preimpresoResAPI || ''}
+            Detalle — Crédito {facturaSeleccionada?.preimpresoResAPI || ''}
           </CModalTitle>
         </CModalHeader>
         <CModalBody>
@@ -2468,7 +2491,7 @@ const ReporteConsignaciones = () => {
             <>
               {/* Info de la consignación */}
               <div className="rounded-3 border p-3 mb-3" style={{ backgroundColor: '#f8f9fa' }}>
-                <h6 className="fw-bold text-primary mb-2">Información de la consignación</h6>
+                <h6 className="fw-bold text-primary mb-2">Información del crédito</h6>
                 <CRow className="g-2">
                   <CCol md={6}>
                     <small className="text-muted d-block">Referencia</small>
@@ -2513,7 +2536,7 @@ const ReporteConsignaciones = () => {
                         {formatMoneda(consignacionAbonar.totalPagado)}
                       </strong>
                       {consignacionAbonar.facturaProcesada === 'S' && (
-                        <span className="badge bg-danger ms-auto" style={{ fontSize: '0.7rem' }}>Consignación procesada</span>
+                        <span className="badge bg-danger ms-auto" style={{ fontSize: '0.7rem' }}>Crédito procesado</span>
                       )}
                     </div>
                   </CCol>
@@ -2631,7 +2654,7 @@ const ReporteConsignaciones = () => {
       <CModal size="xl" visible={modalAgregar} backdrop="static" keyboard={false} onClose={() => { if (!guardandoAgregar) setModalAgregar(false) }}>
         <CModalHeader className="bg-primary text-white">
           <CModalTitle className="d-flex align-items-center gap-2">
-            <span>🛒</span> Agregar Productos a Consignación
+            <span>🛒</span> Agregar Productos a Crédito
           </CModalTitle>
         </CModalHeader>
         <CModalBody className="p-4">
@@ -2639,7 +2662,7 @@ const ReporteConsignaciones = () => {
             <>
               {/* ── Información de la consignación ── */}
               <div className="rounded-3 border p-3 mb-3" style={{ backgroundColor: '#f8f9fa', borderColor: '#dee2e6' }}>
-                <h6 className="text-primary fw-bold mb-3">Información de la consignación</h6>
+                <h6 className="text-primary fw-bold mb-3">Información del crédito</h6>
                 <CRow className="g-3">
                   <CCol md={4}>
                     <div className="d-flex flex-column">
@@ -2721,7 +2744,7 @@ const ReporteConsignaciones = () => {
                       🧾 Facturar
                     </CButton>
                     <span
-                      title={consignacionAgregar?.facturaProcesada === 'S' ? 'No se pueden agregar productos a una consignación procesada' : ''}
+                      title={consignacionAgregar?.facturaProcesada === 'S' ? 'No se pueden agregar productos a un crédito procesado' : ''}
                       style={{ cursor: consignacionAgregar?.facturaProcesada === 'S' ? 'not-allowed' : 'auto' }}
                     >
                       <CButton
@@ -2746,7 +2769,7 @@ const ReporteConsignaciones = () => {
                 {cargandoExistentes ? (
                   <div className="text-center py-4">
                     <CSpinner size="sm" className="me-2" />
-                    <span className="text-muted">Cargando productos de la consignación...</span>
+                    <span className="text-muted">Cargando productos del crédito...</span>
                   </div>
                 ) : (
                   <CTable striped bordered hover responsive>
@@ -2919,7 +2942,7 @@ const ReporteConsignaciones = () => {
       >
         <CModalHeader className="bg-primary text-white">
           <CModalTitle className="d-flex align-items-center gap-2">
-            <span>🛒</span> Agregar Productos a la Consignación
+            <span>🛒</span> Agregar Productos al Crédito
           </CModalTitle>
         </CModalHeader>
         <CModalBody className="p-4">
@@ -3168,7 +3191,7 @@ const ReporteConsignaciones = () => {
       >
         <CModalHeader style={{ backgroundColor: '#f8f9fa', color: '#212529' }}>
           <CModalTitle className="d-flex align-items-center gap-2">
-            <span>🧾</span> Facturar Consignación
+            <span>🧾</span> Facturar Crédito
           </CModalTitle>
         </CModalHeader>        <CModalBody>
           {consignacionAgregar && (
@@ -3612,8 +3635,54 @@ const ReporteConsignaciones = () => {
         </CModalFooter>
       </CModal>
 
+      {/* ── Modal error DTE / FEL ── */}
+      <CModal
+        visible={errorDteModal.visible}
+        onClose={() => setErrorDteModal((prev) => ({ ...prev, visible: false }))}
+        onClosed={() => setErrorDteModal({ visible: false, mensaje: '' })}
+        backdrop="static"
+        alignment="center"
+      >
+        <CModalHeader className="bg-danger text-white">
+          <CModalTitle>Error al emitir DTE</CModalTitle>
+        </CModalHeader>
+        <CModalBody>
+          <p className="mb-0" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+            {errorDteModal.mensaje}
+          </p>
+        </CModalBody>
+        <CModalFooter>
+          <CButton color="secondary" onClick={() => setErrorDteModal((prev) => ({ ...prev, visible: false }))}>
+            Cerrar
+          </CButton>
+          {!esErrorSinComprobante(errorDteModal.mensaje) && (
+            <CButton
+              color="success"
+              className="text-white"
+              onClick={async () => {
+                const datos = comprobanteDteRef.current
+                setErrorDteModal({ visible: false, mensaje: '' })
+                if (!datos) return
+                await imprimirFacturaAbono(
+                  datos.items,
+                  null,
+                  datos.totalNeto,
+                  datos.iva,
+                  datos.total,
+                  datos.enc,
+                  { ...datos.receptor, referencia: datos.referencia },
+                  true,
+                )
+              }}
+            >
+              Generar comprobante de pago
+            </CButton>
+          )}
+        </CModalFooter>
+      </CModal>
+
     </>
   )
 }
 
-export default ReporteConsignaciones
+export default ReporteCreditos

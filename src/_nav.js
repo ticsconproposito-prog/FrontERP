@@ -82,8 +82,8 @@ const _nav = [
       }, 
       {
         component: CNavItem,
-        name: 'Consignaciones',
-        to: '/pages/reportes/reporteConsignaciones',
+        name: 'Créditos',
+        to: '/pages/reportes/reporteCreditos',
       },
     ],
   },

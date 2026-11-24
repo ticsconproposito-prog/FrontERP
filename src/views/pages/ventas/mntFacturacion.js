@@ -868,7 +868,7 @@ const MntFacturacion = () => {
 
       // Calcular referencia igual que en facturacion.js
       const tipoDocRef  = String(enc.tipoDocumento || enc.idTipoDocumento || '1')
-      const prefijoRef  = tipoDocRef === '1' ? 'FACT' : tipoDocRef === '2' ? 'NCRE' : tipoDocRef === '3' ? 'NDEB' : tipoDocRef === '4' ? 'CONS' : ''
+      const prefijoRef  = tipoDocRef === '1' ? 'FACT' : tipoDocRef === '2' ? 'NCRE' : tipoDocRef === '3' ? 'NDEB' : tipoDocRef === '4' ? 'CRED' : ''
       const idFactura   = String(enc.idEncabezadoFactura || '').trim()
       const referenciaCalculada = prefijoRef ? `${prefijoRef}${idFactura}` : idFactura
 
@@ -1124,7 +1124,7 @@ const MntFacturacion = () => {
                         <CTableRow key={f.idEncabezadoFactura ?? idx}>
                           <CTableDataCell className="text-center">{paginaActual * PAGE_SIZE + idx + 1}</CTableDataCell>
                           <CTableDataCell>{f.preimpresoResAPI || '—'}</CTableDataCell>
-                          <CTableDataCell>{(f.referencia && f.referencia !== '0') ? f.referencia : (() => { const t = String(f.tipoDocumento || ''); const p = t === '1' ? 'FACT' : t === '2' ? 'NCRE' : t === '3' ? 'NDEB' : t === '4' ? 'CONS' : ''; return p ? `${p}${f.idEncabezadoFactura}` : '—'; })()}</CTableDataCell>
+                          <CTableDataCell>{(f.referencia && f.referencia !== '0') ? f.referencia : (() => { const t = String(f.tipoDocumento || ''); const p = t === '1' ? 'FACT' : t === '2' ? 'NCRE' : t === '3' ? 'NDEB' : t === '4' ? 'CRED' : ''; return p ? `${p}${f.idEncabezadoFactura}` : '—'; })()}</CTableDataCell>
                           <CTableDataCell>{formatFecha(f.FechaFactura)}</CTableDataCell>
                           <CTableDataCell>
                             {(f.idCliente?.nit || '').toString().toUpperCase() === 'CF'
@@ -1237,7 +1237,7 @@ const MntFacturacion = () => {
               <CRow className="mb-3">
                 <CCol md={6}>
                   <div><strong>No. Factura:</strong> {facturaSeleccionada.preimpresoResAPI || '—'}</div>
-                  <div><strong>Referencia:</strong> {(facturaSeleccionada.referencia && facturaSeleccionada.referencia !== '0') ? facturaSeleccionada.referencia : (() => { const t = String(facturaSeleccionada.tipoDocumento || ''); const p = t === '1' ? 'FACT' : t === '2' ? 'NCRE' : t === '3' ? 'NDEB' : t === '4' ? 'CONS' : ''; return p ? `${p}${facturaSeleccionada.idEncabezadoFactura}` : '—'; })()}</div>
+                  <div><strong>Referencia:</strong> {(facturaSeleccionada.referencia && facturaSeleccionada.referencia !== '0') ? facturaSeleccionada.referencia : (() => { const t = String(facturaSeleccionada.tipoDocumento || ''); const p = t === '1' ? 'FACT' : t === '2' ? 'NCRE' : t === '3' ? 'NDEB' : t === '4' ? 'CRED' : ''; return p ? `${p}${facturaSeleccionada.idEncabezadoFactura}` : '—'; })()}</div>
                   <div><strong>Fecha Emisión:</strong> {formatFecha(facturaSeleccionada.FechaFactura)}</div>
                   <div><strong>Tipo Documento:</strong> {tiposDocumento[String(facturaSeleccionada.tipoDocumento)] ?? facturaSeleccionada.tipoDocumento ?? '—'}</div>
                   <div>
